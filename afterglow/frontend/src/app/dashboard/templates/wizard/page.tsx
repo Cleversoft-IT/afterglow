@@ -1,9 +1,27 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { ChevronDown } from "lucide-react";
 
 import { api } from "@/lib/api";
 import type { Business, WizardResponse } from "@/lib/types";
+import { cn } from "@/lib/utils";
+
+const fieldBaseClass = cn(
+  "w-full rounded-2xl border border-ui-line bg-ui-surface px-4 py-3 text-sm text-ui-ink shadow-soft",
+  "placeholder:text-ui-subtle/70",
+  "transition-[border-color,box-shadow] duration-150",
+  "focus:border-ui-mint focus:outline-none focus:ring-2 focus:ring-ui-mint/25 focus:ring-offset-2 focus:ring-offset-ui-canvas",
+  "disabled:cursor-not-allowed disabled:opacity-40",
+);
+
+const controlClass = cn(fieldBaseClass, "mt-2");
+
+const primaryBtnClass = cn(
+  "inline-flex min-h-10 items-center justify-center rounded-full bg-ui-accent px-5 py-2.5 text-sm font-medium text-ui-surface shadow-soft",
+  "transition-[opacity,transform] hover:opacity-90 active:scale-[0.99] disabled:pointer-events-none disabled:opacity-40",
+  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ui-mint/45 focus-visible:ring-offset-2 focus-visible:ring-offset-ui-canvas",
+);
 
 export default function WizardPage() {
   const [businesses, setBusinesses] = useState<Business[]>([]);
@@ -39,76 +57,94 @@ export default function WizardPage() {
   }
 
   return (
-    <div className="px-8 py-10 max-w-4xl">
-      <header className="mb-6">
-        <h1 className="text-2xl font-semibold tracking-tight">Template wizard</h1>
-        <p className="text-sm text-zinc-600">
+    <div className="max-w-4xl px-5 py-8 sm:px-8 sm:py-10">
+      <header className="mb-8 sm:mb-10">
+        <h1 className="text-2xl font-semibold tracking-tight text-ui-ink">Template wizard</h1>
+        <p className="mt-1 max-w-2xl text-sm leading-relaxed text-ui-subtle">
           Describe your phone intake in plain language. The AI proposes a
           structured template you can edit and save.
         </p>
       </header>
 
-      <form onSubmit={generate} className="space-y-4 max-w-2xl">
-        <label className="block text-sm">
-          <span className="text-zinc-700">Business</span>
-          <select
-            value={businessId}
-            onChange={(e) => setBusinessId(e.target.value)}
-            className="mt-1 w-full rounded border px-3 py-2"
-          >
-            {businesses.map((b) => (
-              <option key={b.id} value={b.id}>
-                {b.name} ({b.domain})
-              </option>
-            ))}
-          </select>
+      <form onSubmit={generate} className="max-w-2xl space-y-6">
+        <label className="block text-sm font-medium text-ui-ink">
+          Business
+          <div className="relative mt-2">
+            <select
+              value={businessId}
+              onChange={(e) => setBusinessId(e.target.value)}
+              className={cn(
+                fieldBaseClass,
+                "min-h-[2.75rem] w-full cursor-pointer appearance-none pr-11",
+                "[&::-ms-expand]:hidden",
+              )}
+            >
+              {businesses.map((b) => (
+                <option key={b.id} value={b.id}>
+                  {b.name} ({b.domain})
+                </option>
+              ))}
+            </select>
+            <ChevronDown
+              className="pointer-events-none absolute right-3.5 top-1/2 h-[1.125rem] w-[1.125rem] -translate-y-1/2 text-ui-subtle"
+              strokeWidth={2}
+              aria-hidden
+            />
+          </div>
         </label>
 
-        <label className="block text-sm">
-          <span className="text-zinc-700">Description</span>
+        <label className="block text-sm font-medium text-ui-ink">
+          Description
           <textarea
             value={description}
             onChange={(e) => setDescription(e.target.value)}
-            rows={6}
+            rows={8}
             placeholder="I run a barbershop. Customers call to book a cut or a beard trim. I want to know their preferred barber and send a confirmation SMS."
-            className="mt-1 w-full rounded border px-3 py-2 font-sans"
+            className={cn(controlClass, "min-h-[11rem] resize-y leading-relaxed")}
           />
         </label>
 
         <button
           type="submit"
           disabled={busy || description.length < 20}
-          className="px-4 py-2 rounded bg-afterglow-700 text-white text-sm hover:bg-afterglow-800 disabled:opacity-50"
+          className={primaryBtnClass}
         >
           {busy ? "Generating…" : "Generate template"}
         </button>
 
-        {err && <p className="text-rose-600 text-sm">{err}</p>}
+        {err && (
+          <p className="rounded-2xl border border-red-200/80 bg-red-50 px-4 py-3 text-sm text-red-800">
+            {err}
+          </p>
+        )}
       </form>
 
       {result && (
-        <section className="mt-8 space-y-6">
-          <div className="rounded-xl border bg-white p-5">
-            <div className="text-[11px] uppercase tracking-widest text-zinc-500">
+        <section className="mt-10 space-y-6">
+          <div className="rounded-2xl border border-ui-line bg-ui-surface p-6 shadow-soft">
+            <div className="text-[11px] font-medium uppercase tracking-[0.14em] text-ui-subtle">
               Generated template
             </div>
-            <h2 className="text-xl font-semibold mt-1">{result.name}</h2>
-            <p className="text-sm text-zinc-600 mt-1">{result.description}</p>
+            <h2 className="mt-2 text-xl font-semibold tracking-tight text-ui-ink">{result.name}</h2>
+            <p className="mt-2 text-sm leading-relaxed text-ui-subtle">{result.description}</p>
           </div>
 
-          <div className="rounded-xl border bg-white p-5">
-            <h3 className="text-sm font-semibold uppercase tracking-widest text-zinc-500 mb-3">
+          <div className="rounded-2xl border border-ui-line bg-ui-surface p-6 shadow-soft">
+            <h3 className="mb-4 text-[11px] font-semibold uppercase tracking-[0.14em] text-ui-subtle">
               Fields ({result.fields_schema.length})
             </h3>
-            <ul className="space-y-1 text-sm">
+            <ul className="space-y-2 text-sm">
               {result.fields_schema.map((f) => (
-                <li key={f.key} className="flex items-center justify-between">
+                <li
+                  key={f.key}
+                  className="flex items-center justify-between gap-3 rounded-xl border border-ui-line bg-ui-muted/40 px-3 py-2"
+                >
                   <span>
-                    <code className="text-afterglow-700">{f.key}</code>{" "}
-                    <span className="text-zinc-500">{f.type}</span>
+                    <code className="font-mono text-ui-ink">{f.key}</code>{" "}
+                    <span className="text-ui-subtle">{f.type}</span>
                   </span>
                   {f.required && (
-                    <span className="text-[10px] uppercase tracking-wider text-rose-600">
+                    <span className="text-[10px] font-medium uppercase tracking-wider text-red-700">
                       required
                     </span>
                   )}
@@ -117,22 +153,25 @@ export default function WizardPage() {
             </ul>
           </div>
 
-          <div className="rounded-xl border bg-white p-5">
-            <h3 className="text-sm font-semibold uppercase tracking-widest text-zinc-500 mb-3">
+          <div className="rounded-2xl border border-ui-line bg-ui-surface p-6 shadow-soft">
+            <h3 className="mb-4 text-[11px] font-semibold uppercase tracking-[0.14em] text-ui-subtle">
               Actions ({result.action_types.length})
             </h3>
-            <ul className="space-y-1 text-sm">
+            <ul className="space-y-2 text-sm">
               {result.action_types.map((a) => (
-                <li key={a.key} className="flex items-center justify-between">
+                <li
+                  key={a.key}
+                  className="flex items-center justify-between gap-3 rounded-xl border border-ui-line bg-ui-muted/40 px-3 py-2"
+                >
                   <span>
-                    <code className="text-afterglow-700">{a.key}</code>{" "}
-                    <span className="text-zinc-500">{a.label}</span>
+                    <code className="font-mono text-ui-ink">{a.key}</code>{" "}
+                    <span className="text-ui-subtle">{a.label}</span>
                   </span>
                   <span
                     className={
                       a.execution_mode === "manual-only"
-                        ? "text-[10px] uppercase tracking-wider text-amber-600"
-                        : "text-[10px] uppercase tracking-wider text-emerald-600"
+                        ? "text-[10px] font-medium uppercase tracking-wider text-amber-800"
+                        : "text-[10px] font-medium uppercase tracking-wider text-emerald-800"
                     }
                   >
                     {a.execution_mode}
