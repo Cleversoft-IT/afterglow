@@ -1,0 +1,205 @@
+"""Calls API — upload audio, kick off pipeline, poll status."""
+from __future__ import annotations
+
+import asyncio
+import uuid
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Optional
+
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    File,
+    Form,
+    HTTPException,
+    UploadFile,
+)
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.agents.orchestrator import run_pipeline
+from app.config import get_settings
+from app.db.engine import SessionLocal, get_session
+from app.db.models import Call, ExecutedAction, ExtractedFields
+from app.schemas import (
+    CallActionView,
+    CallDetailView,
+    CallExtractedView,
+    CallListItem,
+    CallSubmittedResponse,
+)
+
+router = APIRouter(prefix="/api/v1/calls", tags=["calls"])
+
+settings = get_settings()
+
+_SUPPORTED_AUDIO = {
+    "audio/wav": "wav",
+    "audio/x-wav": "wav",
+    "audio/mpeg": "mp3",
+    "audio/mp3": "mp3",
+    "audio/mp4": "m4a",
+    "audio/x-m4a": "m4a",
+    "audio/ogg": "ogg",
+    "audio/flac": "flac",
+    "audio/webm": "webm",
+}
+
+
+@router.post("", response_model=CallSubmittedResponse, status_code=202)
+async def submit_audio_call(
+    background_tasks: BackgroundTasks,
+    audio: UploadFile = File(...),
+    business_id: uuid.UUID = Form(...),
+    template_id: uuid.UUID = Form(...),
+    phone_e164: str = Form(...),
+    session: AsyncSession = Depends(get_session),
+) -> CallSubmittedResponse:
+    content_type = (audio.content_type or "").lower()
+    if content_type not in _SUPPORTED_AUDIO:
+        raise HTTPException(
+            status_code=415,
+            detail=f"Unsupported audio mime type: {content_type}",
+        )
+
+    raw = await audio.read()
+    max_bytes = settings.max_file_size_mb * 1024 * 1024
+    if len(raw) > max_bytes:
+        raise HTTPException(status_code=413, detail="Audio file too large")
+    if not raw:
+        raise HTTPException(status_code=400, detail="Empty audio file")
+
+    storage_dir = Path(settings.audio_storage_dir)
+    storage_dir.mkdir(parents=True, exist_ok=True)
+    ext = _SUPPORTED_AUDIO[content_type]
+    call_id = uuid.uuid4()
+    audio_path = storage_dir / f"{call_id}.{ext}"
+    audio_path.write_bytes(raw)
+
+    call = Call(
+        id=call_id,
+        business_id=business_id,
+        template_id=template_id,
+        phone_e164=phone_e164,
+        audio_url=str(audio_path),
+        status="pending",
+        created_at=datetime.now(tz=timezone.utc),
+    )
+    session.add(call)
+    await session.commit()
+
+    background_tasks.add_task(_run_pipeline_isolated, call_id)
+    return CallSubmittedResponse(call_id=call_id, status="pending")
+
+
+async def _run_pipeline_isolated(call_id: uuid.UUID) -> None:
+    """Open a fresh session for the background task — FastAPI's request scope is gone."""
+    async with SessionLocal() as bg_session:
+        try:
+            await run_pipeline(bg_session, call_id)
+        except Exception as exc:  # noqa: BLE001
+            await bg_session.rollback()
+            stmt = select(Call).where(Call.id == call_id)
+            call = (await bg_session.execute(stmt)).scalar_one_or_none()
+            if call is not None:
+                call.status = "failed"
+                call.error = str(exc)[:1000]
+                await bg_session.commit()
+
+
+@router.get("/{call_id}", response_model=CallDetailView)
+async def get_call(
+    call_id: uuid.UUID, session: AsyncSession = Depends(get_session)
+) -> CallDetailView:
+    call = (
+        await session.execute(select(Call).where(Call.id == call_id))
+    ).scalar_one_or_none()
+    if call is None:
+        raise HTTPException(status_code=404, detail="Call not found")
+
+    extracted = (
+        await session.execute(
+            select(ExtractedFields).where(ExtractedFields.call_id == call.id)
+        )
+    ).scalar_one_or_none()
+
+    actions = (
+        await session.execute(
+            select(ExecutedAction)
+            .where(ExecutedAction.call_id == call.id)
+            .order_by(ExecutedAction.created_at)
+        )
+    ).scalars().all()
+
+    return CallDetailView(
+        id=call.id,
+        business_id=call.business_id,
+        customer_id=call.customer_id,
+        template_id=call.template_id,
+        phone_e164=call.phone_e164,
+        detected_language=call.detected_language,
+        raw_transcript=call.raw_transcript,
+        status=call.status,
+        error=call.error,
+        started_at=call.started_at,
+        completed_at=call.completed_at,
+        created_at=call.created_at,
+        extracted=(
+            CallExtractedView(
+                fields=extracted.fields or {},
+                confidence=extracted.confidence or {},
+                evidence=extracted.evidence or {},
+                intent=extracted.intent,
+                sentiment=extracted.sentiment,
+                urgency=extracted.urgency,
+            )
+            if extracted
+            else None
+        ),
+        executed_actions=[
+            CallActionView(
+                id=a.id,
+                action_type=a.action_type,
+                title=a.title,
+                summary=a.summary,
+                payload=a.payload or {},
+                result=a.result,
+                confidence=a.confidence,
+                evidence=a.evidence,
+                execution_mode=a.execution_mode,
+                status=a.status,
+                reverted_at=a.reverted_at,
+                created_at=a.created_at,
+            )
+            for a in actions
+        ],
+    )
+
+
+@router.get("", response_model=list[CallListItem])
+async def list_calls(
+    business_id: Optional[uuid.UUID] = None,
+    customer_id: Optional[uuid.UUID] = None,
+    limit: int = 50,
+    session: AsyncSession = Depends(get_session),
+) -> list[CallListItem]:
+    stmt = select(Call).order_by(Call.created_at.desc()).limit(limit)
+    if business_id:
+        stmt = stmt.where(Call.business_id == business_id)
+    if customer_id:
+        stmt = stmt.where(Call.customer_id == customer_id)
+    rows = (await session.execute(stmt)).scalars().all()
+    return [
+        CallListItem(
+            id=c.id,
+            phone_e164=c.phone_e164,
+            customer_id=c.customer_id,
+            template_id=c.template_id,
+            status=c.status,
+            detected_language=c.detected_language,
+            created_at=c.created_at,
+        )
+        for c in rows
+    ]
