@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
-import { Cloud, Mic, Phone, PhoneOff, Sparkles } from "lucide-react";
+import { Phone, PhoneOff, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export default async function Landing() {
@@ -71,22 +71,10 @@ export default async function Landing() {
             </div>
 
             <div className="mt-16 border-t border-ui-line pt-10 sm:mt-20 sm:pt-12">
-              <div className="grid gap-3 sm:grid-cols-3 sm:gap-4">
-                <Stat
-                  icon={<Sparkles className="h-4 w-4" strokeWidth={2} aria-hidden />}
-                  label="Powered by Gemini"
-                  value="multimodal · ADK"
-                />
-                <Stat
-                  icon={<Cloud className="h-4 w-4" strokeWidth={2} aria-hidden />}
-                  label="Deployed on Vultr"
-                  value="RAG · Vector Store"
-                />
-                <Stat
-                  icon={<Mic className="h-4 w-4" strokeWidth={2} aria-hidden />}
-                  label="Speech via"
-                  value="Speechmatics"
-                />
+              <div className="grid gap-8 sm:grid-cols-3 sm:gap-10 lg:gap-14">
+                <Stat label="Powered by Gemini" value="multimodal · ADK" />
+                <Stat label="Deployed on Vultr" value="RAG · Vector Store" />
+                <Stat label="Speech via" value="Speechmatics" />
               </div>
             </div>
           </div>
@@ -139,28 +127,15 @@ const footerLinkClass = cn(
   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ui-mint/35 focus-visible:ring-offset-2 focus-visible:ring-offset-ui-surface focus-visible:rounded-md",
 );
 
-function Stat({
-  icon,
-  label,
-  value,
-}: {
-  icon: ReactNode;
-  label: string;
-  value: string;
-}) {
+function Stat({ label, value }: { label: string; value: string }) {
   return (
-    <div className="group flex gap-3 rounded-2xl border border-ui-line bg-ui-surface p-4 shadow-soft transition-shadow hover:shadow-[0_2px_8px_rgba(13,13,13,0.06)]">
-      <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-ui-line bg-ui-muted text-ui-subtle transition-colors group-hover:text-ui-mint">
-        {icon}
-      </div>
-      <div className="min-w-0 flex-1">
-        <div className="text-[10px] font-medium uppercase tracking-[0.14em] text-ui-subtle">
-          {label}
-        </div>
-        <div className="mt-1.5 text-[13px] font-medium leading-snug text-ui-ink">
-          {value}
-        </div>
-      </div>
+    <div className="min-w-0 border-l border-ui-line pl-4 sm:border-l-0 sm:pl-0">
+      <p className="text-[10px] font-medium uppercase tracking-[0.14em] text-ui-subtle">
+        {label}
+      </p>
+      <p className="mt-1.5 text-[13px] font-medium leading-snug text-ui-ink">
+        {value}
+      </p>
     </div>
   );
 }
