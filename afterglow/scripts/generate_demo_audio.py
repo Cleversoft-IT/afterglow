@@ -54,8 +54,11 @@ class Turn:
 
 
 # Two distinct voices per scenario so Speechmatics' diarization can split them.
+# Each conversation opens with the operator picking up the phone — that's the
+# bit that was missing in the first cut and made the scripts feel out of context.
 SCENARIOS: dict[str, list[Turn]] = {
     "restaurant": [
+        Turn("operator", "sarah", "Good evening, La Trattoria. How may I help you?"),
         Turn("caller",   "theo",  "Hi, I'd like to book a table for Friday evening."),
         Turn("operator", "sarah", "Of course. How many people?"),
         Turn("caller",   "theo",  "Four of us, around eight thirty. My name is Mark."),
@@ -64,6 +67,7 @@ SCENARIOS: dict[str, list[Turn]] = {
         Turn("caller",   "theo",  "Could you confirm by WhatsApp?"),
     ],
     "dentist": [
+        Turn("operator", "jack",  "Greenwood Dental, this is the front desk. How can I help you?"),
         Turn("caller",   "megan", "Hi, I urgently need an appointment. My filling came off and I have severe pain in my lower right molar."),
         Turn("operator", "jack",  "I'm sorry to hear that. We can fit you in tomorrow morning. What's your name?"),
         Turn("caller",   "megan", "I'm Laura Bennett, you already have my chart on file."),
@@ -72,6 +76,7 @@ SCENARIOS: dict[str, list[Turn]] = {
         Turn("operator", "jack",  "Good, I'll text you the confirmation with the time and directions."),
     ],
     "bodyshop": [
+        Turn("operator", "megan", "Greenline Auto Body, good afternoon. How can I help?"),
         Turn("caller",   "jack",  "Hello, I backed into a pole and need to fix the rear bumper of a 2019 Fiat Panda."),
         Turn("operator", "megan", "Have you already opened an insurance claim?"),
         Turn("caller",   "jack",  "No, I'm not filing one. I'm paying out of pocket — I just need a quote."),
