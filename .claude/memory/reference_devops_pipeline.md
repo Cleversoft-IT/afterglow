@@ -88,8 +88,8 @@ Note di sicurezza: il repo è MIT public — un push accidentale di credenziali 
 
 ## Dev locale → produzione: la spiegazione corta
 
-1. Edit codice in `afterglow/` (Python o Next.js).
-2. Test locale via `podman run postgres` + `.venv/uvicorn` + `npm run dev`.
+1. Edit codice in `afterglow/` (backend Python in `backend/`, Expo app in `app/`, Vite landing in `demo-site/`).
+2. Test locale via `podman run postgres` + `.venv/uvicorn` per il backend; `npm run web` per l'Expo app; `npm run dev` per la demo Vite.
 3. `git commit && git push origin main`.
 4. Webhook GitHub colpisce Coolify entro pochi secondi. Coolify ricostruisce **tutte e tre le applicazioni** (backend + app + demo) in parallelo, con limite di build concorrenti = 2 (settings server). Docker image cache riduce il tempo dopo la prima build.
 5. Backend nuovo container scrive `alembic upgrade head` (no-op idempotente) e `python -m app.db.seed` (idempotente — short-circuita se i template preset sono già presenti). Poi sostituisce il vecchio container (rolling).

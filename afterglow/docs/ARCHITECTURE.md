@@ -16,7 +16,7 @@ FastAPI background task ─► Speechmatics batch (diarization + lang detect + c
        │   └─► single collection, configured via VULTR_VECTOR_DEFAULT_COLLECTION
        │       (skipped when the call carries a demo session_id — see below)
        │
-       ├─► Gemini structured-output call  (single Gemini pass)
+       ├─► Gemini structured-output call  (call_analyzer.py — single Gemini pass)
        │       prompt: transcript + template fields_schema + action_types + prompt_hints + prior_facts
        │       response_schema = CallAnalysis (Pydantic):
        │         - fields[]  (key, value, confidence, evidence)
@@ -24,9 +24,17 @@ FastAPI background task ─► Speechmatics batch (diarization + lang detect + c
        │         - planned_actions[]  (subset of template auto-actions)
        │         - next_call_briefing  (NL paragraph, detected language)
        │
+       ├─► Action Planner (action_planner.py — Google ADK agentic loop)
+       │       reads the analysis, exposes the template's auto-mode action_types
+       │       as ADK tools, lets Gemini choose which to call with which payload.
+       │       payload.mode = "agentic" if the loop produced tool calls,
+       │       "fallback" if it errored and the orchestrator reused
+       │       analysis.planned_actions verbatim. Both paths logged.
+       │
        ├─► Action Executor (deterministic Python) ─► mock registry + Postgres + audit_log
        │
        └─► Memory write-back ─► customer.memory_summary (Postgres, operator-visible)
+                                + extracted_fields.briefing_snapshot (per-call frozen copy)
                                 + new chunk pushed to Vultr Vector Store
                                   (skipped when the call carries a demo session_id)
 ```
@@ -36,7 +44,9 @@ is whatever Postgres takes to return `customer.memory_summary`. No AI in the
 live-call hot path.
 
 System of record: **Vultr Managed Postgres**. Deploy: **Vultr Cloud Compute +
-Coolify**. IAM: Service User minimal-privilege + OIDC GitHub Actions.
+Coolify** with auto-deploy via GitHub App webhook on push to `main` (no
+manual deploy step, no GitHub Actions in the critical path). IAM: Vultr
+Service User with minimal-privilege ACL.
 
 ## Multi-visitor demo isolation
 
@@ -117,4 +127,4 @@ is not touched because we never wrote to it for demo sessions.
 | `audit_log`              | yes                   | Same; lets judges read their own audit trail           |
 | `executed_actions`       | yes                   | Same                                                   |
 | `customer_memory_chunks` | yes (always NULL today) | Demo mode skips the write; column exists for future   |
-| `extracted_fields`       | no                    | Cascades via `calls`                                   |
+| `extracted_fields`       | no                    | Cascades via `calls`. Carries `briefing_snapshot` (mig `0005`): a frozen copy of the briefing emitted for this specific call, kept even after `customer.memory_summary` is later overwritten by a newer call. |

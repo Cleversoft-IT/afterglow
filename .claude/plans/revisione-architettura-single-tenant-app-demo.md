@@ -1,5 +1,23 @@
 # Afterglow — Revisione architetturale (single-tenant + app/sito demo separati)
 
+> **✅ COMPLETATO — verificato 2026-05-16.**
+>
+> Questo piano è stato eseguito a ~95% nel commit `5d5113c` "Single-tenant
+> architecture: separate Expo app + Vite demo site" + follow-up. Alcuni
+> drift dal piano sono **migliorie**, non regressioni:
+>
+> - La tab Customers (sezione B2 "deferred post-hackathon") è invece stata
+>   implementata in `afterglow/app/app/(tabs)/customers.tsx` (commit
+>   `1c86292` "customer card").
+> - `DEMO_MODE` env (sezione D4) è stata **rimossa** (commit `3a6f038`):
+>   Speechmatics ora tenta sempre la STT reale e degrada gracefully solo se
+>   mancano key/audio. I 3 MP3 silent placeholders del piano sono stati
+>   rimpiazzati da MP3 reali generati via Speechmatics TTS preview.
+>
+> Stato corrente → `project_afterglow_decisions.md`, `afterglow/docs/ARCHITECTURE.md`.
+>
+> ---
+
 ## Contesto
 
 Afterglow è nato come progetto multi-tenant con 3 "Business" demo (trattoria, dentista, carrozziere) ciascuno con un proprio template, due frontend in un unico Next.js, e il dialer che routava per `business.domain`. È un retaggio della fase iniziale: per l'hackathon (deadline 19 maggio 2026) vogliamo una storia diversa e più convincente.

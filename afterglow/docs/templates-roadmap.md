@@ -1,5 +1,13 @@
 # Templates roadmap — future-facing notes
 
+> **Status (2026-05-16):** every item below is still **deferred** — none has
+> landed in code. Audited against `backend/app/schemas/templates.py`,
+> `agents/template_builder.py`, `agents/action_planner.py` and
+> `api/templates.py` on 2026-05-16; the runtime still uses free-form
+> `payload_json` strings and free-text `prompt_hints`, and the wizard is
+> still single-shot (`api/templates.py:215` "today only generates, does not
+> persist"). Treat this file as a design pad, not a TODO list.
+
 Afterglow's `Template` is the conceptual hinge between the human-curated
 business knowledge and the agentic post-call pipeline. Today it carries five
 useful primitives:

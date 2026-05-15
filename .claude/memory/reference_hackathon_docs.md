@@ -25,11 +25,11 @@ Knowledge base completa dell'hackathon (~22.900 parole, 14 file MD):
 
 **Source repos / URL pubblici di riferimento:**
 - Baseline tutorial: https://github.com/Stephen-Kimoi/gemini-multimodal-document-agent
-- Vultr Serverless Inference: https://api.vultrinference.com/v1 (OpenAI-compatible, modello `kimi-k2-instruct` per RAG)
+- Vultr Serverless Inference: https://api.vultrinference.com/v1 (OpenAI-compatible). Il modello usato sul nostro endpoint RAG è `MiniMaxAI/MiniMax-M2.7` (commit `d08912f` ha rimpiazzato il `kimi-k2-instruct` originale).
 - Gemini API: https://ai.google.dev/
 - Speechmatics Academy: https://github.com/speechmatics/speechmatics-academy
 - Submission guidelines: https://lablab.ai/delivering-your-hackathon-solution
 
-**Plan di implementazione vivo:** `/home/sepa/cleversoft/hackaton/hackaton-lablab/.claude/plans/procedi-col-planning-reactive-cocke.md` — leggere la sezione "Revision log" in cima per le decisioni post-day-1.
+**Plan di implementazione:** `.claude/plans/` nel repo. I due plan file storici (`procedi-col-planning-reactive-cocke.md` e `revisione-architettura-single-tenant-app-demo.md`) sono ormai in larga parte eseguiti — vanno letti come storia, non come roadmap. Per lo stato corrente fai riferimento a [[project-afterglow-decisions]] (architettura) e [[reference-devops-pipeline]] (infra).
 
-Aggiornata 2026-05-15.
+Aggiornata 2026-05-16.

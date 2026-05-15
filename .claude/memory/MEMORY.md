@@ -1,8 +1,9 @@
 - [Afterglow hackathon context](project_afterglow_hackathon.md) — partner targeting, deadline, vincoli legali, dominio demo
-- [Afterglow decisions](project_afterglow_decisions.md) — autonomia full, single-tenant, single Gemini orchestrator, scope incrementale, baseline tutorial lablab, MIT day-1, Vultr Managed Postgres in prod
+- [Afterglow decisions](project_afterglow_decisions.md) — autonomia full, single-tenant (Business table dropped), pipeline post-call = Gemini call_analyzer + ADK action_planner, scope incrementale, baseline tutorial lablab, MIT day-1, Vultr Managed Postgres in prod
 - [DevOps pipeline](reference_devops_pipeline.md) — flow local → GitHub → Coolify auto-deploy su VM Vultr; coordinate risorse (no segreti)
 - [Coolify API playbook](reference_coolify_api.md) — come parlare alla Coolify API: setup, endpoint corretti, gotchas, snippet
 - [Hackathon docs reference](reference_hackathon_docs.md) — path knowledge base + repo baseline
+- [Docs & memory freshness](feedback_docs_freshness.md) — doc + memory si aggiornano nello stesso commit del codice; multi-person project, stale docs poisonano le decisioni
 - [Code language: English only](feedback_code_language.md) — codice afterglow/** in inglese; eccezione: dati di seed demo italiani
 - [Plan files location](feedback_plan_files_location.md) — i piani vanno in `.claude/plans/` della repo, non in `~/.claude/plans/`
 - [Plans no timing](feedback_plans_no_timing.md) — solo ordine di esecuzione, niente durate o giorni

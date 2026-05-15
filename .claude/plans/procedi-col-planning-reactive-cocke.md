@@ -1,5 +1,32 @@
 # Afterglow — Implementation Plan
 
+> **⚠️ HISTORICAL / SUPERSEDED — verificato 2026-05-16.**
+>
+> Questo è il piano-master del 14-15 maggio. È stato in larga parte eseguito;
+> alcune sezioni sono state poi sostituite da decisioni successive. **Non
+> usarlo come roadmap o come mappa del repo.** Sezioni note come obsolete:
+>
+> - "Layout repo" cita `afterglow/frontend/` (Next.js) — cancellata; il
+>   frontend è oggi `afterglow/app/` (Expo) + `afterglow/demo-site/` (Vite).
+>   Il refactor è documentato nel piano `revisione-architettura-single-tenant-app-demo.md`.
+> - Schema `businesses` + `business_id`: **droppato** dalla migration
+>   `0002_drop_business.py`. Niente `template_versions` table. Niente
+>   endpoint `/businesses/*`.
+> - "Stack: `google-genai (no ADK runner)`" + "`integrations/gemini_adk.py`
+>   legacy, may be removed" — falso: ADK è di nuovo attivo, usato da
+>   `agents/action_planner.py` (commit `1c86292`).
+> - `DEMO_MODE` env / `_FAKE_TRANSCRIPTS` — rimosse il 2026-05-15 (commit
+>   `3a6f038`). I 3 MP3 demo reali sono ora persistenti in `app/assets/audio/`.
+> - Lista degli step audit "5 step name": ora sono 6+ (aggiunto `action_planner`).
+> - Route Next.js (`/dialer/incoming/[callId]`, `/dashboard/calls`, ecc.) —
+>   non esistono. Le route attuali stanno in `afterglow/app/app/`
+>   (expo-router file-based).
+>
+> Stato attuale → vedi `.claude/memory/project_afterglow_decisions.md`,
+> `afterglow/docs/ARCHITECTURE.md`, `afterglow/README.md`.
+>
+> ---
+
 > "What remains after the call." PWA + multi-agent backend AI che trasforma telefonate di prenotazione in **dati strutturati + memoria cliente + azioni eseguite autonomamente** (revert manuale post-fatto, non approvazione preventiva).
 >
 > **Target award:** Best use of Vultr ($5K+$1K credit) · Best use of Gemini ($5K) · Speechmatics ($200 credit, NO cash).

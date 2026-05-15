@@ -1,11 +1,11 @@
 ---
 name: project-afterglow-decisions
-description: Decisioni di prodotto/architettura di Afterglow. Pivot da non rinegoziare senza ridiscutere. Aggiornato 2026-05-15 dopo refactor combinato single-tenant + single Gemini orchestrator.
+description: Decisioni di prodotto/architettura di Afterglow. Pivot da non rinegoziare senza ridiscutere. Aggiornato 2026-05-16 dopo drop `businesses` (mig 0002) e rientro di action_planner agentic (ADK).
 metadata:
   type: project
 ---
 
-Decisioni iniziali del **2026-05-14** + revisione del **2026-05-15**. Ridiscutere solo con motivazione esplicita.
+Decisioni iniziali del **2026-05-14** + revisioni del **2026-05-15** e **2026-05-16**. Ridiscutere solo con motivazione esplicita.
 
 ### 1. Autonomia agent — FULL
 L'AI esegue **autonomamente** anche le azioni esterne (booking, WhatsApp, email, follow-up). Nel dialer le ex "pending actions" diventano **"executed actions con revert manuale"**. Eccezioni: nel backend l'utente può marcare alcune azioni specifiche come "manual-only" (no auto-execute).
@@ -14,14 +14,16 @@ L'AI esegue **autonomamente** anche le azioni esterne (booking, WhatsApp, email,
 
 **How to apply:** UI dialer post-call mostra "executed / Revert" (non "Approve / Dismiss"). Backend ha `template.action_types[].execution_mode: auto | manual-only`. Default = auto. Tutto loggato in audit. Confidence/evidence visibili per giustificare l'esecuzione automatica.
 
-### 1.bis. Single-tenant deployment (revisione 2026-05-15)
+### 1.bis. Single-tenant deployment (revisione 2026-05-15, completata 2026-05-16)
 **1 installazione = 1 cliente.** I 3 business demo (ristorante/dentista/carrozziere) restano nel seed come *esempi di template verticali*, **non** come tenant attivi multi-SaaS.
 
-`Business` resta come tabella nel DB (non valeva la pena toglierla), ma in UI è pinned via env `AFTERGLOW_DEFAULT_BUSINESS_ID` e l'endpoint `GET /api/v1/businesses/current`. Rimosse: pagina `/dashboard/business`, voce nav "Business", dropdown nel Template Wizard. Il dialer demo `/dialer/incoming/[callId]` continua a usare `listBusinesses()` perché è esattamente lo show "3 verticali su 3 URL" del pitch.
+La tabella `Business` è stata **droppata** (migration `alembic/versions/0002_drop_business.py`); single-tenant è ora enforced a livello di schema. Niente più `business_id` su nessuna tabella, niente più endpoint `/businesses/*`, niente env `AFTERGLOW_DEFAULT_BUSINESS_ID`, niente `listBusinesses()` / `getCurrentBusiness()` sul client. Il "verticale attivo" è espresso esclusivamente come `Template` con `is_active=True` (in produzione) oppure `demo_sessions.active_template_id` (in demo via iframe).
+
+Lo show "3 verticali su 3 URL" continua nella demo, ma è il visitatore a scegliere il template attivo dalla tab Templates (`PUT /templates/active`); l'incoming-call dialer (`app/app/incoming-call.tsx`) parte dal template attivo, non da una lista di business.
 
 **Why:** l'hackathon premia *Enterprise Utility verticale + autonomia decisionale*, non SaaS multi-tenant (vedi `hackathon-docs/07-judging-criteria.md` e `02-challenge.md`).
 
-**How to apply:** ogni UI nuova chiama `api.getCurrentBusiness()`. Niente selettori "business" per la dashboard. Le demo URL del dialer (`demo-restaurant-known`, `demo-dentist`, ecc.) restano multi-business.
+**How to apply:** se rivedi una sezione di codice o doc e trovi `business`, `business_id`, `getCurrentBusiness`, `listBusinesses`, `/businesses/current`, è un retaggio: va rimosso. Per il "template attivo" usa gli endpoint `/templates/active` e (in demo) lo state della `DemoSession`.
 
 ### 1.quater. Demo iframe isolation via `session_id` (2026-05-15)
 
@@ -35,16 +37,21 @@ L'app è caricata in iframe da `demo.95...` durante la judging window; più giud
 
 **How to apply:** ogni nuovo endpoint deve aggiungere `ctx: SessionContext = Depends(get_session_context)` e usare `visibility_filter(Model.session_id, ctx)` per le letture, e impostare `session_id=ctx.session_id` sulle scritture. Ogni `audit_step(...)` deve ricevere `session_id=call.session_id` (o l'equivalente). Schema/migration: `0003_demo_sandbox_session.py`. Coordinate vive: `afterglow/backend/app/api/session_context.py`, `afterglow/backend/app/tasks/session_cleanup.py`.
 
-### 1.ter. Pipeline post-call collassata in un solo Gemini call (revisione 2026-05-15)
-**Architettura attuale:** zero AI durante la chiamata; tutta l'analisi gira **dopo** la fine call in un singolo Gemini structured-output call (`backend/app/agents/call_analyzer.py`). Lo schema Pydantic `CallAnalysis` produce in un colpo: fields/confidence/evidence, intent/sentiment/language/urgency, planned_actions e `next_call_briefing` (paragrafo in linguaggio naturale per l'operatore della prossima call).
+### 1.ter. Pipeline post-call: Gemini analyzer + ADK action planner (revisione 2026-05-16)
+**Architettura attuale:** zero AI durante la chiamata; tutta l'analisi gira **dopo** la fine call. La pipeline è in due stadi consecutivi, entrambi loggati nello stesso `audit_log`:
 
-La RAG di Vultr è **pre-fetch deterministico** prima dell'unico Gemini call (`memory_retrieval.retrieve_customer_context`) e fallisce gracefully a stringa vuota. Non è più un "agente".
+1. **`agents/call_analyzer.py`** — singolo Gemini structured-output call. Lo schema Pydantic `CallAnalysis` produce in un colpo: fields/confidence/evidence, intent/sentiment/language/urgency, `planned_actions[]` e `next_call_briefing` (paragrafo in linguaggio naturale per l'operatore della prossima call).
+2. **`agents/action_planner.py`** — agentic loop via Google ADK (`integrations/gemini_adk.py`) che rilegge l'analisi del passo 1 e emette le tool call per le sole azioni `execution_mode=auto`. Modalità `agentic` per default; in caso di errore (no key, rate limit, schema mismatch) fa fallback **deterministico** a `analysis.planned_actions[]`. L'orchestrator scrive `payload.mode = "agentic" | "fallback"` sull'audit row così la presenza/assenza del giro ADK è ispezionabile.
 
-Cancellati: `agents/extraction.py`, `agents/classification.py`, `agents/action_planner.py`, `agents/memory_updater.py`, l'intera cartella `app/tools/` e `app/pipeline/`.
+La RAG di Vultr è **pre-fetch deterministico** prima del Gemini call (`memory_retrieval.retrieve_customer_context`) e fallisce gracefully a stringa vuota. Non è un "agente".
 
-**Why:** modello "AI a fine call" è quello giusto per *human-first AI dialer*. L'operatore vede il `customer.memory_summary` da Postgres istantaneamente; l'AI ha il transcript completo e tutta la memoria semantica disponibile a fine call. Architettura più semplice, pattern più aderente all'idea di Gemini structured output, costi più bassi (1 call invece di 4).
+**Storia del rientro di `action_planner.py`:** nella prima revisione del 2026-05-15 era stato cancellato per collassare tutto in una sola Gemini call. È stato re-introdotto con ADK il 2026-05-16 (commit `1c86292`) per allinearsi al criterio judging "Agentic Workflows / decision-making systems, not copilots": un puro response_schema, per quanto efficace, appariva troppo "completion-style" nel pitch. Resta **un solo** sub-agent post-`call_analyzer`, e ha sempre il fallback deterministico — nessuno scaffolding ulteriore.
 
-**How to apply:** `customer.memory_summary` è ora il "next-call briefing" Gemini-generated nella lingua detected. Etichetta UI in CallerMemoryCard: **"Next-call briefing"**. Quando si tocca la pipeline, modificare *solo* `call_analyzer.py` per scope/prompt e `orchestrator.py` per glue/persistence — niente nuovi sub-agent.
+Cancellati (e tuttora assenti): `agents/extraction.py`, `agents/classification.py`, `agents/memory_updater.py`, l'intera cartella `app/tools/` e `app/pipeline/`.
+
+**Why:** AI a fine call è il modello giusto per *human-first AI dialer*. L'operatore vede il `customer.memory_summary` da Postgres istantaneamente. Il double-step (analizzatore deterministico + planner agentico con fallback) tiene il pitch agentic senza ipotecare l'affidabilità della demo.
+
+**How to apply:** `customer.memory_summary` è il "next-call briefing" Gemini-generated nella lingua detected. La tabella `extracted_fields.briefing_snapshot` (migration 0005) preserva la briefing storica per-call anche dopo overwrite di `memory_summary`. Quando si tocca la pipeline modifica `call_analyzer.py` per scope/prompt, `action_planner.py` per il tool registry / loop ADK, `orchestrator.py` per glue/persistence — non aggiungere altri sub-agent.
 
 ### 2. Speechmatics — voice-in + TTS per gli MP3 demo
 Non puntiamo al cash Award Speechmatics (sfida ridefinita kick-off = voice-in→reasoning→voice-out). Usiamo i $200 credit per: trascrizione, language detection, diarization, multilingual, custom dictionary, **e** generazione TTS dei 3 MP3 demo. "Massive bonus love" dichiarati al kick-off → migliorano lo score Application of Technology su Vultr/Google Award.
@@ -53,7 +60,7 @@ Non puntiamo al cash Award Speechmatics (sfida ridefinita kick-off = voice-in→
 
 **How to apply:**
 - STT runtime: `speechmatics-batch` SDK wirato live (`AsyncClient.transcribe` con `diarization=speaker`, `language=auto`, `additional_vocab` dal `custom_dictionary` del template). **Nessun fallback offline**: missing key o audio illeggibile sollevano e fanno fallire la call (vedi `backend/app/integrations/speechmatics.py`). Niente più `_FAKE_TRANSCRIPTS`, niente più flag `DEMO_MODE` (rimosso il 2026-05-15).
-- TTS offline: i 3 MP3 demo (`afterglow/app/assets/audio/{restaurant,dentist,bodyshop}.mp3`, mirror in `backend/sample_audio/`) sono generati da Speechmatics TTS preview (`https://preview.tts.speechmatics.com/generate/<voice>`) via `afterglow/scripts/generate_demo_audio.py`. Le voci preview supportano solo EN UK/US (`sarah`/`theo`/`megan`/`jack`), quindi i copioni demo sono **in inglese**: il resto del seed (nomi business, customer IT in +39) resta italiano. Per rigenerare gli audio: `python afterglow/scripts/generate_demo_audio.py`.
+- TTS offline: i 3 MP3 demo (`afterglow/app/assets/audio/{restaurant,dentist,bodyshop}.mp3`, mirror in `backend/sample_audio/`) sono generati da Speechmatics TTS preview (`https://preview.tts.speechmatics.com/generate/<voice>`) via `afterglow/scripts/generate_demo_audio.py`. Le voci preview supportano solo EN UK/US (`sarah`/`theo`/`megan`/`jack`), quindi i copioni demo sono **in inglese**: il resto del seed (nomi business, customer IT in +39) resta italiano. Per rigenerare gli audio: `python afterglow/scripts/generate_demo_audio.py`. Stessa cartella contiene anche `ringtone.mp3` (synth ITU-T 425Hz · 1 s on / 4 s off) usato dall'incoming-call screen — non parte della pipeline AI.
 
 ### 3. Forma mobile — PWA, non APK
 Web app responsive mobile-style installabile come PWA da URL pubblica. Niente APK distribuito, niente vero dialer Android.
@@ -90,8 +97,8 @@ Baseline: **Stephen-Kimoi/gemini-multimodal-document-agent** (FastAPI + Google A
 ### 6. Vultr come system-of-record visibile
 Non basta deployare. Vultr deve essere usato in profondità per il "Best use of Vultr" Award:
 - **Vultr Managed Postgres** per call log, customer profile, action history, audit log, template store ✅
-- **Vultr Vector Store** per customer memory RAG ✅ (wirato, attende key Inference valida)
-- **Vultr Serverless Inference (Kimi-K2)** per almeno un task agentico oltre Gemini ⚠️ — *revisione 2026-05-15:* la Classification è stata assorbita nel single Gemini call. Vultr Kimi-K2 resta esclusivamente nell'endpoint `/v1/chat/completions/RAG` per il memory retrieval pre-fetch. Se servisse un secondo uso di Kimi non-RAG per il pitch, riattivare un mini-agente.
+- **Vultr Vector Store** per customer memory RAG ✅ (wirato; skippato esplicitamente in demo mode, vedi 1.quater)
+- **Vultr Serverless Inference (MiniMaxAI/MiniMax-M2.7)** ✅ — wirato nel solo endpoint `/v1/chat/completions/RAG` per il memory retrieval pre-fetch. Il modello è stato cambiato da Kimi-K2 a MiniMax-M2.7 (commit `d08912f`) perché è quello che Vultr serve realmente sull'endpoint RAG. Se servisse un secondo uso non-RAG dell'inference Vultr per pitch, va aggiunto un mini-agente dedicato.
 - **IAM Service User** per credenziali API-only minimal-privilege
 
 **Why:** il requisito Vultr è *"system of record per planning, coordination, execution"* — non solo hosting.

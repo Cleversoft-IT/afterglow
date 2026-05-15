@@ -132,8 +132,11 @@ cf $COOLIFY_URL/api/v1/deployments/applications/$APP_UUID \
 cf "$COOLIFY_URL/api/v1/deploy?uuid=$APP_UUID&force=true"
 
 # Aggiorna una env var per key
-cf -X PATCH -d '{"key":"DEMO_MODE","value":"false"}' \
+# (esempio: la collection del Vultr Vector Store — env attualmente usata, vedi project-afterglow-decisions §9)
+cf -X PATCH -d '{"key":"VULTR_VECTOR_DEFAULT_COLLECTION","value":"afterglowbf073"}' \
   $COOLIFY_URL/api/v1/applications/$BACKEND_UUID/envs
 ```
+
+Nota: `DEMO_MODE` non esiste più (rimossa il 2026-05-15, commit `3a6f038`). Se la trovi orfana su un'app Coolify, eliminala con `DELETE /envs/{env-uuid}`.
 
 Linkato da [[reference-devops-pipeline]] per il dato infrastrutturale; questo file si concentra su come parlarci.
