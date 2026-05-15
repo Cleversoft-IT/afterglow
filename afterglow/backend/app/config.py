@@ -40,7 +40,11 @@ class Settings(BaseSettings):
 
     vultr_inference_base_url: str = "https://api.vultrinference.com/v1"
     vultr_inference_api_key: str = ""
-    vultr_inference_model: str = "kimi-k2-instruct"
+    # MiniMax-M2 is the model Vultr's /v1/chat/completions/RAG actually serves
+    # (it transparently swaps requests for kimi-k2-instruct, deepseek-r1, etc).
+    # Calling it by name gets us an honest audit_log and removes a misleading
+    # "model: kimi-k2-instruct" entry that production would never see.
+    vultr_inference_model: str = "MiniMaxAI/MiniMax-M2.7"
     vultr_vector_default_collection: str = ""
 
     speechmatics_api_key: str = ""

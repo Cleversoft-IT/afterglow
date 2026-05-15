@@ -56,7 +56,8 @@ System of record: **Vultr Managed Postgres**. Deploy: **Vultr Cloud Compute + Co
 - Coolify auto-deploy with HTTPS via Traefik + Let's Encrypt
 - Note: Kimi-K2 was originally planned as the Classification model. Day 2 we
   collapsed Classification into the same Gemini structured output to reduce
-  failure surface; Kimi-K2 stays in the RAG endpoint via `/v1/chat/completions/RAG`.
+  failure surface, and switched the RAG model to `MiniMaxAI/MiniMax-M2.7`
+  (the model Vultr actually serves on `/v1/chat/completions/RAG`).
 
 ### Best use of Gemini
 - **Single multi-purpose structured-output call** with Pydantic `response_schema` —
@@ -88,7 +89,7 @@ System of record: **Vultr Managed Postgres**. Deploy: **Vultr Cloud Compute + Co
 | Frontend | Next.js 14 App Router · React 18 · Tailwind · shadcn/ui · next-pwa |
 | Backend | Python 3.11 · FastAPI · google-genai · SQLAlchemy 2.0 async · Alembic |
 | Speech | Speechmatics batch SDK (target) |
-| LLM | Gemini Flash (default) · Gemini 3 Flash Preview (template wizard) · Kimi-K2-instruct on Vultr (RAG) |
+| LLM | Gemini Flash (default) · Gemini 3 Flash Preview (template wizard) · MiniMax-M2.7 on Vultr (RAG) |
 | Storage | Vultr Managed Postgres · Vultr Vector Store |
 | Deploy | Podman / Docker Compose · Vultr Cloud Compute HP · Coolify |
 

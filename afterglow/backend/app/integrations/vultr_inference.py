@@ -1,12 +1,15 @@
 """Vultr Serverless Inference client.
 
 Wraps the OpenAI-compatible API at api.vultrinference.com/v1 and the dedicated
-RAG endpoint /v1/chat/completions/RAG (only `kimi-k2-instruct` supports both
-tool calling and RAG — see hackathon-docs/12-vultr-deep-dive.md r. 144-198).
+RAG endpoint /v1/chat/completions/RAG.
 
-Day 1: returns deterministic fakes if no API key is configured, so the pipeline
-can be exercised end-to-end. Real calls activate as soon as VULTR_INFERENCE_API_KEY
-is set.
+Model: MiniMaxAI/MiniMax-M2.7 — the actual model Vultr serves for /RAG
+(verified 2026-05-15: requests for kimi-k2-instruct are transparently swapped
+to MiniMax-M2.7, so we call it by its real name to keep audit_log honest).
+
+Stub mode: returns None / fake responses when VULTR_INFERENCE_API_KEY is empty,
+so the rest of the pipeline can be exercised offline without poisoning the
+real Vector Store state.
 """
 from __future__ import annotations
 
