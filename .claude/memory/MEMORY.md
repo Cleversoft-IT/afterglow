@@ -3,3 +3,5 @@
 - [DevOps pipeline](reference_devops_pipeline.md) — flow local → GitHub → Coolify auto-deploy su VM Vultr; coordinate risorse (no segreti)
 - [Hackathon docs reference](reference_hackathon_docs.md) — path knowledge base + repo baseline
 - [Code language: English only](feedback_code_language.md) — codice afterglow/** in inglese; eccezione: dati di seed demo italiani
+- [Plan files location](feedback_plan_files_location.md) — i piani vanno in `.claude/plans/` della repo, non in `~/.claude/plans/`
+- [Plans no timing](feedback_plans_no_timing.md) — solo ordine di esecuzione, niente durate o giorni

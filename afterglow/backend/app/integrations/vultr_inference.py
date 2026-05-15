@@ -112,11 +112,9 @@ async def chat_completion_rag(
 async def create_vector_collection(name: str) -> Optional[str]:
     """Create a vector store collection and return its ID.
 
-    Returns None in stub mode (no API key) so callers do NOT persist a fake
-    collection_id on the Business row. If a fake ID were persisted, the
-    `if not business.vultr_collection_id` guard would later treat the fake
-    as real and skip creating the real collection once the key arrives —
-    poisoning the Vector Store flow permanently.
+    Returns None in stub mode (no API key). Single-tenant Afterglow uses one
+    collection set via VULTR_VECTOR_DEFAULT_COLLECTION; this helper stays around
+    for one-off provisioning scripts.
 
     Vultr's response shape (verified 2026-05-15):
         {"collection": {"id": "...", "name": "...", "created": "..."}}

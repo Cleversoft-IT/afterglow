@@ -37,7 +37,6 @@ class CallExtractedView(BaseModel):
 
 class CallDetailView(BaseModel):
     id: UUID
-    business_id: UUID
     customer_id: Optional[UUID] = None
     template_id: UUID
     phone_e164: str

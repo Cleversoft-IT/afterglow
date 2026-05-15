@@ -1,6 +1,6 @@
 """Orchestrator — drives a call through the post-call pipeline.
 
-Design (revised):
+Design:
     The human handles the call live. The orchestrator runs entirely AFTER the
     call ends. There is one Gemini pass (see call_analyzer.py) that produces
     the structured analysis in a single shot, grounded on the transcript,
@@ -8,7 +8,7 @@ Design (revised):
 
 Steps:
     1. Speechmatics → transcript (stubbed in DEMO_MODE or until day-2 wiring)
-    2. Customer match by phone
+    2. Customer match by phone (global, single-tenant)
     3. Vultr Vector Store RAG pre-fetch → prior_facts text
     4. Gemini Call Analyzer → CallAnalysis (single structured-output call)
     5. Persist ExtractedFields
@@ -32,7 +32,6 @@ from app.agents import call_analyzer, memory_retrieval
 from app.audit.logger import audit_step
 from app.config import get_settings
 from app.db.models import (
-    Business,
     Call,
     Customer,
     CustomerMemoryChunk,
@@ -66,9 +65,6 @@ async def run_pipeline(session: AsyncSession, call_id: uuid.UUID) -> None:
     call.started_at = datetime.now(tz=timezone.utc)
     await session.commit()
 
-    business = (
-        await session.execute(select(Business).where(Business.id == call.business_id))
-    ).scalar_one()
     template = (
         await session.execute(select(Template).where(Template.id == call.template_id))
     ).scalar_one()
@@ -80,6 +76,7 @@ async def run_pipeline(session: AsyncSession, call_id: uuid.UUID) -> None:
         transcript = await speechmatics.transcribe_audio(
             Path(call.audio_url) if call.audio_url else Path("/dev/null"),
             custom_dictionary=template.custom_dictionary,
+            domain_hint=template.domain_hint,
         )
     call.raw_transcript = {
         "text": transcript.text,
@@ -98,18 +95,14 @@ async def run_pipeline(session: AsyncSession, call_id: uuid.UUID) -> None:
     # retrieve them.
     customer = (
         await session.execute(
-            select(Customer).where(
-                Customer.business_id == business.id,
-                Customer.phone_e164 == call.phone_e164,
-            )
+            select(Customer).where(Customer.phone_e164 == call.phone_e164)
         )
     ).scalar_one_or_none()
     if customer is None:
         customer = Customer(
             id=uuid.uuid4(),
-            business_id=business.id,
             phone_e164=call.phone_e164,
-            preferred_language=transcript.language or business.default_language,
+            preferred_language=transcript.language or "it",
             total_calls=0,
         )
         session.add(customer)
@@ -117,6 +110,7 @@ async def run_pipeline(session: AsyncSession, call_id: uuid.UUID) -> None:
     call.customer_id = customer.id
 
     # 3) RAG pre-fetch — semantic lookup of past calls from this number.
+    collection_id = settings.vultr_vector_default_collection or None
     prior_facts = ""
     async with audit_step(
         session,
@@ -126,9 +120,9 @@ async def run_pipeline(session: AsyncSession, call_id: uuid.UUID) -> None:
         model="vultr-rag",
     ):
         prior_facts = await memory_retrieval.retrieve_customer_context(
-            collection_id=business.vultr_collection_id,
+            collection_id=collection_id,
             phone_e164=call.phone_e164,
-            business_domain=business.domain,
+            domain_hint=template.domain_hint,
         )
 
     # 4) Single Gemini structured-output call.
@@ -145,7 +139,7 @@ async def run_pipeline(session: AsyncSession, call_id: uuid.UUID) -> None:
             fields_schema=template.fields_schema,
             action_types=template.action_types,
             prompt_hints=template.prompt_hints,
-            business_domain=business.domain,
+            domain_hint=template.domain_hint,
             prior_facts=prior_facts,
         )
 
@@ -186,13 +180,13 @@ async def run_pipeline(session: AsyncSession, call_id: uuid.UUID) -> None:
         )
 
     # 7) Memory write-back. The briefing is the only AI-authored summary the
-    # operator will read on the next call's caller card. After B1, customer
-    # is always non-None (created at step 2 when missing).
+    # operator will read on the next call's caller card.
     await _persist_memory(
         session,
         call=call,
         customer=customer,
-        business=business,
+        template=template,
+        collection_id=collection_id,
         briefing=analysis.next_call_briefing,
         classification={
             "intent": analysis.intent,
@@ -258,7 +252,8 @@ async def _persist_memory(
     *,
     call: Call,
     customer: Customer,
-    business: Business,
+    template: Template,
+    collection_id: Optional[str],
     briefing: str,
     classification: dict[str, Any],
 ) -> None:
@@ -267,6 +262,13 @@ async def _persist_memory(
     customer.total_calls = (customer.total_calls or 0) + 1
     customer.last_call_at = datetime.now(tz=timezone.utc)
 
+    if not collection_id:
+        logger.info(
+            "memory_updater: VULTR_VECTOR_DEFAULT_COLLECTION not set — "
+            "Postgres briefing kept, vector indexing skipped."
+        )
+        return
+
     # Make the chunk content phone-queryable. The RAG retrieval asks
     # "facts about phone {e164}", so the phone number MUST appear inside the
     # indexed content (Vultr embeds `content`; `description` is metadata).
@@ -274,7 +276,7 @@ async def _persist_memory(
     display_label = customer.display_name or customer.phone_e164
     chunk_content = (
         f"Customer {display_label} ({customer.phone_e164}) called "
-        f"the {business.domain} on {call_date.isoformat()}. "
+        f"the {template.domain_hint} on {call_date.isoformat()}. "
         f"Intent: {classification.get('intent', 'unknown')}. "
         f"Sentiment: {classification.get('sentiment', 'unknown')}. "
         f"Urgency: {classification.get('urgency', 'unknown')}. "
@@ -290,18 +292,11 @@ async def _persist_memory(
             step_type="tool_call",
             model="vultr-vector-store",
         ):
-            if not business.vultr_collection_id:
-                new_collection_id = await vultr_inference.create_vector_collection(
-                    f"afterglow-{business.id}"
-                )
-                if new_collection_id:
-                    business.vultr_collection_id = new_collection_id
-            if business.vultr_collection_id:
-                item_id = await vultr_inference.add_vector_item(
-                    business.vultr_collection_id,
-                    content=chunk_content,
-                    description=f"call_{call.id} phone_{customer.phone_e164}",
-                )
+            item_id = await vultr_inference.add_vector_item(
+                collection_id,
+                content=chunk_content,
+                description=f"call_{call.id} phone_{customer.phone_e164}",
+            )
     except httpx.HTTPError as exc:
         logger.warning(
             "memory_updater: Vultr Vector Store push failed (%s) — "
@@ -309,13 +304,13 @@ async def _persist_memory(
             exc,
         )
 
-    if item_id is not None and business.vultr_collection_id is not None:
+    if item_id is not None:
         session.add(
             CustomerMemoryChunk(
                 id=uuid.uuid4(),
                 customer_id=customer.id,
                 call_id=call.id,
-                vultr_collection_id=business.vultr_collection_id,
+                vultr_collection_id=collection_id,
                 vultr_item_id=item_id,
                 summary=briefing,
                 chunk_metadata={

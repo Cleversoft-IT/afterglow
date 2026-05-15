@@ -26,20 +26,19 @@ class ActionDefinition(BaseModel):
 
 class TemplateView(BaseModel):
     id: UUID
-    business_id: UUID
     name: str
     version: int
     description: Optional[str] = None
+    domain_hint: str = "generic"
     fields_schema: list[FieldDefinition] = Field(default_factory=list)
     action_types: list[ActionDefinition] = Field(default_factory=list)
     custom_dictionary: list[str] = Field(default_factory=list)
     prompt_hints: Optional[str] = None
-    is_active: bool = True
+    is_active: bool = False
     created_at: datetime
 
 
 class TemplateWizardRequest(BaseModel):
-    business_id: UUID
     description: str = Field(min_length=20)
     language: str = "it"
 

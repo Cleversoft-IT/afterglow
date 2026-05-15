@@ -8,7 +8,7 @@ from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import actions, audit, business, calls, customers, templates
+from app.api import actions, audit, calls, customers, templates
 from app.config import get_settings
 
 load_dotenv()
@@ -41,16 +41,7 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-_cors_origins = [
-    "http://localhost:3000",
-    "http://127.0.0.1:3000",
-]
-# Allow extra origins via comma-separated env var (e.g. the Coolify domain).
-import os as _os
-
-_extra = _os.environ.get("AFTERGLOW_CORS_EXTRA_ORIGINS", "").strip()
-if _extra:
-    _cors_origins.extend(o.strip() for o in _extra.split(",") if o.strip())
+_cors_origins = [o.strip() for o in settings.cors_origins.split(",") if o.strip()]
 
 app.add_middleware(
     CORSMiddleware,
@@ -66,7 +57,6 @@ async def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
-app.include_router(business.router)
 app.include_router(calls.router)
 app.include_router(customers.router)
 app.include_router(templates.router)

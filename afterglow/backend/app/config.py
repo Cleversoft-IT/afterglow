@@ -1,6 +1,4 @@
 from functools import lru_cache
-from typing import Optional
-from uuid import UUID
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -21,11 +19,11 @@ class Settings(BaseSettings):
     max_file_size_mb: int = 20
     demo_mode: bool = False
 
-    # Single-tenant pinning. If unset, /businesses/current returns the oldest
-    # business in DB. The multi-business demo URLs still work because they
-    # resolve through business_domain (see /dialer/incoming/[callId]).
-    default_business_id: Optional[UUID] = Field(
-        default=None, alias="AFTERGLOW_DEFAULT_BUSINESS_ID"
+    # Comma-separated list of allowed CORS origins. Production sets this to the
+    # app and demo-site sslip.io URLs; local dev defaults to the common ports.
+    cors_origins: str = Field(
+        default="http://localhost:3000,http://127.0.0.1:3000,http://localhost:8081,http://localhost:5173",
+        alias="CORS_ORIGINS",
     )
 
     database_url: str = "postgresql+asyncpg://afterglow:afterglow@postgres:5432/afterglow"

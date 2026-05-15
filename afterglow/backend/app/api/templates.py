@@ -1,11 +1,11 @@
-"""Templates API — list/view + the prompt-to-template wizard."""
+"""Templates API — list/view, active template switching, prompt-to-template wizard."""
 from __future__ import annotations
 
 import uuid
-from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import select
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agents import template_builder
@@ -20,16 +20,54 @@ from app.schemas import (
 router = APIRouter(prefix="/api/v1/templates", tags=["templates"])
 
 
+class SetActiveTemplateRequest(BaseModel):
+    template_id: uuid.UUID
+
+
 @router.get("", response_model=list[TemplateView])
 async def list_templates(
-    business_id: Optional[uuid.UUID] = Query(None),
     session: AsyncSession = Depends(get_session),
 ) -> list[TemplateView]:
-    stmt = select(Template).order_by(Template.created_at.desc())
-    if business_id:
-        stmt = stmt.where(Template.business_id == business_id)
-    rows = (await session.execute(stmt)).scalars().all()
+    rows = (
+        await session.execute(select(Template).order_by(Template.created_at.desc()))
+    ).scalars().all()
     return [TemplateView.model_validate(r, from_attributes=True) for r in rows]
+
+
+@router.get("/active", response_model=TemplateView)
+async def get_active_template(
+    session: AsyncSession = Depends(get_session),
+) -> TemplateView:
+    row = (
+        await session.execute(select(Template).where(Template.is_active.is_(True)))
+    ).scalar_one_or_none()
+    if row is None:
+        raise HTTPException(status_code=409, detail="no active template")
+    return TemplateView.model_validate(row, from_attributes=True)
+
+
+@router.put("/active", response_model=TemplateView)
+async def set_active_template(
+    payload: SetActiveTemplateRequest,
+    session: AsyncSession = Depends(get_session),
+) -> TemplateView:
+    target = (
+        await session.execute(
+            select(Template).where(Template.id == payload.template_id)
+        )
+    ).scalar_one_or_none()
+    if target is None:
+        raise HTTPException(status_code=404, detail="Template not found")
+
+    # Two-step swap because of the partial unique index on is_active=TRUE:
+    # clearing all first guarantees the next update is unique-safe.
+    await session.execute(update(Template).values(is_active=False))
+    await session.execute(
+        update(Template).where(Template.id == target.id).values(is_active=True)
+    )
+    await session.commit()
+    await session.refresh(target)
+    return TemplateView.model_validate(target, from_attributes=True)
 
 
 @router.get("/{template_id}", response_model=TemplateView)

@@ -25,8 +25,8 @@ class TranscriptResult:
     raw: dict[str, Any] = field(default_factory=dict)
 
 
-_FAKE_TRANSCRIPTS = {
-    "restaurant_default": TranscriptResult(
+_FAKE_TRANSCRIPTS: dict[str, TranscriptResult] = {
+    "restaurant": TranscriptResult(
         text=(
             "S1: Buonasera, vorrei prenotare un tavolo per venerdi sera. "
             "S2: Certo, per quante persone? "
@@ -34,6 +34,40 @@ _FAKE_TRANSCRIPTS = {
             "S1: Una persona e intollerante al glutine, riuscite a gestirla? "
             "S2: Assolutamente. "
             "S1: Mi potete confermare su WhatsApp?"
+        ),
+        language="it",
+        speakers=[
+            {"id": "S1", "label": "caller"},
+            {"id": "S2", "label": "operator"},
+        ],
+        raw={"source": "fake"},
+    ),
+    "dentist": TranscriptResult(
+        text=(
+            "S1: Buongiorno, avrei bisogno di una visita urgente, mi e saltata "
+            "un'otturazione e ho un dolore forte al molare in basso a destra. "
+            "S2: Mi dispiace, possiamo provare a vederla domani mattina. Come si chiama? "
+            "S1: Sono Laura Bianchi, ho gia la cartella da voi. "
+            "S2: Perfetto Laura, ha una copertura assicurativa? "
+            "S1: Si, UniSalute, vi mando il numero polizza via WhatsApp. "
+            "S2: Bene, le mando io la conferma con orario e indicazioni."
+        ),
+        language="it",
+        speakers=[
+            {"id": "S1", "label": "caller"},
+            {"id": "S2", "label": "operator"},
+        ],
+        raw={"source": "fake"},
+    ),
+    "bodyshop": TranscriptResult(
+        text=(
+            "S1: Salve, ho preso un palo in retromarcia e devo sistemare il "
+            "paraurti posteriore di una Fiat Panda del 2019. "
+            "S2: Ha gia aperto un sinistro con l'assicurazione? "
+            "S1: No, non ho fatto denuncia, pago io. Mi serve solo un preventivo. "
+            "S2: Capito. Quando puo passare per la perizia? "
+            "S1: Sono libero giovedi pomeriggio. Mi chiamo Andrea Verdi. "
+            "S2: Le confermo via SMS l'appuntamento."
         ),
         language="it",
         speakers=[
@@ -52,14 +86,14 @@ async def transcribe_audio(
     diarization: str = "speaker",
     language: str = "auto",
     timeout_sec: float = 120.0,
+    domain_hint: str = "restaurant",
 ) -> TranscriptResult:
     """Transcribe an audio file via Speechmatics batch.
 
     Behaviour:
-    - If settings.demo_mode is true OR no API key is set → canned transcript.
-    - If the audio path doesn't exist or points to /dev/null → canned transcript
-      (the demo dialer uploads a silence.wav placeholder; we treat it as the
-      "use the offline transcript" signal instead of paying for an empty job).
+    - If settings.demo_mode is true OR no API key is set → canned transcript
+      picked by `domain_hint` (restaurant/dentist/bodyshop).
+    - If the audio path doesn't exist or points to /dev/null → canned transcript.
     - Otherwise submit the file to Speechmatics with diarization on, language
       auto-detect, and the template's custom_dictionary as additional_vocab.
     """
@@ -74,7 +108,7 @@ async def transcribe_audio(
         or audio_path.stat().st_size < 4096
     ):
         await asyncio.sleep(0.2)  # simulate latency, keeps audit timings honest
-        return _FAKE_TRANSCRIPTS["restaurant_default"]
+        return _FAKE_TRANSCRIPTS.get(domain_hint, _FAKE_TRANSCRIPTS["restaurant"])
 
     return await _real_transcribe(
         audio_path,

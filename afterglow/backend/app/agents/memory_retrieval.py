@@ -26,7 +26,7 @@ async def retrieve_customer_context(
     *,
     collection_id: Optional[str],
     phone_e164: str,
-    business_domain: str,
+    domain_hint: str,
 ) -> str:
     """Ask Vultr RAG for any prior facts about this phone number.
 
@@ -49,7 +49,7 @@ async def retrieve_customer_context(
         {
             "role": "user",
             "content": (
-                f"Business domain: {business_domain}\n"
+                f"Domain: {domain_hint}\n"
                 f"Phone number: {phone_e164}\n"
                 "Return any prior call facts."
             ),

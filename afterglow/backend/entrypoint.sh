@@ -2,7 +2,7 @@
 # Container entrypoint: idempotent schema migration + seed before serving.
 #
 # alembic upgrade head is always safe (no-op on an already-current DB).
-# The seed script short-circuits when businesses already exist, so reruns
+# The seed script short-circuits when templates already exist, so reruns
 # don't duplicate data.
 #
 # Either step can fail without taking the container down (we log + continue),

@@ -19,14 +19,14 @@ The autonomy is the whole point: the hackathon brief calls for *autonomous decis
 ## Architecture
 
 ```
-Frontend PWA (Next.js)
-       │ POST /api/v1/calls (audio + business_id + template_id + phone)
+App (Expo + react-native-web)         ◄── embedded by ── Demo site (Vite)
+       │ POST /api/v1/calls (audio + phone)
        ▼
 FastAPI background task ─► Speechmatics batch (diarization + lang detect + custom dict)
        │                   (skipped in DEMO_MODE, falls back to a canned transcript)
        │
        ├─► Vultr Vector Store /v1/chat/completions/RAG  (pre-fetch: prior_facts)
-       │   └─► one collection per business; failure is non-fatal
+       │   └─► single collection, configured via VULTR_VECTOR_DEFAULT_COLLECTION
        │
        ├─► Gemini structured-output call  (single Gemini pass — see app/agents/call_analyzer.py)
        │       prompt: transcript + template fields_schema + action_types + prompt_hints + prior_facts
@@ -86,9 +86,10 @@ System of record: **Vultr Managed Postgres**. Deploy: **Vultr Cloud Compute + Co
 
 | Layer | Tech |
 |---|---|
-| Frontend | Next.js 14 App Router · React 18 · Tailwind · shadcn/ui · next-pwa |
+| App | Expo SDK 54 · React Native · react-native-web · expo-router · expo-av · TypeScript |
+| Demo site | Vite 5 · React 18 · TypeScript (static landing that iframes the app) |
 | Backend | Python 3.11 · FastAPI · google-genai · SQLAlchemy 2.0 async · Alembic |
-| Speech | Speechmatics batch SDK (target) |
+| Speech | Speechmatics batch SDK |
 | LLM | Gemini Flash (default) · Gemini 3 Flash Preview (template wizard) · MiniMax-M2.7 on Vultr (RAG) |
 | Storage | Vultr Managed Postgres · Vultr Vector Store |
 | Deploy | Podman / Docker Compose · Vultr Cloud Compute HP · Coolify |
@@ -122,16 +123,17 @@ python3.11 -m venv .venv
 .venv/bin/pip install -r requirements.txt
 set -a && . ../.env && set +a
 PYTHONPATH=. .venv/bin/alembic upgrade head
-PYTHONPATH=. .venv/bin/python -m app.db.seed   # 3 demo businesses + 2 known customers
+PYTHONPATH=. .venv/bin/python -m app.db.seed   # 3 template presets + 2 known customers
 
-# Pick which business this instance serves (single-tenant pinning).
-# Leave empty in dev to auto-pick the oldest business.
-echo "AFTERGLOW_DEFAULT_BUSINESS_ID=<uuid-of-the-business>" >> ../.env
-
-# Frontend env (Next.js reads .env.local from frontend/, NOT the project root)
-cd ../frontend
-echo "NEXT_PUBLIC_API_BASE=http://localhost:8000" > .env.local
+# App (Expo) — installs once, then runs the web bundle
+cd ../app
 npm install
+echo "EXPO_PUBLIC_API_BASE=http://localhost:8000" > .env.local
+
+# Demo site (Vite) — landing that iframes the app
+cd ../demo-site
+npm install
+echo "VITE_APP_URL=http://localhost:8081" > .env.local
 ```
 
 ### Run
@@ -142,12 +144,18 @@ cd backend
 set -a && . ../.env && set +a
 PYTHONPATH=. .venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
 
-# Terminal B — frontend
-cd frontend
+# Terminal B — app (Expo web on :8081)
+cd app
+npm run web
+
+# Terminal C — demo site (Vite on :5173)
+cd demo-site
 npm run dev
 ```
 
-Open <http://localhost:3000> → click `Try the dialer` → blue button.
+Open the demo site at <http://localhost:5173> → the app is embedded as an
+iframe. Activate a template from the Templates tab, then press the blue
+button on the Simulator to run the full post-call pipeline.
 
 ### Demo mode vs live AI mode
 
@@ -174,7 +182,8 @@ Open <http://localhost:3000> → click `Try the dialer` → blue button.
 
 | What | Where |
 |---|---|
-| Frontend (PWA) | https://95-179-245-107.sslip.io |
+| Demo site | https://demo.95-179-245-107.sslip.io |
+| App (Expo web) | https://app.95-179-245-107.sslip.io |
 | Backend API | https://api.95-179-245-107.sslip.io · `/health` returns `{"status":"ok"}` |
 | Coolify admin | http://95.179.245.107:8000 (plain HTTP; team-only) |
 
@@ -190,18 +199,21 @@ local podman                git push                   Coolify (Vultr VM, FRA, v
 ─────────────              ─────────▶                  ───────────────────────────────────
  Postgres podman             main branch                 ┌─ afterglow-backend  (Dockerfile)
  .venv uvicorn          GitHub App webhook               │   entrypoint.sh: alembic + seed + uvicorn
- npm run dev                                             │   :8000 → api.95-179-245-107.sslip.io
+ expo web :8081                                          │   :8000 → api.95-179-245-107.sslip.io
+ vite :5173                                              │
+                                                         ├─ afterglow-app      (Dockerfile, expo export -p web + nginx)
+                                                         │   :3000 → app.95-179-245-107.sslip.io
                                                          │
-                                                         └─ afterglow-frontend (Dockerfile, next standalone)
-                                                             :3000 → 95-179-245-107.sslip.io
+                                                         └─ afterglow-demo     (Dockerfile, vite build + nginx)
+                                                             :3000 → demo.95-179-245-107.sslip.io
                                                                   │
                                                          Vultr Managed Postgres 16 (hobbyist 1GB, FRA)
                                                          trusted-ips: VM /32 + dev IP /32
 ```
 
-Environment variables (DB connection string, API keys, the single-tenant
-business pin) are stored encrypted inside Coolify per Resource. They are
-**not** in the repo — see [`reference_devops_pipeline.md`](../.claude/memory/reference_devops_pipeline.md)
+Environment variables (DB connection string, API keys, CORS allow-list) are
+stored encrypted inside Coolify per Resource. They are **not** in the repo —
+see [`reference_devops_pipeline.md`](../.claude/memory/reference_devops_pipeline.md)
 for the source of truth and 1Password for the credentials themselves.
 
 Traefik on Coolify auto-issues a Let's Encrypt cert for each app domain.

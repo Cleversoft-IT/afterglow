@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -17,15 +17,11 @@ router = APIRouter(prefix="/api/v1/customers", tags=["customers"])
 @router.get("/by-phone/{phone_e164}", response_model=CustomerCard | None)
 async def get_customer_by_phone(
     phone_e164: str,
-    business_id: uuid.UUID = Query(...),
     session: AsyncSession = Depends(get_session),
 ) -> CustomerCard | None:
     row = (
         await session.execute(
-            select(Customer).where(
-                Customer.business_id == business_id,
-                Customer.phone_e164 == phone_e164,
-            )
+            select(Customer).where(Customer.phone_e164 == phone_e164)
         )
     ).scalar_one_or_none()
     if row is None:

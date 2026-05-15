@@ -1,7 +1,6 @@
 """Calls API — upload audio, kick off pipeline, poll status."""
 from __future__ import annotations
 
-import asyncio
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -22,7 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.agents.orchestrator import run_pipeline
 from app.config import get_settings
 from app.db.engine import SessionLocal, get_session
-from app.db.models import Call, ExecutedAction, ExtractedFields
+from app.db.models import Call, ExecutedAction, ExtractedFields, Template
 from app.schemas import (
     CallActionView,
     CallDetailView,
@@ -48,12 +47,21 @@ _SUPPORTED_AUDIO = {
 }
 
 
+async def _get_active_template(session: AsyncSession) -> Template:
+    stmt = select(Template).where(Template.is_active.is_(True))
+    template = (await session.execute(stmt)).scalar_one_or_none()
+    if template is None:
+        raise HTTPException(
+            status_code=409,
+            detail="no active template set",
+        )
+    return template
+
+
 @router.post("", response_model=CallSubmittedResponse, status_code=202)
 async def submit_audio_call(
     background_tasks: BackgroundTasks,
     audio: UploadFile = File(...),
-    business_id: uuid.UUID = Form(...),
-    template_id: uuid.UUID = Form(...),
     phone_e164: str = Form(...),
     session: AsyncSession = Depends(get_session),
 ) -> CallSubmittedResponse:
@@ -71,6 +79,8 @@ async def submit_audio_call(
     if not raw:
         raise HTTPException(status_code=400, detail="Empty audio file")
 
+    template = await _get_active_template(session)
+
     storage_dir = Path(settings.audio_storage_dir)
     storage_dir.mkdir(parents=True, exist_ok=True)
     ext = _SUPPORTED_AUDIO[content_type]
@@ -80,8 +90,7 @@ async def submit_audio_call(
 
     call = Call(
         id=call_id,
-        business_id=business_id,
-        template_id=template_id,
+        template_id=template.id,
         phone_e164=phone_e164,
         audio_url=str(audio_path),
         status="pending",
@@ -135,7 +144,6 @@ async def get_call(
 
     return CallDetailView(
         id=call.id,
-        business_id=call.business_id,
         customer_id=call.customer_id,
         template_id=call.template_id,
         phone_e164=call.phone_e164,
@@ -180,14 +188,11 @@ async def get_call(
 
 @router.get("", response_model=list[CallListItem])
 async def list_calls(
-    business_id: Optional[uuid.UUID] = None,
     customer_id: Optional[uuid.UUID] = None,
     limit: int = 50,
     session: AsyncSession = Depends(get_session),
 ) -> list[CallListItem]:
     stmt = select(Call).order_by(Call.created_at.desc()).limit(limit)
-    if business_id:
-        stmt = stmt.where(Call.business_id == business_id)
     if customer_id:
         stmt = stmt.where(Call.customer_id == customer_id)
     rows = (await session.execute(stmt)).scalars().all()

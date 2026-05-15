@@ -25,6 +25,7 @@ services:
     environment:
       DATABASE_URL: postgresql+asyncpg://afterglow:afterglow@postgres:5432/afterglow
       AUDIO_STORAGE_DIR: /var/data/audio
+      CORS_ORIGINS: http://localhost:8081,http://127.0.0.1:8081,http://localhost:5173,http://127.0.0.1:5173
     depends_on:
       postgres:
         condition: service_healthy
@@ -37,16 +38,10 @@ services:
              python -m app.db.seed &&
              uvicorn app.main:app --host 0.0.0.0 --port 8000"
 
-  frontend:
-    build:
-      context: ./frontend
-    restart: unless-stopped
-    environment:
-      NEXT_PUBLIC_API_BASE: http://backend:8000
-    depends_on:
-      - backend
-    ports:
-      - "3000:3000"
+  # The Expo app and the demo site run locally with their own dev servers
+  # (npm --prefix app run web → :8081, npm --prefix demo-site run dev → :5173).
+  # Production deploys them as separate Coolify apps; the compose file does
+  # not replicate those containers to avoid build-time overhead during dev.
 
 volumes:
   pgdata:

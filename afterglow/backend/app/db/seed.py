@@ -1,4 +1,9 @@
-"""Seed demo data: 1 restaurant + 1 dentist + 1 bodyshop + sample customers + templates."""
+"""Seed demo data: 3 template presets (restaurant/dentist/bodyshop) + sample customers.
+
+Single-tenant: there is no Business row. The active template is what drives the
+pipeline; the others are inactive presets the operator can switch to from the
+dashboard.
+"""
 import asyncio
 import uuid
 from datetime import datetime, timezone
@@ -6,11 +11,12 @@ from datetime import datetime, timezone
 from sqlalchemy import select
 
 from app.db.engine import SessionLocal
-from app.db.models import Business, Customer, Template
+from app.db.models import Customer, Template
 
 
 RESTAURANT_TEMPLATE = {
     "name": "Standard booking",
+    "domain_hint": "restaurant",
     "description": "Phone bookings for an Italian restaurant.",
     "fields_schema": [
         {"key": "party_size", "type": "integer", "label": "Number of guests", "required": True},
@@ -37,6 +43,7 @@ RESTAURANT_TEMPLATE = {
 
 DENTIST_TEMPLATE = {
     "name": "Appointment intake",
+    "domain_hint": "dentist",
     "description": "Phone intake for a dental clinic — handle existing patients, new requests and emergencies.",
     "fields_schema": [
         {"key": "patient_name", "type": "string", "label": "Patient name", "required": True},
@@ -57,6 +64,7 @@ DENTIST_TEMPLATE = {
 
 BODYSHOP_TEMPLATE = {
     "name": "Damage quote intake",
+    "domain_hint": "bodyshop",
     "description": "Phone intake for a body shop — quotes, inspections, insurance claims.",
     "fields_schema": [
         {"key": "customer_name", "type": "string", "label": "Customer name", "required": True},
@@ -78,64 +86,37 @@ BODYSHOP_TEMPLATE = {
 
 async def seed():
     async with SessionLocal() as session:
-        existing = (await session.execute(select(Business))).scalars().all()
+        existing = (await session.execute(select(Template))).scalars().all()
         if existing:
-            print(f"[seed] {len(existing)} businesses already present, skipping.")
+            print(f"[seed] {len(existing)} templates already present, skipping.")
             return
 
-        # Restaurant
-        restaurant = Business(
-            id=uuid.uuid4(),
-            name="Trattoria Demo",
-            domain="restaurant",
-            default_language="it",
-            settings={"opening_hours": {"mon_sat": "18:30-23:00", "sun": "closed"}},
-        )
-        session.add(restaurant)
-
-        dentist = Business(
-            id=uuid.uuid4(),
-            name="Studio Dentistico Demo",
-            domain="dentist",
-            default_language="it",
-        )
-        session.add(dentist)
-
-        bodyshop = Business(
-            id=uuid.uuid4(),
-            name="Carrozzeria Demo",
-            domain="bodyshop",
-            default_language="it",
-        )
-        session.add(bodyshop)
-
-        await session.flush()
-
-        for biz, tpl in (
-            (restaurant, RESTAURANT_TEMPLATE),
-            (dentist, DENTIST_TEMPLATE),
-            (bodyshop, BODYSHOP_TEMPLATE),
+        # Restaurant is the active preset out of the box; the others are
+        # selectable from the dashboard's Templates screen.
+        for tpl, is_active in (
+            (RESTAURANT_TEMPLATE, True),
+            (DENTIST_TEMPLATE, False),
+            (BODYSHOP_TEMPLATE, False),
         ):
             session.add(
                 Template(
                     id=uuid.uuid4(),
-                    business_id=biz.id,
                     name=tpl["name"],
                     version=1,
                     description=tpl["description"],
+                    domain_hint=tpl["domain_hint"],
                     fields_schema=tpl["fields_schema"],
                     action_types=tpl["action_types"],
                     custom_dictionary=tpl["custom_dictionary"],
                     prompt_hints=tpl["prompt_hints"],
-                    is_active=True,
+                    is_active=is_active,
                 )
             )
 
-        # Two known customers on the restaurant for cross-call demo
+        # Two known customers on the restaurant scenario for cross-call demo.
         session.add(
             Customer(
                 id=uuid.uuid4(),
-                business_id=restaurant.id,
                 phone_e164="+393331112233",
                 display_name="Marco Rossi",
                 preferred_language="it",
@@ -148,7 +129,6 @@ async def seed():
         session.add(
             Customer(
                 id=uuid.uuid4(),
-                business_id=restaurant.id,
                 phone_e164="+393334445566",
                 display_name="Giulia Bianchi",
                 preferred_language="it",

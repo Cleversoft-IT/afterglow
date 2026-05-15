@@ -3,7 +3,6 @@ from datetime import datetime
 from typing import Any, Optional
 
 from sqlalchemy import (
-    JSON,
     Boolean,
     DateTime,
     ForeignKey,
@@ -13,9 +12,10 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     func,
+    text,
 )
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
 class Base(DeclarativeBase):
@@ -43,48 +43,34 @@ def _ts_updated() -> Mapped[datetime]:
     )
 
 
-class Business(Base):
-    __tablename__ = "businesses"
-
-    id: Mapped[uuid.UUID] = _uuid_pk()
-    name: Mapped[str] = mapped_column(String(200), nullable=False)
-    domain: Mapped[str] = mapped_column(String(50), nullable=False)
-    default_language: Mapped[str] = mapped_column(String(10), default="it")
-    timezone: Mapped[str] = mapped_column(String(50), default="Europe/Rome")
-    settings: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
-    vultr_collection_id: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
-    created_at: Mapped[datetime] = _ts()
-    updated_at: Mapped[datetime] = _ts_updated()
-
-    templates: Mapped[list["Template"]] = relationship(back_populates="business")
-    customers: Mapped[list["Customer"]] = relationship(back_populates="business")
-
-
 class Template(Base):
     __tablename__ = "templates"
     __table_args__ = (
-        UniqueConstraint("business_id", "name", "version", name="uq_template_name_version"),
-        Index("idx_templates_business", "business_id", "is_active"),
+        UniqueConstraint("name", "version", name="uq_template_name_version"),
+        Index(
+            "uq_template_active",
+            "is_active",
+            unique=True,
+            postgresql_where=text("is_active IS TRUE"),
+        ),
     )
 
     id: Mapped[uuid.UUID] = _uuid_pk()
-    business_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("businesses.id", ondelete="CASCADE")
-    )
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     version: Mapped[int] = mapped_column(Integer, default=1)
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    domain_hint: Mapped[str] = mapped_column(
+        String(32), nullable=False, default="generic"
+    )
     fields_schema: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, default=list)
     action_types: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, default=list)
     custom_dictionary: Mapped[list[str]] = mapped_column(
         ARRAY(String), default=list
     )
     prompt_hints: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = _ts()
     updated_at: Mapped[datetime] = _ts_updated()
-
-    business: Mapped["Business"] = relationship(back_populates="templates")
 
 
 class TemplateVersion(Base):
@@ -105,14 +91,11 @@ class TemplateVersion(Base):
 class Customer(Base):
     __tablename__ = "customers"
     __table_args__ = (
-        UniqueConstraint("business_id", "phone_e164", name="uq_customer_phone"),
-        Index("idx_customers_phone", "business_id", "phone_e164"),
+        UniqueConstraint("phone_e164", name="uq_customer_phone"),
+        Index("idx_customers_phone", "phone_e164"),
     )
 
     id: Mapped[uuid.UUID] = _uuid_pk()
-    business_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("businesses.id", ondelete="CASCADE")
-    )
     phone_e164: Mapped[str] = mapped_column(String(32), nullable=False)
     display_name: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
     preferred_language: Mapped[Optional[str]] = mapped_column(String(10), nullable=True)
@@ -125,20 +108,15 @@ class Customer(Base):
     created_at: Mapped[datetime] = _ts()
     updated_at: Mapped[datetime] = _ts_updated()
 
-    business: Mapped["Business"] = relationship(back_populates="customers")
-
 
 class Call(Base):
     __tablename__ = "calls"
     __table_args__ = (
-        Index("idx_calls_business_status", "business_id", "status"),
+        Index("idx_calls_status", "status"),
         Index("idx_calls_customer", "customer_id", "created_at"),
     )
 
     id: Mapped[uuid.UUID] = _uuid_pk()
-    business_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("businesses.id", ondelete="CASCADE")
-    )
     customer_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), ForeignKey("customers.id", ondelete="SET NULL"), nullable=True
     )

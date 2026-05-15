@@ -112,11 +112,11 @@ def _user_prompt(
     fields_schema: list[dict[str, Any]],
     action_types: list[dict[str, Any]],
     prompt_hints: Optional[str],
-    business_domain: str,
+    domain_hint: str,
     prior_facts: str,
 ) -> str:
     return (
-        f"Business domain: {business_domain}\n"
+        f"Domain: {domain_hint}\n"
         f"Template: {template_name}\n\n"
         f"fields_schema:\n{json.dumps(fields_schema, ensure_ascii=False)}\n\n"
         f"action_types:\n{json.dumps(action_types, ensure_ascii=False)}\n\n"
@@ -133,7 +133,7 @@ async def analyze_call(
     fields_schema: list[dict[str, Any]],
     action_types: list[dict[str, Any]],
     prompt_hints: Optional[str],
-    business_domain: str,
+    domain_hint: str,
     prior_facts: str,
 ) -> CallAnalysis:
     """Run the single Gemini call and return a parsed CallAnalysis.
@@ -159,7 +159,7 @@ async def analyze_call(
         fields_schema=fields_schema,
         action_types=action_types,
         prompt_hints=prompt_hints,
-        business_domain=business_domain,
+        domain_hint=domain_hint,
         prior_facts=prior_facts,
     )
 

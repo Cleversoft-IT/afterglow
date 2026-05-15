@@ -18,5 +18,4 @@ class CustomerCard(BaseModel):
 
 
 class CustomerProfileView(CustomerCard):
-    business_id: UUID
     created_at: datetime
