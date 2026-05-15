@@ -25,13 +25,36 @@ async def execute_planned_actions(
     template: Template,
     plan: list[dict[str, Any]],
 ) -> list[ExecutedAction]:
-    """Run every action in `plan`. Return the persisted ExecutedAction rows."""
+    """Run every action in `plan`. Return the persisted ExecutedAction rows.
+
+    Deterministic safety net:
+      - reject planned actions whose action_type is NOT in the template's
+        action_types (Gemini hallucinations are skipped, not auto-run)
+      - the execution_mode is read from the TEMPLATE, never from the plan
+        entry (the model cannot escalate a manual-only action to auto)
+    """
     action_modes = {a["key"]: a.get("execution_mode", "auto") for a in template.action_types}
 
     persisted: list[ExecutedAction] = []
     for entry in plan:
         action_type = entry["action_type"]
-        mode = action_modes.get(action_type, entry.get("execution_mode", "auto"))
+
+        if action_type not in action_modes:
+            # Hallucinated action — log it as a rejection and skip.
+            async with audit_step(
+                session,
+                call_id=call.id,
+                agent_name="action_executor",
+                step_type="rejected",
+                payload={
+                    "action_type": action_type,
+                    "reason": "action_type not in template",
+                },
+            ):
+                pass
+            continue
+
+        mode = action_modes[action_type]
 
         record = ExecutedAction(
             id=uuid.uuid4(),

@@ -31,7 +31,11 @@ class Settings(BaseSettings):
     database_url: str = "postgresql+asyncpg://afterglow:afterglow@postgres:5432/afterglow"
 
     google_api_key: str = ""
-    gemini_default_model: str = "gemini-2.5-flash"
+    # gemini-flash-latest is the alias that always points to the most recent
+    # Flash. We avoid `gemini-2.5-flash` here on purpose: it spends most of
+    # its budget on internal "thinking" tokens and frequently returns empty
+    # text on short prompts, which then drops us to the offline stub.
+    gemini_default_model: str = "gemini-flash-latest"
     gemini_template_builder_model: str = "gemini-3-flash-preview"
 
     vultr_inference_base_url: str = "https://api.vultrinference.com/v1"

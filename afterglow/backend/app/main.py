@@ -41,9 +41,20 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+_cors_origins = [
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+]
+# Allow extra origins via comma-separated env var (e.g. the Coolify domain).
+import os as _os
+
+_extra = _os.environ.get("AFTERGLOW_CORS_EXTRA_ORIGINS", "").strip()
+if _extra:
+    _cors_origins.extend(o.strip() for o in _extra.split(",") if o.strip())
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # demo only — restrict in prod
+    allow_origins=_cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

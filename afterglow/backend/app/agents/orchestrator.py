@@ -47,11 +47,19 @@ settings = get_settings()
 
 
 async def run_pipeline(session: AsyncSession, call_id: uuid.UUID) -> None:
-    """Drive a call through the full pipeline. Idempotent enough for retry."""
+    """Drive a call through the full pipeline.
+
+    Idempotent: a second invocation on the same call_id while the first is
+    still running (or has already completed) is a no-op. Prevents double
+    booking on double-clicks of the operator's blue button.
+    """
     call: Optional[Call] = (
         await session.execute(select(Call).where(Call.id == call_id))
     ).scalar_one_or_none()
     if call is None:
+        return
+    if call.status in ("transcribing", "analyzing", "completed"):
+        logger.info("orchestrator: call %s already in status %s — skipping", call_id, call.status)
         return
 
     call.status = "transcribing"
@@ -83,7 +91,11 @@ async def run_pipeline(session: AsyncSession, call_id: uuid.UUID) -> None:
     call.status = "analyzing"
     await session.commit()
 
-    # 2) Customer match.
+    # 2) Customer match — create a new row when the phone is unknown so the
+    # memory write-back step has a customer to attach to. The cross-call
+    # memory demo depends on this: the first call from a new number must
+    # leave a customer row + a Vector Store chunk so the second call can
+    # retrieve them.
     customer = (
         await session.execute(
             select(Customer).where(
@@ -92,8 +104,17 @@ async def run_pipeline(session: AsyncSession, call_id: uuid.UUID) -> None:
             )
         )
     ).scalar_one_or_none()
-    if customer:
-        call.customer_id = customer.id
+    if customer is None:
+        customer = Customer(
+            id=uuid.uuid4(),
+            business_id=business.id,
+            phone_e164=call.phone_e164,
+            preferred_language=transcript.language or business.default_language,
+            total_calls=0,
+        )
+        session.add(customer)
+        await session.flush()
+    call.customer_id = customer.id
 
     # 3) RAG pre-fetch — semantic lookup of past calls from this number.
     prior_facts = ""
@@ -165,21 +186,21 @@ async def run_pipeline(session: AsyncSession, call_id: uuid.UUID) -> None:
         )
 
     # 7) Memory write-back. The briefing is the only AI-authored summary the
-    # operator will read on the next call's caller card.
-    if customer is not None:
-        await _persist_memory(
-            session,
-            call=call,
-            customer=customer,
-            business=business,
-            briefing=analysis.next_call_briefing,
-            classification={
-                "intent": analysis.intent,
-                "sentiment": analysis.sentiment,
-                "language": analysis.language,
-                "urgency": analysis.urgency,
-            },
-        )
+    # operator will read on the next call's caller card. After B1, customer
+    # is always non-None (created at step 2 when missing).
+    await _persist_memory(
+        session,
+        call=call,
+        customer=customer,
+        business=business,
+        briefing=analysis.next_call_briefing,
+        classification={
+            "intent": analysis.intent,
+            "sentiment": analysis.sentiment,
+            "language": analysis.language,
+            "urgency": analysis.urgency,
+        },
+    )
 
     call.status = "completed"
     call.completed_at = datetime.now(tz=timezone.utc)
@@ -246,6 +267,20 @@ async def _persist_memory(
     customer.total_calls = (customer.total_calls or 0) + 1
     customer.last_call_at = datetime.now(tz=timezone.utc)
 
+    # Make the chunk content phone-queryable. The RAG retrieval asks
+    # "facts about phone {e164}", so the phone number MUST appear inside the
+    # indexed content (Vultr embeds `content`; `description` is metadata).
+    call_date = (call.completed_at or call.started_at or datetime.now(tz=timezone.utc)).date()
+    display_label = customer.display_name or customer.phone_e164
+    chunk_content = (
+        f"Customer {display_label} ({customer.phone_e164}) called "
+        f"the {business.domain} on {call_date.isoformat()}. "
+        f"Intent: {classification.get('intent', 'unknown')}. "
+        f"Sentiment: {classification.get('sentiment', 'unknown')}. "
+        f"Urgency: {classification.get('urgency', 'unknown')}. "
+        f"Briefing: {briefing}"
+    )
+
     item_id: Optional[str] = None
     try:
         async with audit_step(
@@ -256,16 +291,17 @@ async def _persist_memory(
             model="vultr-vector-store",
         ):
             if not business.vultr_collection_id:
-                business.vultr_collection_id = (
-                    await vultr_inference.create_vector_collection(
-                        f"afterglow-{business.id}"
-                    )
+                new_collection_id = await vultr_inference.create_vector_collection(
+                    f"afterglow-{business.id}"
                 )
-            item_id = await vultr_inference.add_vector_item(
-                business.vultr_collection_id,
-                content=briefing,
-                description=f"call_{call.id}",
-            )
+                if new_collection_id:
+                    business.vultr_collection_id = new_collection_id
+            if business.vultr_collection_id:
+                item_id = await vultr_inference.add_vector_item(
+                    business.vultr_collection_id,
+                    content=chunk_content,
+                    description=f"call_{call.id} phone_{customer.phone_e164}",
+                )
     except httpx.HTTPError as exc:
         logger.warning(
             "memory_updater: Vultr Vector Store push failed (%s) — "
@@ -273,7 +309,7 @@ async def _persist_memory(
             exc,
         )
 
-    if item_id is not None:
+    if item_id is not None and business.vultr_collection_id is not None:
         session.add(
             CustomerMemoryChunk(
                 id=uuid.uuid4(),
@@ -282,6 +318,10 @@ async def _persist_memory(
                 vultr_collection_id=business.vultr_collection_id,
                 vultr_item_id=item_id,
                 summary=briefing,
-                chunk_metadata=classification,
+                chunk_metadata={
+                    **classification,
+                    "phone_e164": customer.phone_e164,
+                    "customer_id": str(customer.id),
+                },
             )
         )

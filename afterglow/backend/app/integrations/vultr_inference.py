@@ -11,7 +11,6 @@ is set.
 from __future__ import annotations
 
 import asyncio
-import uuid
 from typing import Any, Optional
 
 import httpx
@@ -107,11 +106,17 @@ async def chat_completion_rag(
         return resp.json()
 
 
-async def create_vector_collection(name: str) -> str:
-    """Create a vector store collection and return its ID."""
+async def create_vector_collection(name: str) -> Optional[str]:
+    """Create a vector store collection and return its ID.
+
+    Returns None in stub mode (no API key) so callers do NOT persist a fake
+    collection_id on the Business row. If a fake ID were persisted, the
+    `if not business.vultr_collection_id` guard would later treat the fake
+    as real and skip creating the real collection once the key arrives —
+    poisoning the Vector Store flow permanently.
+    """
     if not _is_configured():
-        fake_id = f"local-collection-{uuid.uuid4().hex[:8]}"
-        return fake_id
+        return None
 
     async with _client() as client:
         resp = await client.post("/vector_store", json={"name": name})
@@ -125,10 +130,14 @@ async def add_vector_item(
     *,
     content: str,
     description: str,
-) -> str:
-    """Add an item to a vector store collection. Embedding is auto-computed."""
+) -> Optional[str]:
+    """Add an item to a vector store collection. Embedding is auto-computed.
+
+    Returns None in stub mode so the caller does not write a fake item ID
+    into the CustomerMemoryChunk audit row.
+    """
     if not _is_configured():
-        return f"local-item-{uuid.uuid4().hex[:8]}"
+        return None
 
     async with _client() as client:
         resp = await client.post(
