@@ -11,8 +11,9 @@ export const audioByDomain = {
   bodyshop: require('../assets/audio/bodyshop.mp3'),
 } as const;
 
-// Synthetic European phone ringtone (425Hz, 1s on / 4s off — ITU-T pattern).
-// Loopable: the trailing silence is part of the file.
+// Synthetic Bell-style ringer: 1300/1700 Hz warble alternated at 20 Hz,
+// 2s on / 4s off (6s loop). Sounds like a classic electromechanical phone
+// ring on the *called* side — not a ringback tone.
 export const ringtoneAsset = require('../assets/audio/ringtone.mp3');
 
 export type AudioDomain = keyof typeof audioByDomain;
