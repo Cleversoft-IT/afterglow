@@ -54,17 +54,21 @@ class Turn:
 
 
 # Two distinct voices per scenario so Speechmatics' diarization can split them.
-# Each conversation opens with the operator picking up the phone — that's the
-# bit that was missing in the first cut and made the scripts feel out of context.
+# Each conversation follows a realistic phone-call shape: operator picks up,
+# the caller states their need, both sides exchange the relevant info, the
+# operator wraps up with a short confirmation, and they say goodbye.
 SCENARIOS: dict[str, list[Turn]] = {
     "restaurant": [
         Turn("operator", "sarah", "Good evening, La Trattoria. How may I help you?"),
         Turn("caller",   "theo",  "Hi, I'd like to book a table for Friday evening."),
         Turn("operator", "sarah", "Of course. How many people?"),
         Turn("caller",   "theo",  "Four of us, around eight thirty. My name is Mark."),
-        Turn("caller",   "theo",  "One person is gluten intolerant. Can you handle that?"),
+        Turn("operator", "sarah", "Got it, Mark. Any special requests?"),
+        Turn("caller",   "theo",  "Yes — one person is gluten intolerant. Can you handle that?"),
         Turn("operator", "sarah", "Absolutely, the kitchen has a dedicated gluten free menu."),
-        Turn("caller",   "theo",  "Could you confirm by WhatsApp?"),
+        Turn("caller",   "theo",  "Great. Could you confirm by WhatsApp?"),
+        Turn("operator", "sarah", "Sure, I'll send the confirmation right away. See you Friday!"),
+        Turn("caller",   "theo",  "Thanks, goodbye."),
     ],
     "dentist": [
         Turn("operator", "jack",  "Greenwood Dental, this is the front desk. How can I help you?"),
@@ -73,7 +77,10 @@ SCENARIOS: dict[str, list[Turn]] = {
         Turn("caller",   "megan", "I'm Laura Bennett, you already have my chart on file."),
         Turn("operator", "jack",  "Perfect Laura. Do you have insurance coverage?"),
         Turn("caller",   "megan", "Yes, BlueCross. I'll send the policy number on WhatsApp."),
-        Turn("operator", "jack",  "Good, I'll text you the confirmation with the time and directions."),
+        Turn("operator", "jack",  "Great. Does nine fifteen tomorrow work for you?"),
+        Turn("caller",   "megan", "Yes, that's perfect."),
+        Turn("operator", "jack",  "I'll text you the details. Take care, see you tomorrow."),
+        Turn("caller",   "megan", "Thank you, goodbye."),
     ],
     "bodyshop": [
         Turn("operator", "megan", "Greenline Auto Body, good afternoon. How can I help?"),
@@ -82,7 +89,9 @@ SCENARIOS: dict[str, list[Turn]] = {
         Turn("caller",   "jack",  "No, I'm not filing one. I'm paying out of pocket — I just need a quote."),
         Turn("operator", "megan", "Got it. When can you come in for the inspection?"),
         Turn("caller",   "jack",  "I'm free Thursday afternoon. My name is Andrew Green."),
-        Turn("operator", "megan", "I'll text you the appointment confirmation."),
+        Turn("operator", "megan", "Let's say two o'clock Thursday. I'll text you the address."),
+        Turn("caller",   "jack",  "Perfect. Thanks for the help."),
+        Turn("operator", "megan", "You're welcome. See you Thursday."),
     ],
 }
 
