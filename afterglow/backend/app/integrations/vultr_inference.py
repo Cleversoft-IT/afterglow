@@ -114,6 +114,9 @@ async def create_vector_collection(name: str) -> Optional[str]:
     `if not business.vultr_collection_id` guard would later treat the fake
     as real and skip creating the real collection once the key arrives —
     poisoning the Vector Store flow permanently.
+
+    Vultr's response shape (verified 2026-05-15):
+        {"collection": {"id": "...", "name": "...", "created": "..."}}
     """
     if not _is_configured():
         return None
@@ -122,7 +125,8 @@ async def create_vector_collection(name: str) -> Optional[str]:
         resp = await client.post("/vector_store", json={"name": name})
         resp.raise_for_status()
         data = resp.json()
-        return data.get("id") or data.get("collection_id")
+        collection = data.get("collection") or {}
+        return collection.get("id") or data.get("id") or data.get("collection_id")
 
 
 async def add_vector_item(
@@ -135,6 +139,10 @@ async def add_vector_item(
 
     Returns None in stub mode so the caller does not write a fake item ID
     into the CustomerMemoryChunk audit row.
+
+    Vultr's response shape (verified 2026-05-15):
+        {"item": {"id": "<uuid>", "created": "...", "description": "...",
+                  "content": "..."}, "usage": {"prompt_tokens": N, ...}}
     """
     if not _is_configured():
         return None
@@ -146,4 +154,5 @@ async def add_vector_item(
         )
         resp.raise_for_status()
         data = resp.json()
-        return data.get("id") or data.get("item_id")
+        item = data.get("item") or {}
+        return item.get("id") or data.get("id") or data.get("item_id")

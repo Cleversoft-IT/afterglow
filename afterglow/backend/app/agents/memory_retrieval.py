@@ -7,6 +7,7 @@ injected into the Orchestrator.
 from __future__ import annotations
 
 import logging
+import re
 from typing import Optional
 
 import httpx
@@ -14,6 +15,11 @@ import httpx
 from app.integrations import vultr_inference
 
 logger = logging.getLogger("afterglow")
+
+# Vultr's RAG models (kimi-k2, MiniMax-M2) emit reasoning inside <think>...</think>
+# blocks before the answer. We strip them so the orchestrator passes clean facts
+# (not raw chain-of-thought) to Gemini as prior_facts.
+_THINK_BLOCK_RE = re.compile(r"<think>.*?</think>", re.DOTALL | re.IGNORECASE)
 
 
 async def retrieve_customer_context(
@@ -72,6 +78,7 @@ async def retrieve_customer_context(
     except (KeyError, IndexError):
         return ""
 
-    if content.strip().upper().startswith("NO_MEMORY"):
+    content = _THINK_BLOCK_RE.sub("", content).strip()
+    if not content or content.upper().startswith("NO_MEMORY"):
         return ""
-    return content.strip()
+    return content
