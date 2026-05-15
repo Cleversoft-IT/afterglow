@@ -19,9 +19,14 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agents.orchestrator import run_pipeline
+from app.api.session_context import (
+    SessionContext,
+    get_session_context,
+    visibility_filter,
+)
 from app.config import get_settings
 from app.db.engine import SessionLocal, get_session
-from app.db.models import Call, ExecutedAction, ExtractedFields, Template
+from app.db.models import Call, DemoSession, ExecutedAction, ExtractedFields, Template
 from app.schemas import (
     CallActionView,
     CallDetailView,
@@ -47,8 +52,30 @@ _SUPPORTED_AUDIO = {
 }
 
 
-async def _get_active_template(session: AsyncSession) -> Template:
-    stmt = select(Template).where(Template.is_active.is_(True))
+async def _get_active_template(
+    session: AsyncSession, ctx: SessionContext
+) -> Template:
+    if ctx.is_demo:
+        demo = (
+            await session.execute(
+                select(DemoSession).where(DemoSession.id == ctx.session_id)
+            )
+        ).scalar_one_or_none()
+        if demo is not None and demo.active_template_id is not None:
+            template = (
+                await session.execute(
+                    select(Template).where(Template.id == demo.active_template_id)
+                )
+            ).scalar_one_or_none()
+            if template is not None:
+                return template
+        # Fallback to the seed-active template so demo sessions never get a
+        # 409 just because they have not picked anything yet.
+
+    stmt = select(Template).where(
+        Template.is_active.is_(True),
+        Template.session_id.is_(None),
+    )
     template = (await session.execute(stmt)).scalar_one_or_none()
     if template is None:
         raise HTTPException(
@@ -63,6 +90,7 @@ async def submit_audio_call(
     background_tasks: BackgroundTasks,
     audio: UploadFile = File(...),
     phone_e164: str = Form(...),
+    ctx: SessionContext = Depends(get_session_context),
     session: AsyncSession = Depends(get_session),
 ) -> CallSubmittedResponse:
     content_type = (audio.content_type or "").lower()
@@ -79,7 +107,7 @@ async def submit_audio_call(
     if not raw:
         raise HTTPException(status_code=400, detail="Empty audio file")
 
-    template = await _get_active_template(session)
+    template = await _get_active_template(session, ctx)
 
     storage_dir = Path(settings.audio_storage_dir)
     storage_dir.mkdir(parents=True, exist_ok=True)
@@ -94,6 +122,7 @@ async def submit_audio_call(
         phone_e164=phone_e164,
         audio_url=str(audio_path),
         status="pending",
+        session_id=ctx.session_id,
         created_at=datetime.now(tz=timezone.utc),
     )
     session.add(call)
@@ -120,10 +149,17 @@ async def _run_pipeline_isolated(call_id: uuid.UUID) -> None:
 
 @router.get("/{call_id}", response_model=CallDetailView)
 async def get_call(
-    call_id: uuid.UUID, session: AsyncSession = Depends(get_session)
+    call_id: uuid.UUID,
+    ctx: SessionContext = Depends(get_session_context),
+    session: AsyncSession = Depends(get_session),
 ) -> CallDetailView:
     call = (
-        await session.execute(select(Call).where(Call.id == call_id))
+        await session.execute(
+            select(Call).where(
+                Call.id == call_id,
+                visibility_filter(Call.session_id, ctx),
+            )
+        )
     ).scalar_one_or_none()
     if call is None:
         raise HTTPException(status_code=404, detail="Call not found")
@@ -190,9 +226,15 @@ async def get_call(
 async def list_calls(
     customer_id: Optional[uuid.UUID] = None,
     limit: int = 50,
+    ctx: SessionContext = Depends(get_session_context),
     session: AsyncSession = Depends(get_session),
 ) -> list[CallListItem]:
-    stmt = select(Call).order_by(Call.created_at.desc()).limit(limit)
+    stmt = (
+        select(Call)
+        .where(visibility_filter(Call.session_id, ctx))
+        .order_by(Call.created_at.desc())
+        .limit(limit)
+    )
     if customer_id:
         stmt = stmt.where(Call.customer_id == customer_id)
     rows = (await session.execute(stmt)).scalars().all()

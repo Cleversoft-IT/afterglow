@@ -1,6 +1,7 @@
 """Afterglow FastAPI entrypoint."""
 from __future__ import annotations
 
+import asyncio
 import logging
 from contextlib import asynccontextmanager
 
@@ -9,7 +10,9 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api import actions, audit, calls, customers, templates
+from app.api.session_context import DEMO_SESSION_HEADER
 from app.config import get_settings
+from app.tasks.session_cleanup import run_cleanup_loop
 
 load_dotenv()
 
@@ -27,8 +30,17 @@ async def lifespan(app: FastAPI):
         logger.warning("VULTR_INFERENCE_API_KEY not set — Vultr inference in stub mode.")
     if not settings.speechmatics_api_key:
         logger.warning("SPEECHMATICS_API_KEY not set — Speechmatics in stub mode.")
-    yield
-    logger.info("Afterglow API shutting down")
+
+    cleanup_task = asyncio.create_task(run_cleanup_loop())
+    try:
+        yield
+    finally:
+        cleanup_task.cancel()
+        try:
+            await cleanup_task
+        except asyncio.CancelledError:
+            pass
+        logger.info("Afterglow API shutting down")
 
 
 app = FastAPI(
@@ -49,6 +61,9 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    # Lets the iframe app read the freshly-minted demo session id and persist
+    # it to localStorage on the first round-trip.
+    expose_headers=[DEMO_SESSION_HEADER],
 )
 
 

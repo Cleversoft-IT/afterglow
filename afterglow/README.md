@@ -59,6 +59,25 @@ System of record: **Vultr Managed Postgres**. Deploy: **Vultr Cloud Compute + Co
   failure surface, and switched the RAG model to `MiniMaxAI/MiniMax-M2.7`
   (the model Vultr actually serves on `/v1/chat/completions/RAG`).
 
+#### Demo isolation policy
+
+The public iframe at `demo.95-179-245-107.sslip.io` is a multi-visitor
+sandbox: every browser that loads it is stamped with an opaque
+`X-Demo-Session: <uuid>` and every write (calls, customers, audit log,
+executed actions, wizard-generated templates) is scoped to that uuid.
+Two judges browsing the demo at the same time will not see each other's
+state. Sessions are wiped 24h after inactivity by a background task.
+
+To keep concurrent visitors from polluting the shared semantic memory,
+the **Vultr Vector Store write/read path is intentionally disabled in
+demo mode**. The audit log makes this visible: the `memory_lookup` and
+`memory_updater` rows surface `status=skipped reason=demo_session` so a
+judge can see the wiring exists. Run the same backend without the
+`X-Demo-Session` header (production single-tenant deploy, or the
+`?bypass=<token>` pitch-day escape hatch) and the full
+`/v1/chat/completions/RAG` loop fires — call → write chunk → next call
+prefetches the chunk → briefing returns the memory.
+
 ### Best use of Gemini
 - **Single multi-purpose structured-output call** with Pydantic `response_schema` —
   extracts fields, classifies, plans actions and writes the briefing in one shot

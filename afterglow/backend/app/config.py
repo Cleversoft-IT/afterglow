@@ -50,6 +50,15 @@ class Settings(BaseSettings):
 
     audio_storage_dir: str = "/var/data/audio"
 
+    # Demo iframe sandbox: visitors of demo.* hit the backend with an
+    # `X-Demo-Session: <uuid>` header that scopes their writes. To run the
+    # pitch live against the real (single-tenant) data while keeping the
+    # sandbox active for the public, set this token in Coolify and append
+    # `?bypass=<token>` to the app URL. The frontend then sends
+    # `X-Demo-Session: bypass` and the backend treats the request as the
+    # production tenant. Empty string disables the bypass entirely.
+    demo_bypass_token: str = ""
+
 
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:

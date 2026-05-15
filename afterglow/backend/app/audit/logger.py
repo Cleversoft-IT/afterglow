@@ -18,21 +18,27 @@ async def audit_step(
     agent_name: str,
     step_type: str,
     call_id: Optional[uuid.UUID] = None,
+    session_id: Optional[uuid.UUID] = None,
     model: Optional[str] = None,
     payload: Optional[dict[str, Any]] = None,
+    status: str = "success",
 ):
     """Async context manager that writes one audit row per agent step.
 
-    Captures duration_ms and status automatically.
+    Captures duration_ms and status automatically. `session_id` is the demo
+    sandbox session that owns this step (None for production single-tenant);
+    it propagates the row so audit reads stay isolated per visitor.
+    `status` lets callers pre-flag rows as "skipped" without raising.
     """
     start = time.perf_counter()
     entry = AuditLog(
         call_id=call_id,
+        session_id=session_id,
         agent_name=agent_name,
         step_type=step_type,
         model=model,
         payload=payload,
-        status="success",
+        status=status,
     )
 
     try:

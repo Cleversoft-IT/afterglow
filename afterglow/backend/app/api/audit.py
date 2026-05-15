@@ -8,6 +8,11 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.session_context import (
+    SessionContext,
+    get_session_context,
+    visibility_filter,
+)
 from app.db.engine import get_session
 from app.db.models import AuditLog
 from app.schemas import AuditLogEntry
@@ -20,9 +25,15 @@ async def list_audit(
     call_id: Optional[uuid.UUID] = Query(None),
     agent_name: Optional[str] = Query(None),
     limit: int = Query(100, ge=1, le=500),
+    ctx: SessionContext = Depends(get_session_context),
     session: AsyncSession = Depends(get_session),
 ) -> list[AuditLogEntry]:
-    stmt = select(AuditLog).order_by(AuditLog.created_at.desc()).limit(limit)
+    stmt = (
+        select(AuditLog)
+        .where(visibility_filter(AuditLog.session_id, ctx))
+        .order_by(AuditLog.created_at.desc())
+        .limit(limit)
+    )
     if call_id:
         stmt = stmt.where(AuditLog.call_id == call_id)
     if agent_name:

@@ -12,7 +12,74 @@ import type {
 
 const BASE = (process.env.EXPO_PUBLIC_API_BASE ?? 'http://localhost:8000').replace(/\/$/, '');
 
+// Demo iframe sandbox: every visitor of demo.* is identified by an opaque
+// UUID stamped on every demo-side write so concurrent judges do not collide.
+// The token lives in localStorage; first request sends the literal "new" and
+// the backend echoes a freshly-minted uuid in the response header, which we
+// persist for every subsequent fetch. Native / non-browser builds (no
+// localStorage) fall back to in-memory storage — fine because the only path
+// that needs isolation is the web iframe demo.
+const SESSION_HEADER = 'X-Demo-Session';
+const BYPASS_HEADER = 'X-Demo-Bypass-Token';
+const STORAGE_KEY = 'afterglow.demo_session_id';
+const BYPASS_TOKEN = process.env.EXPO_PUBLIC_DEMO_BYPASS_TOKEN ?? '';
+
+let memorySessionId: string | null = null;
+
+function readStoredSession(): string | null {
+  if (memorySessionId) return memorySessionId;
+  try {
+    if (typeof localStorage === 'undefined') return null;
+    return localStorage.getItem(STORAGE_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function writeStoredSession(value: string): void {
+  memorySessionId = value;
+  try {
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem(STORAGE_KEY, value);
+    }
+  } catch {
+    /* private mode / native runtime — ignore */
+  }
+}
+
+/**
+ * Pitch-day escape hatch: appending `?bypass=<token>` to the app URL flips the
+ * client into "production tenant" mode for the rest of the session. The server
+ * matches the same token from the DEMO_BYPASS_TOKEN env var.
+ */
+function detectBypassFromUrl(): void {
+  if (typeof window === 'undefined' || !window.location) return;
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const token = params.get('bypass');
+    if (token && token === BYPASS_TOKEN) {
+      writeStoredSession('bypass');
+    }
+  } catch {
+    /* SSR / non-browser — ignore */
+  }
+}
+
+detectBypassFromUrl();
+
+function currentSessionHeader(): string {
+  return readStoredSession() ?? 'new';
+}
+
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const sessionValue = currentSessionHeader();
+  const sessionHeaders: Record<string, string> = {
+    [SESSION_HEADER]: sessionValue,
+  };
+  if (sessionValue === 'bypass' && BYPASS_TOKEN) {
+    sessionHeaders[BYPASS_HEADER] = BYPASS_TOKEN;
+  }
+
   const res = await fetch(`${BASE}${path}`, {
     ...init,
     headers: {
@@ -20,9 +87,16 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
       ...(init.body && !(init.body instanceof FormData)
         ? { 'Content-Type': 'application/json' }
         : {}),
+      ...sessionHeaders,
       ...(init.headers ?? {}),
     },
   });
+
+  const minted = res.headers.get(SESSION_HEADER);
+  if (minted && minted !== sessionValue && minted !== 'bypass') {
+    writeStoredSession(minted);
+  }
+
   if (!res.ok) {
     const text = await res.text().catch(() => '');
     throw new ApiError(res.status, text || res.statusText);

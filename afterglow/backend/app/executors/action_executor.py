@@ -44,6 +44,7 @@ async def execute_planned_actions(
             async with audit_step(
                 session,
                 call_id=call.id,
+                session_id=call.session_id,
                 agent_name="action_executor",
                 step_type="rejected",
                 payload={
@@ -68,12 +69,14 @@ async def execute_planned_actions(
             evidence=entry.get("evidence"),
             execution_mode=mode,
             status="executed" if mode == "auto" else "manual_required",
+            session_id=call.session_id,
         )
 
         if mode == "auto":
             async with audit_step(
                 session,
                 call_id=call.id,
+                session_id=call.session_id,
                 agent_name="action_executor",
                 step_type="action_exec",
                 payload={"action_type": action_type},
@@ -107,6 +110,7 @@ async def revert_action(
     async with audit_step(
         session,
         call_id=action.call_id,
+        session_id=action.session_id,
         agent_name="action_executor",
         step_type="revert",
         payload={"action_id": str(action.id), "action_type": action.action_type, "by": reverted_by},

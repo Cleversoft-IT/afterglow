@@ -51,8 +51,9 @@ class Template(Base):
             "uq_template_active",
             "is_active",
             unique=True,
-            postgresql_where=text("is_active IS TRUE"),
+            postgresql_where=text("is_active IS TRUE AND session_id IS NULL"),
         ),
+        Index("idx_templates_session", "session_id"),
     )
 
     id: Mapped[uuid.UUID] = _uuid_pk()
@@ -69,6 +70,9 @@ class Template(Base):
     )
     prompt_hints: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=False)
+    session_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), nullable=True
+    )
     created_at: Mapped[datetime] = _ts()
     updated_at: Mapped[datetime] = _ts_updated()
 
@@ -91,8 +95,21 @@ class TemplateVersion(Base):
 class Customer(Base):
     __tablename__ = "customers"
     __table_args__ = (
-        UniqueConstraint("phone_e164", name="uq_customer_phone"),
         Index("idx_customers_phone", "phone_e164"),
+        Index(
+            "uq_customer_phone_seed",
+            "phone_e164",
+            unique=True,
+            postgresql_where=text("session_id IS NULL"),
+        ),
+        Index(
+            "uq_customer_phone_session",
+            "phone_e164",
+            "session_id",
+            unique=True,
+            postgresql_where=text("session_id IS NOT NULL"),
+        ),
+        Index("idx_customers_session", "session_id"),
     )
 
     id: Mapped[uuid.UUID] = _uuid_pk()
@@ -105,6 +122,9 @@ class Customer(Base):
     last_call_at: Mapped[Optional[datetime]] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    session_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), nullable=True
+    )
     created_at: Mapped[datetime] = _ts()
     updated_at: Mapped[datetime] = _ts_updated()
 
@@ -114,6 +134,7 @@ class Call(Base):
     __table_args__ = (
         Index("idx_calls_status", "status"),
         Index("idx_calls_customer", "customer_id", "created_at"),
+        Index("idx_calls_session", "session_id"),
     )
 
     id: Mapped[uuid.UUID] = _uuid_pk()
@@ -135,6 +156,9 @@ class Call(Base):
     )
     completed_at: Mapped[Optional[datetime]] = mapped_column(
         DateTime(timezone=True), nullable=True
+    )
+    session_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), nullable=True
     )
     created_at: Mapped[datetime] = _ts()
 
@@ -160,6 +184,7 @@ class ExecutedAction(Base):
     __table_args__ = (
         Index("idx_actions_call", "call_id"),
         Index("idx_actions_status", "status", "created_at"),
+        Index("idx_actions_session", "session_id"),
     )
 
     id: Mapped[uuid.UUID] = _uuid_pk()
@@ -182,6 +207,9 @@ class ExecutedAction(Base):
         DateTime(timezone=True), nullable=True
     )
     reverted_by: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    session_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), nullable=True
+    )
     created_at: Mapped[datetime] = _ts()
 
 
@@ -190,6 +218,7 @@ class AuditLog(Base):
     __table_args__ = (
         Index("idx_audit_call", "call_id", "created_at"),
         Index("idx_audit_agent", "agent_name", "created_at"),
+        Index("idx_audit_session", "session_id"),
     )
 
     id: Mapped[uuid.UUID] = _uuid_pk()
@@ -205,6 +234,9 @@ class AuditLog(Base):
     payload: Mapped[Optional[dict[str, Any]]] = mapped_column(JSONB, nullable=True)
     status: Mapped[str] = mapped_column(String(20), default="success")
     error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    session_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), nullable=True
+    )
     created_at: Mapped[datetime] = _ts()
 
 
@@ -213,6 +245,7 @@ class CustomerMemoryChunk(Base):
     __table_args__ = (
         UniqueConstraint("vultr_collection_id", "vultr_item_id", name="uq_memory_chunk"),
         Index("idx_memory_customer", "customer_id", "created_at"),
+        Index("idx_memory_session", "session_id"),
     )
 
     id: Mapped[uuid.UUID] = _uuid_pk()
@@ -226,4 +259,37 @@ class CustomerMemoryChunk(Base):
     vultr_item_id: Mapped[str] = mapped_column(String(200), nullable=False)
     summary: Mapped[str] = mapped_column(Text, nullable=False)
     chunk_metadata: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
+    session_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), nullable=True
+    )
     created_at: Mapped[datetime] = _ts()
+
+
+class DemoSession(Base):
+    """Anonymous sandbox for a single demo iframe visitor.
+
+    A row materializes the first time the backend sees a request with a
+    new `X-Demo-Session` header from the iframe origin. The session scopes
+    every write the visitor makes (template wizard outputs, calls, customers,
+    audit, executed actions) so concurrent judges do not stomp on each other.
+
+    `active_template_id` replaces `Template.is_active` for demo callers: in
+    demo mode `GET /templates/active` reads from here, `PUT /templates/active`
+    updates here. Production single-tenant (no header) keeps using `is_active`.
+    """
+
+    __tablename__ = "demo_sessions"
+    __table_args__ = (Index("idx_demo_sessions_last_seen", "last_seen_at"),)
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    active_template_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("templates.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    created_at: Mapped[datetime] = _ts()
+    last_seen_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=False,
+    )

@@ -7,6 +7,11 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.session_context import (
+    SessionContext,
+    get_session_context,
+    visibility_filter,
+)
 from app.db.engine import get_session
 from app.db.models import ExecutedAction
 from app.executors.action_executor import revert_action
@@ -17,11 +22,16 @@ router = APIRouter(prefix="/api/v1/actions", tags=["actions"])
 
 @router.post("/{action_id}/revert", response_model=CallActionView)
 async def revert(
-    action_id: uuid.UUID, session: AsyncSession = Depends(get_session)
+    action_id: uuid.UUID,
+    ctx: SessionContext = Depends(get_session_context),
+    session: AsyncSession = Depends(get_session),
 ) -> CallActionView:
     row = (
         await session.execute(
-            select(ExecutedAction).where(ExecutedAction.id == action_id)
+            select(ExecutedAction).where(
+                ExecutedAction.id == action_id,
+                visibility_filter(ExecutedAction.session_id, ctx),
+            )
         )
     ).scalar_one_or_none()
     if row is None:

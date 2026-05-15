@@ -23,6 +23,18 @@ L'AI esegue **autonomamente** anche le azioni esterne (booking, WhatsApp, email,
 
 **How to apply:** ogni UI nuova chiama `api.getCurrentBusiness()`. Niente selettori "business" per la dashboard. Le demo URL del dialer (`demo-restaurant-known`, `demo-dentist`, ecc.) restano multi-business.
 
+### 1.quater. Demo iframe isolation via `session_id` (2026-05-15)
+
+L'app è caricata in iframe da `demo.95...` durante la judging window; più giudici cliccano contemporaneamente. Soluzione: ogni visitatore riceve un `X-Demo-Session: <uuid>` (server-minted, persistito su `localStorage`) e tutte le scritture sandbox sono scopate via `session_id` su 6 tabelle (`calls`, `audit_log`, `executed_actions`, `customer_memory_chunks`, `templates`, `customers`) + tabella `demo_sessions`. Letture: `WHERE session_id = me OR session_id IS NULL` — i seed sono shared read-only. Customer matchato dai seed → clone-on-write nella sessione. Pitch live via `?bypass=<token>` evita la sandbox e usa il tenant produzione.
+
+**Vultr Vector Store skipato in demo mode** (sia RAG read sia chunk write): l'SDK Vultr (`vultr_inference.py`) non espone metadata filter né su `/vector_store/{id}/items` né su `/chat/completions/RAG`, una collection-per-sessione moltiplicherebbe risorse Vultr senza garanzia di cleanup, e il valore della RAG nella demo è marginale (giudice fa 1-2 call, niente "seconda chiamata stesso chiamante"). L'audit log scrive esplicitamente `status=skipped reason=demo_session` sui passi `memory_lookup` e `memory_updater` così la wiring resta visibile. Production single-tenant continua a usare Vultr Vector Store a piena banda — il pitch Vultr Award è coperto raccontandolo in landing/README/ARCHITECTURE.md (sezione "Demo isolation policy").
+
+**Cleanup:** asyncio task in lifespan FastAPI sweep ogni 30 min sessioni con `last_seen_at < now-24h`, cascade delete di tutto il sub-tree.
+
+**Why:** la decisione 1.bis (single-tenant in produzione) resta vincolata. La sandbox è layer opzionale che si attiva solo quando l'header è presente; production senza header = comportamento single-tenant immutato. Aderiscere al vincolo di prodotto + non bruciare Presentation per concorrenza demo.
+
+**How to apply:** ogni nuovo endpoint deve aggiungere `ctx: SessionContext = Depends(get_session_context)` e usare `visibility_filter(Model.session_id, ctx)` per le letture, e impostare `session_id=ctx.session_id` sulle scritture. Ogni `audit_step(...)` deve ricevere `session_id=call.session_id` (o l'equivalente). Schema/migration: `0003_demo_sandbox_session.py`. Coordinate vive: `afterglow/backend/app/api/session_context.py`, `afterglow/backend/app/tasks/session_cleanup.py`.
+
 ### 1.ter. Pipeline post-call collassata in un solo Gemini call (revisione 2026-05-15)
 **Architettura attuale:** zero AI durante la chiamata; tutta l'analisi gira **dopo** la fine call in un singolo Gemini structured-output call (`backend/app/agents/call_analyzer.py`). Lo schema Pydantic `CallAnalysis` produce in un colpo: fields/confidence/evidence, intent/sentiment/language/urgency, planned_actions e `next_call_briefing` (paragrafo in linguaggio naturale per l'operatore della prossima call).
 

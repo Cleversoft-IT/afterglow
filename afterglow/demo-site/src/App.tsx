@@ -40,6 +40,11 @@ export default function App() {
             title="Watch the call get structured"
             body="Speechmatics transcribes, Gemini extracts and classifies in a single structured pass, autonomous actions fire (and can be reverted)."
           />
+          <Step
+            n={4}
+            title="Memory of returning callers"
+            body="In production every call enriches a Vultr Vector Store collection. The next ring pre-fetches the caller's history via /v1/chat/completions/RAG so the operator opens the call already briefed. The public sandbox below isolates each visitor (audit log marks Vector Store as skipped on purpose), so try a private deployment to see the full memory loop."
+          />
         </ol>
       </section>
 

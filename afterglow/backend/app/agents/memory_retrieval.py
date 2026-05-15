@@ -27,13 +27,22 @@ async def retrieve_customer_context(
     collection_id: Optional[str],
     phone_e164: str,
     domain_hint: str,
+    is_demo: bool = False,
 ) -> str:
     """Ask Vultr RAG for any prior facts about this phone number.
 
     Returns a short paragraph (or empty string) the Orchestrator can splice into
     its prompt as additional context. Failures degrade gracefully to "" so the
     rest of the pipeline keeps running.
+
+    `is_demo=True` skips the RAG call entirely. Public demo iframe visitors are
+    isolated per session (see SessionContext); we never read from the shared
+    Vultr collection in demo mode so one visitor's calls cannot leak into
+    another's briefing. The skip is logged via the audit_step wrapper in the
+    orchestrator with status='skipped' so the judge sees the wiring exists.
     """
+    if is_demo:
+        return ""
     if not collection_id:
         return ""
 
