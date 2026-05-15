@@ -19,12 +19,21 @@ const BASE = (process.env.EXPO_PUBLIC_API_BASE ?? 'http://localhost:8000').repla
 // persist for every subsequent fetch. Native / non-browser builds (no
 // localStorage) fall back to in-memory storage — fine because the only path
 // that needs isolation is the web iframe demo.
+//
+// Race protection: the app fires several parallel fetches at boot (root layout
+// primes templates, tab index lists calls, etc). Without a singleton promise
+// they would all send "new" simultaneously and the server would mint N
+// disconnected sessions; whichever response landed last would win
+// `memorySessionId` and the other N-1 sessions become orphan rows. The
+// `sessionPromise` below serializes the first mint so every subsequent fetch
+// waits and reuses the same uuid.
 const SESSION_HEADER = 'X-Demo-Session';
 const BYPASS_HEADER = 'X-Demo-Bypass-Token';
 const STORAGE_KEY = 'afterglow.demo_session_id';
 const BYPASS_TOKEN = process.env.EXPO_PUBLIC_DEMO_BYPASS_TOKEN ?? '';
 
 let memorySessionId: string | null = null;
+let sessionPromise: Promise<string> | null = null;
 
 function readStoredSession(): string | null {
   if (memorySessionId) return memorySessionId;
@@ -43,7 +52,8 @@ function writeStoredSession(value: string): void {
       localStorage.setItem(STORAGE_KEY, value);
     }
   } catch {
-    /* private mode / native runtime — ignore */
+    /* private mode / native runtime / partitioned storage — ignore;
+       memorySessionId still holds the value for the rest of the page. */
   }
 }
 
@@ -67,12 +77,46 @@ function detectBypassFromUrl(): void {
 
 detectBypassFromUrl();
 
-function currentSessionHeader(): string {
-  return readStoredSession() ?? 'new';
+async function primeSession(): Promise<string> {
+  // Lightweight handshake: hit an endpoint that runs through
+  // get_session_context so the server mints a DemoSession row and echoes the
+  // uuid via X-Demo-Session. Templates list is fine — it is the cheapest
+  // sandbox-aware GET.
+  try {
+    const res = await fetch(`${BASE}/api/v1/templates`, {
+      headers: {
+        Accept: 'application/json',
+        [SESSION_HEADER]: 'new',
+      },
+    });
+    const minted = res.headers.get(SESSION_HEADER);
+    if (minted && minted !== 'new') {
+      writeStoredSession(minted);
+      return minted;
+    }
+  } catch {
+    /* network blip — fall through to 'new' so the caller keeps going */
+  }
+  return 'new';
+}
+
+async function ensureSession(): Promise<string> {
+  if (memorySessionId) return memorySessionId;
+  const stored = readStoredSession();
+  if (stored) {
+    memorySessionId = stored;
+    return stored;
+  }
+  if (!sessionPromise) {
+    sessionPromise = primeSession().finally(() => {
+      sessionPromise = null;
+    });
+  }
+  return sessionPromise;
 }
 
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
-  const sessionValue = currentSessionHeader();
+  const sessionValue = await ensureSession();
   const sessionHeaders: Record<string, string> = {
     [SESSION_HEADER]: sessionValue,
   };
