@@ -1,10 +1,17 @@
 from functools import lru_cache
+from typing import Optional
+from uuid import UUID
+
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_file=".env", env_file_encoding="utf-8", extra="ignore"
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+        populate_by_name=True,
     )
 
     app_env: str = "local"
@@ -13,6 +20,13 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
     max_file_size_mb: int = 20
     demo_mode: bool = False
+
+    # Single-tenant pinning. If unset, /businesses/current returns the oldest
+    # business in DB. The multi-business demo URLs still work because they
+    # resolve through business_domain (see /dialer/incoming/[callId]).
+    default_business_id: Optional[UUID] = Field(
+        default=None, alias="AFTERGLOW_DEFAULT_BUSINESS_ID"
+    )
 
     database_url: str = "postgresql+asyncpg://afterglow:afterglow@postgres:5432/afterglow"
 

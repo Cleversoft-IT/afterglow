@@ -7,7 +7,6 @@ const NAV = [
   { href: "/dashboard/templates/wizard", label: "Template wizard" },
   { href: "/dashboard/audit", label: "Audit log" },
   { href: "/dashboard/settings/privacy", label: "Privacy" },
-  { href: "/dashboard/business", label: "Business" },
 ];
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {

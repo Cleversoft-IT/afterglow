@@ -6,9 +6,14 @@ injected into the Orchestrator.
 """
 from __future__ import annotations
 
+import logging
 from typing import Optional
 
+import httpx
+
 from app.integrations import vultr_inference
+
+logger = logging.getLogger("afterglow")
 
 
 async def retrieve_customer_context(
@@ -20,7 +25,8 @@ async def retrieve_customer_context(
     """Ask Vultr RAG for any prior facts about this phone number.
 
     Returns a short paragraph (or empty string) the Orchestrator can splice into
-    its prompt as additional context.
+    its prompt as additional context. Failures degrade gracefully to "" so the
+    rest of the pipeline keeps running.
     """
     if not collection_id:
         return ""
@@ -44,7 +50,23 @@ async def retrieve_customer_context(
         },
     ]
 
-    raw = await vultr_inference.chat_completion_rag(messages, collection=collection_id)
+    try:
+        raw = await vultr_inference.chat_completion_rag(
+            messages, collection=collection_id
+        )
+    except httpx.HTTPStatusError as exc:
+        logger.warning(
+            "memory_retrieval: Vultr RAG returned %s — proceeding without prior memory.",
+            exc.response.status_code,
+        )
+        return ""
+    except httpx.HTTPError as exc:
+        logger.warning(
+            "memory_retrieval: Vultr RAG network error (%s) — proceeding without prior memory.",
+            exc,
+        )
+        return ""
+
     try:
         content = raw["choices"][0]["message"]["content"] or ""
     except (KeyError, IndexError):

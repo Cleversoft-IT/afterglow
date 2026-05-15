@@ -59,6 +59,10 @@ Per minimizzare ops e massimizzare lo score "Application of Technology + Busines
 | **Sicurezza** | *"All data transmitted to and from Vultr Serverless Inference is encrypted"* |
 | **Test interattivo** | Console Vultr → tab **Prompt** (prima di scalare) |
 
+> ⚠️ **Non confondere `VULTR_API_KEY` con `INFERENCE_API_KEY`.**
+> - `VULTR_API_KEY` (lo trovi su *Settings → API* della console Vultr) controlla l'**account** (VM, billing, subscription provisioning). Su `api.vultr.com` richiede anche l'**allowlist dell'IP**: senza IP whitelistato risponde `401 "Unauthorized IP address: <ip>"`.
+> - `INFERENCE_API_KEY` (lo ottieni **dentro** la subscription Inference, dal pannello *Serverless → Inference → <subscription> → API keys*) è la chiave da usare con `api.vultrinference.com/v1/*`. Se passi una `VULTR_API_KEY` sull'endpoint inference ricevi `{"message":"Invalid API key"}`. Sintomo classico: tutto funziona finché non chiami `/chat/completions/RAG` o `/vector_store`, dove risponde 422 / "Invalid API key".
+
 ### Endpoint disponibili
 
 | Endpoint | Scopo |

@@ -6,28 +6,28 @@ import { api } from "@/lib/api";
 import type { Business, WizardResponse } from "@/lib/types";
 
 export default function WizardPage() {
-  const [businesses, setBusinesses] = useState<Business[]>([]);
-  const [businessId, setBusinessId] = useState<string>("");
+  const [business, setBusiness] = useState<Business | null>(null);
   const [description, setDescription] = useState<string>("");
   const [result, setResult] = useState<WizardResponse | null>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
   useEffect(() => {
-    api.listBusinesses().then((bs) => {
-      setBusinesses(bs);
-      if (bs.length > 0) setBusinessId(bs[0].id);
-    });
+    api.getCurrentBusiness().then(setBusiness).catch(() => setBusiness(null));
   }, []);
 
   async function generate(e: React.FormEvent) {
     e.preventDefault();
+    if (!business) {
+      setErr("No business provisioned. Run the seed first.");
+      return;
+    }
     setBusy(true);
     setErr(null);
     setResult(null);
     try {
       const out = await api.templateWizard({
-        business_id: businessId,
+        business_id: business.id,
         description,
       });
       setResult(out);
@@ -46,24 +46,15 @@ export default function WizardPage() {
           Describe your phone intake in plain language. The AI proposes a
           structured template you can edit and save.
         </p>
+        {business && (
+          <p className="mt-2 text-xs text-zinc-500">
+            Target: <span className="font-medium text-zinc-700">{business.name}</span>{" "}
+            ({business.domain})
+          </p>
+        )}
       </header>
 
       <form onSubmit={generate} className="space-y-4 max-w-2xl">
-        <label className="block text-sm">
-          <span className="text-zinc-700">Business</span>
-          <select
-            value={businessId}
-            onChange={(e) => setBusinessId(e.target.value)}
-            className="mt-1 w-full rounded border px-3 py-2"
-          >
-            {businesses.map((b) => (
-              <option key={b.id} value={b.id}>
-                {b.name} ({b.domain})
-              </option>
-            ))}
-          </select>
-        </label>
-
         <label className="block text-sm">
           <span className="text-zinc-700">Description</span>
           <textarea
@@ -77,7 +68,7 @@ export default function WizardPage() {
 
         <button
           type="submit"
-          disabled={busy || description.length < 20}
+          disabled={busy || description.length < 20 || !business}
           className="px-4 py-2 rounded bg-afterglow-700 text-white text-sm hover:bg-afterglow-800 disabled:opacity-50"
         >
           {busy ? "Generating…" : "Generate template"}

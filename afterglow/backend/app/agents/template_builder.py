@@ -1,54 +1,120 @@
-"""Template Builder Agent — Gemini 3 Flash Preview + structured output.
+"""Template Builder Agent — Gemini structured-output.
 
 Stand-alone agent (not part of the call pipeline) — drives the prompt-to-template
 wizard from the dashboard. Uses Pydantic schema-bound structured output instead
 of function calling, since the contract is deterministic.
+
+Target model: settings.gemini_template_builder_model (default
+gemini-3-flash-preview, paid-tier free on Google AI Studio). Falls back to
+gemini_default_model on failure, and finally to a hand-crafted barbershop
+template if Gemini is unreachable or no API key is set.
 """
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from app.config import get_settings
 from app.schemas.templates import TemplateWizardResponse
 
+logger = logging.getLogger("afterglow")
+
 
 _SYSTEM_INSTRUCTION = (
     "You are the Template Builder Agent inside Afterglow.\n\n"
     "A small business owner describes their phone intake. Turn that description "
-    "into a structured template:\n"
-    "- fields_schema: 4-10 fields. Mark health/financial/PII as sensitive:true.\n"
-    "- action_types: 2-5 actions. Use execution_mode='manual-only' for "
-    "irreversible or sensitive actions (cancellations, insurance, prescriptions).\n"
-    "- custom_dictionary: 8-20 domain-specific terms helpful for ASR.\n"
-    "- prompt_hints: 1-3 sentences for the Extraction Agent.\n"
+    "into a structured template the operator can review and save. Rules:\n"
+    "- name: short, in the requested language. Title-case.\n"
+    "- description: 1-2 sentences, in the requested language.\n"
+    "- fields_schema: 4-10 fields. Use lowercase snake_case keys. "
+    "Allowed types: string, integer, boolean, date, time, enum, string_list. "
+    "Mark health/financial/PII fields as sensitive:true. "
+    "For enum types fill `options` with the valid values.\n"
+    "- action_types: 2-5 follow-up actions. Use dot.namespaced keys "
+    "(e.g. booking.create, sms.send_reminder). "
+    "Set execution_mode='manual-only' for irreversible or sensitive actions "
+    "(cancellations, insurance claims, prescriptions). All other actions are 'auto'.\n"
+    "- custom_dictionary: 8-20 domain-specific terms an ASR engine should know "
+    "(slang, brand names, jargon) in the requested language.\n"
+    "- prompt_hints: 1-3 sentences guiding the Extraction Agent on edge cases "
+    "and ambiguous wording it should expect in this domain.\n"
 )
 
 
 async def build_template(description: str, language: str = "it") -> TemplateWizardResponse:
     """Generate a TemplateWizardResponse from a free-text business description.
 
-    Day 1: returns a hand-crafted barbershop template so the wizard UI can be
-    demoed end-to-end without Gemini credentials. Day 4: switch to real Gemini 3
-    Flash Preview with response_schema=TemplateWizardResponse.
+    Tries the template-builder model first, then the default model, then the
+    offline stub. Each fallback is logged so the operator sees what happened.
     """
     settings = get_settings()
 
     if not settings.google_api_key:
+        logger.info("template_builder: GOOGLE_API_KEY not set — returning stub.")
         return _fake_barbershop_template(description)
 
-    # TODO day 4: real call.
-    # from google import genai
-    # client = genai.Client(api_key=settings.google_api_key)
-    # resp = client.models.generate_content(
-    #     model=settings.gemini_template_builder_model,
-    #     contents=f"{_SYSTEM_INSTRUCTION}\n\nUser description:\n{description}",
-    #     config={
-    #         "response_mime_type": "application/json",
-    #         "response_schema": TemplateWizardResponse,
-    #     },
-    # )
-    # return TemplateWizardResponse.model_validate_json(resp.text)
+    user_prompt = (
+        f"Output language: {language}\n\n"
+        f"Business owner description:\n{description.strip()}\n"
+    )
+
+    for model in _candidate_models(settings):
+        result = await _try_generate(model, user_prompt)
+        if result is not None:
+            return result
+
+    logger.warning(
+        "template_builder: every Gemini candidate failed — returning offline stub."
+    )
     return _fake_barbershop_template(description)
+
+
+def _candidate_models(settings: Any) -> list[str]:
+    primary = settings.gemini_template_builder_model
+    secondary = settings.gemini_default_model
+    candidates: list[str] = []
+    for m in (primary, secondary):
+        if m and m not in candidates:
+            candidates.append(m)
+    return candidates
+
+
+async def _try_generate(model: str, user_prompt: str) -> TemplateWizardResponse | None:
+    from google import genai
+    from google.genai import types as genai_types
+
+    settings = get_settings()
+    client = genai.Client(api_key=settings.google_api_key)
+
+    try:
+        resp = await client.aio.models.generate_content(
+            model=model,
+            contents=user_prompt,
+            config=genai_types.GenerateContentConfig(
+                system_instruction=_SYSTEM_INSTRUCTION,
+                response_mime_type="application/json",
+                response_schema=TemplateWizardResponse,
+                temperature=0.3,
+            ),
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("template_builder: model %s raised %s — trying next.", model, exc)
+        return None
+
+    text = (resp.text or "").strip()
+    if not text:
+        logger.warning("template_builder: model %s returned empty text — trying next.", model)
+        return None
+
+    try:
+        return TemplateWizardResponse.model_validate_json(text)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(
+            "template_builder: model %s output failed schema validation (%s) — trying next.",
+            model,
+            exc,
+        )
+        return None
 
 
 def _fake_barbershop_template(description: str) -> TemplateWizardResponse:

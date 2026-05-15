@@ -1,6 +1,8 @@
 // Thin fetch wrapper. Talks to the Next.js BFF rewrites (so no CORS in the browser).
+// On the server (RSC) rewrites don't apply, so use an absolute URL from NEXT_PUBLIC_API_BASE.
 
-const BASE = "";
+const BASE =
+  typeof window === "undefined" ? process.env.NEXT_PUBLIC_API_BASE ?? "" : "";
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
@@ -17,6 +19,13 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export const api = {
+  // The single-tenant entry point. UIs not tied to the multi-domain demo
+  // dialer should call this and forget about business_id selection.
+  getCurrentBusiness: () =>
+    request<import("./types").Business>("/api/v1/businesses/current"),
+
+  // Kept for the multi-domain demo dialer at /dialer/incoming/[callId], which
+  // routes by domain. Not used by the dashboard.
   listBusinesses: () => request<import("./types").Business[]>("/api/v1/businesses"),
   getBusiness: (id: string) => request<import("./types").Business>(`/api/v1/businesses/${id}`),
 

@@ -1,21 +1,34 @@
-"""Orchestrator — entry point for the multi-agent call pipeline.
+"""Orchestrator — drives a call through the post-call pipeline.
 
-For Day 1 this is a thin wrapper that exposes a single async function
-`run_pipeline` invoked by the FastAPI background task. As we wire each
-sub-agent (Day 2-4) the orchestrator gains real ADK + Vultr calls.
+Design (revised):
+    The human handles the call live. The orchestrator runs entirely AFTER the
+    call ends. There is one Gemini pass (see call_analyzer.py) that produces
+    the structured analysis in a single shot, grounded on the transcript,
+    template and prior facts retrieved from the Vultr Vector Store.
+
+Steps:
+    1. Speechmatics → transcript (stubbed in DEMO_MODE or until day-2 wiring)
+    2. Customer match by phone
+    3. Vultr Vector Store RAG pre-fetch → prior_facts text
+    4. Gemini Call Analyzer → CallAnalysis (single structured-output call)
+    5. Persist ExtractedFields
+    6. Deterministic Action Executor
+    7. Memory write-back: customer.memory_summary + push to Vector Store
 """
 from __future__ import annotations
 
 import json
+import logging
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
 
+import httpx
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.agents import classification, memory_retrieval
+from app.agents import call_analyzer, memory_retrieval
 from app.audit.logger import audit_step
 from app.config import get_settings
 from app.db.models import (
@@ -23,13 +36,13 @@ from app.db.models import (
     Call,
     Customer,
     CustomerMemoryChunk,
-    ExecutedAction,
     ExtractedFields,
     Template,
 )
 from app.executors.action_executor import execute_planned_actions
 from app.integrations import speechmatics, vultr_inference
 
+logger = logging.getLogger("afterglow")
 settings = get_settings()
 
 
@@ -52,7 +65,7 @@ async def run_pipeline(session: AsyncSession, call_id: uuid.UUID) -> None:
         await session.execute(select(Template).where(Template.id == call.template_id))
     ).scalar_one()
 
-    # 1) Speechmatics transcription
+    # 1) Speechmatics — transcribe (stub when DEMO_MODE or no key).
     async with audit_step(
         session, call_id=call.id, agent_name="speechmatics", step_type="tool_call"
     ):
@@ -70,7 +83,7 @@ async def run_pipeline(session: AsyncSession, call_id: uuid.UUID) -> None:
     call.status = "analyzing"
     await session.commit()
 
-    # 2) Customer matching + memory retrieval (parallel-ish, serial for simplicity)
+    # 2) Customer match.
     customer = (
         await session.execute(
             select(Customer).where(
@@ -82,78 +95,90 @@ async def run_pipeline(session: AsyncSession, call_id: uuid.UUID) -> None:
     if customer:
         call.customer_id = customer.id
 
-    memory_context = ""
+    # 3) RAG pre-fetch — semantic lookup of past calls from this number.
+    prior_facts = ""
     async with audit_step(
         session,
         call_id=call.id,
-        agent_name="memory_retrieval",
-        step_type="llm_call",
-        model=settings.vultr_inference_model,
+        agent_name="memory_lookup",
+        step_type="tool_call",
+        model="vultr-rag",
     ):
-        memory_context = await memory_retrieval.retrieve_customer_context(
+        prior_facts = await memory_retrieval.retrieve_customer_context(
             collection_id=business.vultr_collection_id,
             phone_e164=call.phone_e164,
             business_domain=business.domain,
         )
 
-    # 3) Classification (Vultr Kimi-K2)
+    # 4) Single Gemini structured-output call.
     async with audit_step(
         session,
         call_id=call.id,
-        agent_name="classification",
-        step_type="llm_call",
-        model=settings.vultr_inference_model,
-    ):
-        classification_result = await classification.classify(
-            transcript_text=transcript.text, domain=business.domain
-        )
-
-    # 4) Extraction stub for Day 1 — surfaces template's first 3 fields with fake values.
-    extraction_result = _stub_extraction(template, transcript.text)
-    async with audit_step(
-        session,
-        call_id=call.id,
-        agent_name="extraction",
+        agent_name="call_analyzer",
         step_type="llm_call",
         model=settings.gemini_default_model,
-        payload={"stub": True},
     ):
-        pass
+        analysis = await call_analyzer.analyze_call(
+            transcript_text=transcript.text,
+            template_name=template.name,
+            fields_schema=template.fields_schema,
+            action_types=template.action_types,
+            prompt_hints=template.prompt_hints,
+            business_domain=business.domain,
+            prior_facts=prior_facts,
+        )
 
-    extracted = ExtractedFields(
-        call_id=call.id,
-        fields=extraction_result["fields"],
-        confidence=extraction_result["confidence"],
-        evidence=extraction_result["evidence"],
-        intent=classification_result.get("intent"),
-        sentiment=classification_result.get("sentiment"),
-        urgency=classification_result.get("urgency"),
+    # 5) Persist extracted fields.
+    fields_dict, confidence_dict, evidence_dict = _coerce_extractions(
+        analysis.fields, template.fields_schema
     )
-    session.add(extracted)
+    session.add(
+        ExtractedFields(
+            call_id=call.id,
+            fields=fields_dict,
+            confidence=confidence_dict,
+            evidence=evidence_dict,
+            intent=analysis.intent,
+            sentiment=analysis.sentiment,
+            urgency=analysis.urgency,
+        )
+    )
 
-    # 5) Action plan stub for Day 1 — runs every 'auto' action from the template.
-    plan = _stub_action_plan(template, extraction_result["fields"])
-
-    # 6) Execute
+    # 6) Deterministic action executor.
+    plan = []
+    for a in analysis.planned_actions:
+        entry = a.model_dump()
+        try:
+            entry["payload"] = json.loads(entry.pop("payload_json") or "{}")
+        except json.JSONDecodeError:
+            entry["payload"] = {}
+            entry.pop("payload_json", None)
+        plan.append(entry)
     async with audit_step(
         session,
         call_id=call.id,
         agent_name="action_executor",
         step_type="action_exec",
     ):
-        executed_actions = await execute_planned_actions(
+        await execute_planned_actions(
             session, call=call, customer=customer, template=template, plan=plan
         )
 
-    # 7) Memory update stub — push a chunk via Vultr Vector Store (or fake).
+    # 7) Memory write-back. The briefing is the only AI-authored summary the
+    # operator will read on the next call's caller card.
     if customer is not None:
-        await _stub_memory_update(
+        await _persist_memory(
             session,
             call=call,
             customer=customer,
             business=business,
-            extraction=extraction_result,
-            classification_result=classification_result,
+            briefing=analysis.next_call_briefing,
+            classification={
+                "intent": analysis.intent,
+                "sentiment": analysis.sentiment,
+                "language": analysis.language,
+                "urgency": analysis.urgency,
+            },
         )
 
     call.status = "completed"
@@ -162,134 +187,101 @@ async def run_pipeline(session: AsyncSession, call_id: uuid.UUID) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Day 1 stubs — replaced with real ADK calls in Day 2/3.
+# Helpers
 # ---------------------------------------------------------------------------
 
 
-def _stub_extraction(template: Template, transcript_text: str) -> dict[str, Any]:
-    """Heuristic extraction so the pipeline produces visible structured output."""
+def _coerce_extractions(
+    extractions: list[call_analyzer.FieldExtraction],
+    fields_schema: list[dict[str, Any]],
+) -> tuple[dict[str, Any], dict[str, float], dict[str, str]]:
+    """Turn the LLM's typed list into three keyed dicts and cast values."""
+    type_by_key = {f["key"]: f.get("type", "string") for f in fields_schema}
+
     fields: dict[str, Any] = {}
     confidence: dict[str, float] = {}
     evidence: dict[str, str] = {}
 
-    text_lower = transcript_text.lower()
-    if "quattro" in text_lower or "four" in text_lower:
-        fields["party_size"] = 4
-        confidence["party_size"] = 0.91
-        evidence["party_size"] = "siamo in quattro"
-    if "marco" in text_lower:
-        fields["customer_name"] = "Marco"
-        confidence["customer_name"] = 0.88
-        evidence["customer_name"] = "Mi chiamo Marco."
-    if "otto e mezza" in text_lower or "20:30" in text_lower:
-        fields["booking_time"] = "20:30"
-        confidence["booking_time"] = 0.86
-        evidence["booking_time"] = "verso le otto e mezza"
-    if "glutine" in text_lower:
-        fields["allergies"] = ["glutine"]
-        confidence["allergies"] = 0.78
-        evidence["allergies"] = "una persona e intollerante al glutine"
-    if "whatsapp" in text_lower:
-        fields["callback_channel"] = "whatsapp"
-        confidence["callback_channel"] = 0.95
-        evidence["callback_channel"] = "Mi potete confermare su WhatsApp?"
+    for item in extractions:
+        ftype = type_by_key.get(item.key, "string")
+        fields[item.key] = _cast_value(item.value, ftype)
+        confidence[item.key] = item.confidence
+        evidence[item.key] = item.evidence
 
-    return {"fields": fields, "confidence": confidence, "evidence": evidence}
+    return fields, confidence, evidence
 
 
-def _stub_action_plan(template: Template, fields: dict[str, Any]) -> list[dict[str, Any]]:
-    plan: list[dict[str, Any]] = []
-    for action in template.action_types:
-        if action.get("execution_mode") == "manual-only":
-            continue
-        if action["key"] in ("booking.create", "appointment.create", "appointment.create_inspection"):
-            plan.append(
-                {
-                    "action_type": action["key"],
-                    "title": action["label"],
-                    "summary": "Create booking from extracted fields",
-                    "payload": fields,
-                    "confidence": 0.9,
-                    "execution_mode": "auto",
-                    "evidence": ["siamo in quattro", "verso le otto e mezza"],
-                }
-            )
-        elif action["key"].startswith("whatsapp."):
-            plan.append(
-                {
-                    "action_type": action["key"],
-                    "title": action["label"],
-                    "summary": "Send confirmation",
-                    "payload": {
-                        "to": fields.get("phone_e164"),
-                        "body": f"Confirmed for {fields.get('party_size', '?')} guests.",
-                    },
-                    "confidence": 0.88,
-                    "execution_mode": "auto",
-                    "evidence": [],
-                }
-            )
-        elif action["key"] in ("customer.update_profile", "patient.update_profile"):
-            plan.append(
-                {
-                    "action_type": action["key"],
-                    "title": action["label"],
-                    "summary": "Update customer profile",
-                    "payload": {"fields": fields},
-                    "confidence": 0.85,
-                    "execution_mode": "auto",
-                    "evidence": [],
-                }
-            )
-    return plan
+def _cast_value(raw: str, ftype: str) -> Any:
+    if raw is None:
+        return None
+    if ftype == "integer":
+        try:
+            return int(raw)
+        except (TypeError, ValueError):
+            return raw
+    if ftype == "boolean":
+        return raw.strip().lower() in ("true", "yes", "sì", "si", "1")
+    if ftype == "string_list":
+        s = raw.strip()
+        if s.startswith("[") and s.endswith("]"):
+            try:
+                return json.loads(s)
+            except json.JSONDecodeError:
+                pass
+        return [item.strip() for item in s.split(",") if item.strip()]
+    return raw
 
 
-async def _stub_memory_update(
+async def _persist_memory(
     session: AsyncSession,
     *,
     call: Call,
     customer: Customer,
     business: Business,
-    extraction: dict[str, Any],
-    classification_result: dict[str, Any],
+    briefing: str,
+    classification: dict[str, Any],
 ) -> None:
-    summary_text = (
-        f"Customer called on {datetime.now(timezone.utc).date().isoformat()}. "
-        f"Intent: {classification_result.get('intent')}. "
-        f"Fields extracted: {json.dumps(extraction['fields'])[:240]}."
-    )
-
-    async with audit_step(
-        session,
-        call_id=call.id,
-        agent_name="memory_updater",
-        step_type="tool_call",
-        model="vultr-vector-store",
-    ):
-        if not business.vultr_collection_id:
-            business.vultr_collection_id = await vultr_inference.create_vector_collection(
-                f"afterglow-{business.id}"
-            )
-        item_id = await vultr_inference.add_vector_item(
-            business.vultr_collection_id,
-            content=summary_text,
-            description=f"call_{call.id}",
-        )
-
-    session.add(
-        CustomerMemoryChunk(
-            id=uuid.uuid4(),
-            customer_id=customer.id,
-            call_id=call.id,
-            vultr_collection_id=business.vultr_collection_id,
-            vultr_item_id=item_id,
-            summary=summary_text,
-            chunk_metadata={
-                "intent": classification_result.get("intent"),
-                "language": classification_result.get("language"),
-            },
-        )
-    )
-    customer.memory_summary = summary_text
+    """Save the next-call briefing on Postgres + push a chunk to Vector Store."""
+    customer.memory_summary = briefing
     customer.total_calls = (customer.total_calls or 0) + 1
     customer.last_call_at = datetime.now(tz=timezone.utc)
+
+    item_id: Optional[str] = None
+    try:
+        async with audit_step(
+            session,
+            call_id=call.id,
+            agent_name="memory_updater",
+            step_type="tool_call",
+            model="vultr-vector-store",
+        ):
+            if not business.vultr_collection_id:
+                business.vultr_collection_id = (
+                    await vultr_inference.create_vector_collection(
+                        f"afterglow-{business.id}"
+                    )
+                )
+            item_id = await vultr_inference.add_vector_item(
+                business.vultr_collection_id,
+                content=briefing,
+                description=f"call_{call.id}",
+            )
+    except httpx.HTTPError as exc:
+        logger.warning(
+            "memory_updater: Vultr Vector Store push failed (%s) — "
+            "Postgres briefing kept, vector indexing skipped.",
+            exc,
+        )
+
+    if item_id is not None:
+        session.add(
+            CustomerMemoryChunk(
+                id=uuid.uuid4(),
+                customer_id=customer.id,
+                call_id=call.id,
+                vultr_collection_id=business.vultr_collection_id,
+                vultr_item_id=item_id,
+                summary=briefing,
+                chunk_metadata=classification,
+            )
+        )
