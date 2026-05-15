@@ -93,7 +93,19 @@ File `LICENSE` MIT nel repo dal primo commit.
 
 **How to apply:** non aggiungere mai dipendenze GPL/AGPL nel progetto.
 
-### 8. Gemini default model — `gemini-flash-latest` (verificato 2026-05-15)
+### 8.bis. Pipeline DevOps — local → GitHub → Coolify autodeploy (2026-05-15)
+**Una sola via verso produzione:** `git push origin main` su `Cleversoft-IT/hackaton-lablab` → webhook GitHub App → Coolify ricostruisce le due Application e fa rolling update. NESSUN deploy manuale via SSH; nessun `docker-compose up` sulla VM; nessun upload di artifact a mano.
+
+**Why:** garantisce che la demo URL pubblica rifletta sempre `main`, evita drift fra workstation. Riduce il "blast radius" del service user IAM (è limitato + audit trail GitHub).
+
+**How to apply:**
+- DB: in produzione gira **Vultr Managed Postgres** (`221ca284-…`). Il service `postgres` del `docker-compose.yml` resta SOLO come comodità dev locale; **non va mai deployato** in Coolify.
+- Audio: oggi è dentro il container (`/var/data/audio` no volume). Persistent volume è in roadmap; nel frattempo i file audio sono ephemeral fra i redeploy.
+- Env vars: gestite in Coolify (Resource → Environment Variables, criptate at-rest). NIENTE secret committato. Il `.env` locale ha valori dev (Postgres podman su localhost, audio in `./data/audio`).
+- HTTPS: Traefik + Let's Encrypt sul dominio `*.95-179-245-107.sslip.io`. Sslip.io risolve `<dashes>.sslip.io` → IP corrispondente senza configurazione DNS aggiuntiva.
+- Coordinate complete in [[reference-devops-pipeline]]. Credenziali in 1Password.
+
+### 8.ter. Gemini default model — `gemini-flash-latest` (verificato 2026-05-15)
 Tutti i modelli **Flash** sono utilizzabili gratis con la key Google AI Studio (Workspace account). I **Pro** rispondono 429 RESOURCE_EXHAUSTED sul free tier. `gemini-3-flash-preview` è gratuito sul free-tier (la voce contraria su molti blog è errata) e resta come `GEMINI_TEMPLATE_BUILDER_MODEL` per l'Originality bonus.
 
 **How to apply:** se serve un modello reasoning Pro, sappi che il free-tier non lo serve. Per la demo restiamo su Flash, dove la qualità di estrazione è già più che sufficiente.

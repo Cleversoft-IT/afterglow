@@ -10,11 +10,25 @@ that opens this repo. **Italian for the conversation; English for the code (see
   - [`MEMORY.md`](.claude/memory/MEMORY.md) — index, one line per memory file.
   - [`project_afterglow_hackathon.md`](.claude/memory/project_afterglow_hackathon.md) — hackathon coordinates (deadline, partner targeting, tracks).
   - [`project_afterglow_decisions.md`](.claude/memory/project_afterglow_decisions.md) — locked product/architecture decisions. Read before changing the pipeline shape, the UI scope, or the tech stack.
+  - [`reference_devops_pipeline.md`](.claude/memory/reference_devops_pipeline.md) — Vultr/Coolify/GitHub coordinates + auto-deploy flow. Read before touching deployment or infra.
   - [`reference_hackathon_docs.md`](.claude/memory/reference_hackathon_docs.md) — pointer table into `hackathon-docs/`.
   - [`feedback_code_language.md`](.claude/memory/feedback_code_language.md) — code goes in English, conversation in Italian.
-- **`.claude/plans/procedi-col-planning-reactive-cocke.md`** — original implementation plan with a "Revision log" section at the top documenting day-1/2 decisions that diverge from the initial design.
-- **`hackathon-docs/`** — full lablab knowledge base (5 files of judging criteria, partner deep-dives, submission rules).
-- **`afterglow/`** — the actual product code. The README inside has up-to-date setup instructions for local dev.
+- **`.claude/plans/`** — implementation plans (the most recent one is the source of truth on the day-by-day roadmap).
+- **`hackathon-docs/`** — full lablab knowledge base (judging criteria, partner deep-dives, submission rules).
+- **`afterglow/`** — the actual product code. The README inside has up-to-date setup instructions for local dev *and* the production stack.
+
+## How code reaches production
+
+```
+local edit  →  git push origin main  →  GitHub App webhook  →  Coolify on Vultr VM
+                                                                ├─ afterglow-backend  →  https://api.95-179-245-107.sslip.io
+                                                                └─ afterglow-frontend →  https://95-179-245-107.sslip.io
+                                                                       └─ Vultr Managed Postgres (DB)
+```
+
+- Coolify admin: http://95.179.245.107:8000 (HTTP plain for the dashboard; Traefik + Let's Encrypt for the apps)
+- Auto-deploy fires within seconds of a push to `main`. There is **no manual deploy path** — no SSH into the VM for app changes, no `docker compose up` on the host.
+- Coordinates, IDs, and operational notes: [`reference_devops_pipeline.md`](.claude/memory/reference_devops_pipeline.md). Secrets live in 1Password, never in the repo.
 
 ## Hard constraints — do not change without re-discussion
 
@@ -23,9 +37,11 @@ that opens this repo. **Italian for the conversation; English for the code (see
 3. **English code, Italian conversation.** Includes UI strings, comments, log messages. Seed/demo data simulating an Italian trattoria stays Italian (it is content, not code).
 4. **MIT license** in repo from day one. No GPL/AGPL dependencies.
 5. **Submission deadline:** 19 May 2026, 17:00 CEST.
+6. **Production DB is Vultr Managed Postgres** — the `postgres` service in `docker-compose.yml` is a dev convenience only, never deployed in Coolify. Schema lives on the Managed instance, mirrored locally by `alembic upgrade head` in the backend `entrypoint.sh`.
 
 ## Conventions
 
-- Container runtime: prefer `podman` (Fedora dev box). Compose file works with `podman-compose` if needed; for Postgres a single `podman run` is enough.
-- Python 3.11 (not 3.12+) — pinned for `google-adk` / `asyncpg` wheel availability.
+- Container runtime locally: prefer `podman` (Fedora dev box). For Postgres a single `podman run` is enough; the compose file is rarely needed.
+- Python 3.11 (not 3.12+) — pinned for `asyncpg`/lib wheel availability.
 - Frontend env lives in `afterglow/frontend/.env.local` — Next.js does not read `afterglow/.env`.
+- Branch model: `main` is auto-deployed. Feature branches are fine but they don't deploy; merge to `main` to ship.

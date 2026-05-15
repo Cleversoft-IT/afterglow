@@ -1,4 +1,5 @@
 - [Afterglow hackathon context](project_afterglow_hackathon.md) — partner targeting, deadline, vincoli legali, dominio demo
-- [Afterglow decisions](project_afterglow_decisions.md) — autonomia full, single-tenant, single Gemini orchestrator, scope incrementale, baseline tutorial lablab, MIT day-1
+- [Afterglow decisions](project_afterglow_decisions.md) — autonomia full, single-tenant, single Gemini orchestrator, scope incrementale, baseline tutorial lablab, MIT day-1, Vultr Managed Postgres in prod
+- [DevOps pipeline](reference_devops_pipeline.md) — flow local → GitHub → Coolify auto-deploy su VM Vultr; coordinate risorse (no segreti)
 - [Hackathon docs reference](reference_hackathon_docs.md) — path knowledge base + repo baseline
 - [Code language: English only](feedback_code_language.md) — codice afterglow/** in inglese; eccezione: dati di seed demo italiani

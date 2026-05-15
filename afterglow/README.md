@@ -172,7 +172,41 @@ Open <http://localhost:3000> → click `Try the dialer` → blue button.
 
 ## Demo
 
-Public URL: _coming soon (Day 4–5)_.
+| What | Where |
+|---|---|
+| Frontend (PWA) | https://95-179-245-107.sslip.io |
+| Backend API | https://api.95-179-245-107.sslip.io · `/health` returns `{"status":"ok"}` |
+| Coolify admin | http://95.179.245.107:8000 (plain HTTP; team-only) |
+
+## Production stack — auto-deploy from `main`
+
+The only path to production is `git push origin main` against
+[`Cleversoft-IT/hackaton-lablab`](https://github.com/Cleversoft-IT/hackaton-lablab).
+A GitHub App webhook reaches Coolify on the Vultr VM, which rebuilds the two
+Docker images and rolls them in. There is no manual deploy step.
+
+```
+local podman                git push                   Coolify (Vultr VM, FRA, vhf-2c-4gb)
+─────────────              ─────────▶                  ───────────────────────────────────
+ Postgres podman             main branch                 ┌─ afterglow-backend  (Dockerfile)
+ .venv uvicorn          GitHub App webhook               │   entrypoint.sh: alembic + seed + uvicorn
+ npm run dev                                             │   :8000 → api.95-179-245-107.sslip.io
+                                                         │
+                                                         └─ afterglow-frontend (Dockerfile, next standalone)
+                                                             :3000 → 95-179-245-107.sslip.io
+                                                                  │
+                                                         Vultr Managed Postgres 16 (hobbyist 1GB, FRA)
+                                                         trusted-ips: VM /32 + dev IP /32
+```
+
+Environment variables (DB connection string, API keys, the single-tenant
+business pin) are stored encrypted inside Coolify per Resource. They are
+**not** in the repo — see [`reference_devops_pipeline.md`](../.claude/memory/reference_devops_pipeline.md)
+for the source of truth and 1Password for the credentials themselves.
+
+Traefik on Coolify auto-issues a Let's Encrypt cert for each app domain.
+[sslip.io](https://sslip.io) resolves `<ip-with-dashes>.sslip.io` to the
+matching IP, so we get an HTTPS-ready domain with zero DNS setup.
 
 ## License
 
