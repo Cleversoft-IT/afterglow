@@ -98,6 +98,8 @@ Per minimizzare ops e massimizzare lo score "Application of Technology + Busines
 
 ### Tool calling — esempio Python
 
+> 🎯 **Perché Kimi-K2 per il tool calling.** Dal tech talk ufficiale Vultr (Sanskriti Harmukh): *"Kimi-K2 was architected from the ground up with function calling as a core capability. Unlike many models that have Tool Calling bolted as an afterthought."* Per Afterglow è il modello scelto per `/v1/chat/completions/RAG` proprio per questa ragione (oltre al fatto che è l'unico Vultr-served che combina tool calling **e** retrieval nello stesso endpoint).
+
 ```python
 from openai import OpenAI
 
@@ -134,12 +136,17 @@ resp = client.chat.completions.create(
 # .arguments → '{"query":"Q3 sales by region","top_k":10}'  (string JSON)
 ```
 
-Il flusso è a **2 chiamate** (vedi `03-technology-partners.md` → sezione Vultr):
+Il flusso è a **2 chiamate** (vedi `03-technology-partners.md` → sezione Vultr), articolate in 5 step orchestrati tra client e Inference runtime:
 
-1. Il modello risponde con `finish_reason: "tool_calls"` + payload del function call
-2. Il client esegue la funzione e re-invia un messaggio `role: "tool"` con `tool_call_id` + `content` (output JSON) → risposta finale `finish_reason: "stop"`
+1. **Request** — il client invia il prompt utente all'endpoint `chat/completions` con `tools[]` definite (name, description, JSON schema dei parametri, `required`).
+2. **Tool call emission** — il modello decide che serve una funzione e risponde con `finish_reason: "tool_calls"` + array `tool_calls[]` contenente `id`, `function.name` e `function.arguments` (JSON string da deserializzare).
+3. **External execution** — il client esegue la funzione *fuori* dal runtime LLM (chiamata API, query DB, lookup custom). Vultr non vede mai la logica della tool.
+4. **Tool result re-injection** — il client rinvia una seconda request con la stessa conversation history **più** un messaggio `role: "tool"` che porta `tool_call_id` (lo stesso ID dello step 2) e `content` (output JSON serializzato della funzione).
+5. **Grounded final response** — il modello incorpora il risultato reale, risponde in linguaggio naturale e chiude con `finish_reason: "stop"`.
 
-> 📘 Fonte snippet ufficiale: `vultr-marketing/code-samples/tool-calling-weather.py`.
+Questa è la sequenza canonica documentata da Vultr; cambiare `tool_choice` da `"auto"` a `"none"` salta lo step 2, a `"required"` lo forza sempre.
+
+> 📘 Fonte snippet ufficiale: `vultr-marketing/code-samples/tool-calling-weather.py` (geocoding via Nominatim + Open-Meteo, pattern identico al pre-fetch RAG di Afterglow).
 
 > 🔗 https://docs.vultr.com/products/serverless/inference · https://docs.vultr.com/how-to-use-tool-calling-with-vultr-serverless-inference
 
@@ -243,10 +250,16 @@ curl -X POST "https://api.vultrinference.com/v1/chat/completions/RAG" \
 
 - **Branch**, **Build Pack**, **Base Directory**, **Port**
 - **Env vars** in 4 modalità: Build / Runtime / Literal / Multiline
-- **Healthcheck integrato:** Method/Scheme/Host/Port/Path/Response Text + Interval/Timeout/Retries/Start Period
+- **Healthcheck integrato:** Method/Scheme/Host/Port/Path/Response Text + Interval/Timeout/Retries/Start Period. Coolify riavvia i container che falliscono il check anche se l'app espone un proprio endpoint di salute.
 - **Domini:**
   - Temporaneo: `<random-id>.<server-ip>.sslip.io` (solo HTTP, no wildcard Let's Encrypt)
   - Custom: A record `@` + `www` → IP istanza, "Allow www & non-www" + "Force HTTPS" → Traefik richiede certificato automaticamente
+
+### Operatività dal dashboard (senza SSH)
+
+- **Real-time terminal** integrato → shell diretta dentro ai container *e* sull'host, utile per `docker logs`, `psql`, ispezione filesystem senza dover mantenere una sessione SSH parallela.
+- **Deployment log streaming** con "Show Debug Logs" → cattura errori di build/dipendenze prima del cutover in produzione.
+- **Notifiche real-time** + health status nella dashboard (stato `running` / `exited` per ogni risorsa).
 
 ### Costo
 

@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "skills": {
+    "vultr": {
+      "source": "membranedev/application-skills",
+      "sourceType": "github",
+      "skillPath": "skills/vultr/SKILL.md",
+      "computedHash": "a717e6baa28a92eea6d65ee31c21a0995100f7ff9e2286785d69859edf512364"
+    }
+  }
+}
