@@ -17,7 +17,6 @@ class Settings(BaseSettings):
     app_port: int = 8000
     log_level: str = "INFO"
     max_file_size_mb: int = 20
-    demo_mode: bool = False
 
     # Comma-separated list of allowed CORS origins. Production sets this to the
     # app and demo-site sslip.io URLs; local dev defaults to the common ports.

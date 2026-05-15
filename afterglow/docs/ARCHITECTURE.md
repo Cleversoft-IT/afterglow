@@ -11,7 +11,6 @@ App (Expo + react-native-web)         ◄── embedded by ── Demo site (Vi
        │ POST /api/v1/calls (audio + phone, X-Demo-Session header)
        ▼
 FastAPI background task ─► Speechmatics batch (diarization + lang detect + custom dict)
-       │                   (skipped in DEMO_MODE, falls back to a canned transcript)
        │
        ├─► Vultr Vector Store /v1/chat/completions/RAG  (pre-fetch: prior_facts)
        │   └─► single collection, configured via VULTR_VECTOR_DEFAULT_COLLECTION

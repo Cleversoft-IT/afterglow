@@ -46,12 +46,14 @@ Cancellati: `agents/extraction.py`, `agents/classification.py`, `agents/action_p
 
 **How to apply:** `customer.memory_summary` è ora il "next-call briefing" Gemini-generated nella lingua detected. Etichetta UI in CallerMemoryCard: **"Next-call briefing"**. Quando si tocca la pipeline, modificare *solo* `call_analyzer.py` per scope/prompt e `orchestrator.py` per glue/persistence — niente nuovi sub-agent.
 
-### 2. Speechmatics — solo voice-in
-Non puntiamo al cash Award Speechmatics (sfida ridefinita kick-off = voice-in→reasoning→voice-out). Usiamo i $200 credit per: trascrizione, language detection, diarization, multilingual, custom dictionary. "Massive bonus love" dichiarati al kick-off → migliorano lo score Application of Technology su Vultr/Google Award.
+### 2. Speechmatics — voice-in + TTS per gli MP3 demo
+Non puntiamo al cash Award Speechmatics (sfida ridefinita kick-off = voice-in→reasoning→voice-out). Usiamo i $200 credit per: trascrizione, language detection, diarization, multilingual, custom dictionary, **e** generazione TTS dei 3 MP3 demo. "Massive bonus love" dichiarati al kick-off → migliorano lo score Application of Technology su Vultr/Google Award.
 
-**Why:** voice-out (TTS callback / Flow API) era scope-creep e snaturava il posizionamento human-first.
+**Why:** voice-out come prodotto runtime sarebbe scope-creep, ma usare Speechmatics TTS *offline* per generare i 3 audio della demo costa zero in complessità e raddoppia visivamente la dipendenza dal partner nel pitch ("STT + TTS, entrambi Speechmatics").
 
-**How to apply:** integrare `speechmatics-batch` SDK con preset, diarization sempre attiva, custom dictionary per termini food/medico/automotive, supporto multilingua dimostrato in demo. *Stato attuale 2026-05-15: SDK wirato live (`AsyncClient.transcribe` con `diarization=speaker`, `language=auto`, `additional_vocab`). Una heuristic `audio_path.stat().st_size < 4096` fa fallback al transcript canned per il `silence.wav` della demo (44 byte), così non si paga per job vuoti. `DEMO_MODE=true` resta come hard kill-switch per registrare il video offline.*
+**How to apply:**
+- STT runtime: `speechmatics-batch` SDK wirato live (`AsyncClient.transcribe` con `diarization=speaker`, `language=auto`, `additional_vocab` dal `custom_dictionary` del template). **Nessun fallback offline**: missing key o audio illeggibile sollevano e fanno fallire la call (vedi `backend/app/integrations/speechmatics.py`). Niente più `_FAKE_TRANSCRIPTS`, niente più flag `DEMO_MODE` (rimosso il 2026-05-15).
+- TTS offline: i 3 MP3 demo (`afterglow/app/assets/audio/{restaurant,dentist,bodyshop}.mp3`, mirror in `backend/sample_audio/`) sono generati da Speechmatics TTS preview (`https://preview.tts.speechmatics.com/generate/<voice>`) via `afterglow/scripts/generate_demo_audio.py`. Le voci preview supportano solo EN UK/US (`sarah`/`theo`/`megan`/`jack`), quindi i copioni demo sono **in inglese**: il resto del seed (nomi business, customer IT in +39) resta italiano. Per rigenerare gli audio: `python afterglow/scripts/generate_demo_audio.py`.
 
 ### 3. Forma mobile — PWA, non APK
 Web app responsive mobile-style installabile come PWA da URL pubblica. Niente APK distribuito, niente vero dialer Android.
@@ -125,11 +127,11 @@ Tutti i modelli **Flash** sono utilizzabili gratis con la key Google AI Studio (
 ### 9. Stato env in produzione (volatile, 2026-05-15)
 Sezione "what's live right now" — da rileggere prima di pushare grossi cambi al backend.
 
-- **`DEMO_MODE=true`** sul backend Coolify. Necessario finché gli MP3 demo sono placeholder silenziosi: Speechmatics SDK crasha con `KeyError: 'type'` su audio quasi-vuoti. Da invertire a `false` appena i 3 MP3 reali (`restaurant`, `dentist`, `bodyshop`) sono bundlati in `afterglow/app/assets/audio/`.
+- **`DEMO_MODE`**: ELIMINATA dal codice e dall'env (2026-05-15). I 3 MP3 demo reali (TTS Speechmatics) hanno sostituito i placeholder silenziosi, quindi non serve più il kill-switch. Quando deployi questa revisione: **rimuovere la variabile da Coolify** (Resource → Environment Variables) e fare redeploy del backend; lasciarla orfana è innocuo (Pydantic Settings ha `extra="ignore"`) ma sporca.
 - **`VULTR_VECTOR_DEFAULT_COLLECTION=afterglowbf073`** sul backend. Riusa la collection già provisionata (`afterglowbf073`); se viene svuotata, l'orchestrator degrada gracefully (skip RAG retrieval + skip write-back, briefing su Postgres comunque salvato).
 - **`CORS_ORIGINS`** (CSV) sul backend: `https://app.95-179-245-107.sslip.io,https://demo.95-179-245-107.sslip.io,https://95-179-245-107.sslip.io`. Sostituisce `AFTERGLOW_CORS_EXTRA_ORIGINS` (eliminata).
 - **`AFTERGLOW_DEFAULT_BUSINESS_ID`**: eliminata su Coolify e dal codice (single-tenant, niente più tabella `businesses`).
 
 **Why:** queste env divergono da `.env.example` (che è la baseline locale). Senza questa sezione, un nuovo collaboratore che legge solo il file finisce per non capire perché in prod la pipeline si comporta diversamente.
 
-**How to apply:** quando cambi env in Coolify ricordati di riportare qui le decisioni di stato (cosa è attivo, cosa è disattivato, da quando, perché). Quando inverti `DEMO_MODE`, aggiorna questa sezione di conseguenza.
+**How to apply:** quando cambi env in Coolify ricordati di riportare qui le decisioni di stato (cosa è attivo, cosa è disattivato, da quando, perché).

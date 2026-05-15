@@ -7,7 +7,7 @@ Design:
     template and prior facts retrieved from the Vultr Vector Store.
 
 Steps:
-    1. Speechmatics → transcript (stubbed in DEMO_MODE or until day-2 wiring)
+    1. Speechmatics → transcript (diarization + language auto-detect)
     2. Customer match by phone (global, single-tenant)
     3. Vultr Vector Store RAG pre-fetch → prior_facts text
     4. Gemini Call Analyzer → CallAnalysis (single structured-output call)
@@ -71,7 +71,7 @@ async def run_pipeline(session: AsyncSession, call_id: uuid.UUID) -> None:
         await session.execute(select(Template).where(Template.id == call.template_id))
     ).scalar_one()
 
-    # 1) Speechmatics — transcribe (stub when DEMO_MODE or no key).
+    # 1) Speechmatics — transcribe with diarization + language auto-detect.
     async with audit_step(
         session,
         call_id=call.id,

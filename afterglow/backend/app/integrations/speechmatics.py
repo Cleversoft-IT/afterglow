@@ -1,12 +1,11 @@
 """Speechmatics batch transcription client.
 
-Calls the real `speechmatics-batch` SDK when SPEECHMATICS_API_KEY is set and
-DEMO_MODE is false. Otherwise returns a cached transcript so the pipeline can
-run end-to-end offline (useful for the demo and for unit tests).
+Always calls the real `speechmatics-batch` SDK — there is no offline fallback.
+Missing API key or unreadable audio raise; callers must treat Speechmatics as
+a mandatory dependency of the pipeline.
 """
 from __future__ import annotations
 
-import asyncio
 import logging
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -25,60 +24,6 @@ class TranscriptResult:
     raw: dict[str, Any] = field(default_factory=dict)
 
 
-_FAKE_TRANSCRIPTS: dict[str, TranscriptResult] = {
-    "restaurant": TranscriptResult(
-        text=(
-            "S1: Buonasera, vorrei prenotare un tavolo per venerdi sera. "
-            "S2: Certo, per quante persone? "
-            "S1: Siamo in quattro, verso le otto e mezza. Mi chiamo Marco. "
-            "S1: Una persona e intollerante al glutine, riuscite a gestirla? "
-            "S2: Assolutamente. "
-            "S1: Mi potete confermare su WhatsApp?"
-        ),
-        language="it",
-        speakers=[
-            {"id": "S1", "label": "caller"},
-            {"id": "S2", "label": "operator"},
-        ],
-        raw={"source": "fake"},
-    ),
-    "dentist": TranscriptResult(
-        text=(
-            "S1: Buongiorno, avrei bisogno di una visita urgente, mi e saltata "
-            "un'otturazione e ho un dolore forte al molare in basso a destra. "
-            "S2: Mi dispiace, possiamo provare a vederla domani mattina. Come si chiama? "
-            "S1: Sono Laura Bianchi, ho gia la cartella da voi. "
-            "S2: Perfetto Laura, ha una copertura assicurativa? "
-            "S1: Si, UniSalute, vi mando il numero polizza via WhatsApp. "
-            "S2: Bene, le mando io la conferma con orario e indicazioni."
-        ),
-        language="it",
-        speakers=[
-            {"id": "S1", "label": "caller"},
-            {"id": "S2", "label": "operator"},
-        ],
-        raw={"source": "fake"},
-    ),
-    "bodyshop": TranscriptResult(
-        text=(
-            "S1: Salve, ho preso un palo in retromarcia e devo sistemare il "
-            "paraurti posteriore di una Fiat Panda del 2019. "
-            "S2: Ha gia aperto un sinistro con l'assicurazione? "
-            "S1: No, non ho fatto denuncia, pago io. Mi serve solo un preventivo. "
-            "S2: Capito. Quando puo passare per la perizia? "
-            "S1: Sono libero giovedi pomeriggio. Mi chiamo Andrea Verdi. "
-            "S2: Le confermo via SMS l'appuntamento."
-        ),
-        language="it",
-        speakers=[
-            {"id": "S1", "label": "caller"},
-            {"id": "S2", "label": "operator"},
-        ],
-        raw={"source": "fake"},
-    ),
-}
-
-
 async def transcribe_audio(
     audio_path: Path,
     *,
@@ -88,49 +33,19 @@ async def transcribe_audio(
     timeout_sec: float = 120.0,
     domain_hint: str = "restaurant",
 ) -> TranscriptResult:
-    """Transcribe an audio file via Speechmatics batch.
-
-    Behaviour:
-    - If settings.demo_mode is true OR no API key is set → canned transcript
-      picked by `domain_hint` (restaurant/dentist/bodyshop).
-    - If the audio path doesn't exist or points to /dev/null → canned transcript.
-    - Otherwise submit the file to Speechmatics with diarization on, language
-      auto-detect, and the template's custom_dictionary as additional_vocab.
-    """
+    """Transcribe an audio file via Speechmatics batch (diarization on, language auto)."""
     settings = get_settings()
 
-    if (
-        settings.demo_mode
-        or not settings.speechmatics_api_key
-        or not audio_path
-        or str(audio_path) == "/dev/null"
-        or not audio_path.exists()
-        or audio_path.stat().st_size < 4096
-    ):
-        await asyncio.sleep(0.2)  # simulate latency, keeps audit timings honest
-        return _FAKE_TRANSCRIPTS.get(domain_hint, _FAKE_TRANSCRIPTS["restaurant"])
+    if not settings.speechmatics_api_key:
+        raise RuntimeError("SPEECHMATICS_API_KEY is not configured")
+    if not audio_path or not audio_path.exists():
+        raise FileNotFoundError(f"audio file not found: {audio_path}")
+    if audio_path.stat().st_size == 0:
+        raise RuntimeError(f"audio file is empty: {audio_path}")
 
-    return await _real_transcribe(
-        audio_path,
-        custom_dictionary=custom_dictionary,
-        diarization=diarization,
-        language=language,
-        timeout_sec=timeout_sec,
-    )
-
-
-async def _real_transcribe(
-    audio_path: Path,
-    *,
-    custom_dictionary: Optional[list[str]],
-    diarization: str,
-    language: str,
-    timeout_sec: float,
-) -> TranscriptResult:
-    # Lazy imports so the app stays importable when the SDK is unavailable.
+    # Lazy imports so the app stays importable even if the SDK is unavailable
+    # (e.g. during local linting on a fresh checkout without `pip install`).
     from speechmatics.batch import AsyncClient, TranscriptionConfig
-
-    settings = get_settings()
 
     additional_vocab = (
         [{"content": term} for term in custom_dictionary] if custom_dictionary else None
@@ -233,7 +148,7 @@ def _detect_language(metadata: Any, results: list[Any], *, fallback: str) -> str
             lang = getattr(a, "language", None)
             if isinstance(lang, str) and lang:
                 return lang
-    return fallback if fallback != "auto" else "it"
+    return fallback if fallback != "auto" else "en"
 
 
 def _normalize_speakers(speakers_raw: list[Any], results: list[Any]) -> list[dict[str, Any]]:
