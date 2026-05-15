@@ -1,8 +1,17 @@
-"""Memory Retrieval Agent — Vultr /v1/chat/completions/RAG endpoint.
+"""Memory Retrieval Agent — Vultr /v1/chat/completions/RAG endpoint
+plus a structured fallback that serializes recent SQL rows directly.
 
-This is the killer Vultr feature: chat + retrieval in a single call against
-the per-business Vector Store collection. The output becomes the caller context
-injected into the Orchestrator.
+Strategy:
+- Few calls (``customer.total_calls <= 10``) OR demo mode →
+  ``retrieve_structured_history`` reads ``Call ⨝ ExtractedFields`` for that
+  customer and formats them as Markdown. Cheap, exact, and never reads from
+  the shared Vultr collection. For demo it also avoids cross-visitor leakage.
+- Many calls (``> 10``) in production → semantic RAG via Vultr. This is the
+  killer Vultr feature: chat + retrieval in a single call against the
+  per-tenant Vector Store collection.
+
+The output of either path becomes the ``prior_facts`` blob the Orchestrator
+splices into the Gemini Call Analyzer prompt.
 """
 from __future__ import annotations
 
@@ -11,7 +20,10 @@ import re
 from typing import Optional
 
 import httpx
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.db.models import Call, Customer, ExtractedFields
 from app.integrations import vultr_inference
 
 logger = logging.getLogger("afterglow")
@@ -20,6 +32,86 @@ logger = logging.getLogger("afterglow")
 # blocks before the answer. We strip them so the orchestrator passes clean facts
 # (not raw chain-of-thought) to Gemini as prior_facts.
 _THINK_BLOCK_RE = re.compile(r"<think>.*?</think>", re.DOTALL | re.IGNORECASE)
+
+
+async def retrieve_structured_history(
+    session: AsyncSession,
+    customer: Customer,
+    *,
+    limit: int = 10,
+) -> tuple[str, str]:
+    """Serialize the last ``limit`` calls for this customer as structured facts.
+
+    Returns ``(text, source)`` where ``source`` is one of:
+      - ``"sql"`` — at least one Call row was found.
+      - ``"memory_summary"`` — no Call rows, falling back to ``customer.memory_summary``.
+      - ``"empty"`` — neither calls nor memory_summary; returns ``""``.
+
+    The query filters strictly by ``customer_id``. Session isolation is already
+    guaranteed upstream by ``_resolve_customer`` (clone-on-write in demo),
+    so there is no need to plug a ``visibility_filter`` in here.
+    """
+    stmt = (
+        select(Call, ExtractedFields)
+        .join(ExtractedFields, ExtractedFields.call_id == Call.id, isouter=True)
+        .where(Call.customer_id == customer.id)
+        .order_by(Call.created_at.desc())
+        .limit(limit)
+    )
+    rows = (await session.execute(stmt)).all()
+
+    if not rows:
+        summary = (customer.memory_summary or "").strip()
+        if summary:
+            return summary, "memory_summary"
+        return "", "empty"
+
+    pieces: list[str] = []
+    for idx, (call, extracted) in enumerate(rows, start=1):
+        date = (call.completed_at or call.started_at or call.created_at).date().isoformat()
+        intent = (extracted.intent if extracted else None) or "unknown"
+        sentiment = (extracted.sentiment if extracted else None) or "unknown"
+        urgency = (extracted.urgency if extracted else None) or "unknown"
+        language = call.detected_language or "unknown"
+
+        salient_fields = _top_fields(extracted)
+        briefing = (extracted.briefing_snapshot if extracted else None) or ""
+
+        section_lines = [
+            f"## Call {idx} ({date})",
+            f"- intent: {intent}",
+            f"- sentiment: {sentiment}",
+            f"- urgency: {urgency}",
+            f"- language: {language}",
+        ]
+        if salient_fields:
+            section_lines.append(f"- fields: {salient_fields}")
+        if briefing:
+            section_lines.append(f"- briefing: {briefing}")
+
+        pieces.append("\n".join(section_lines))
+
+    return "\n\n".join(pieces), "sql"
+
+
+def _top_fields(extracted: Optional[ExtractedFields], *, threshold: float = 0.7, max_items: int = 5) -> str:
+    """Pick the top extracted fields by confidence and render them compactly."""
+    if extracted is None or not extracted.fields:
+        return ""
+    confidences = extracted.confidence or {}
+    ranked = sorted(
+        extracted.fields.items(),
+        key=lambda kv: -float(confidences.get(kv[0], 0.0) or 0.0),
+    )
+    kept: list[str] = []
+    for key, value in ranked:
+        conf = float(confidences.get(key, 0.0) or 0.0)
+        if conf < threshold:
+            continue
+        kept.append(f"{key}={value!r}")
+        if len(kept) >= max_items:
+            break
+    return ", ".join(kept)
 
 
 async def retrieve_customer_context(
@@ -35,11 +127,11 @@ async def retrieve_customer_context(
     its prompt as additional context. Failures degrade gracefully to "" so the
     rest of the pipeline keeps running.
 
-    `is_demo=True` skips the RAG call entirely. Public demo iframe visitors are
-    isolated per session (see SessionContext); we never read from the shared
-    Vultr collection in demo mode so one visitor's calls cannot leak into
-    another's briefing. The skip is logged via the audit_step wrapper in the
-    orchestrator with status='skipped' so the judge sees the wiring exists.
+    ``is_demo=True`` skips the RAG call entirely. Demo visitors are isolated
+    per session (see SessionContext); we never read from the shared Vultr
+    collection in demo mode so one visitor's calls cannot leak into another's
+    briefing. The orchestrator now prefers the SQL-based structured history
+    for demo, so this function is reached only in production with > 10 calls.
     """
     if is_demo:
         return ""

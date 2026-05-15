@@ -102,7 +102,12 @@ Your job:
    learned. No headers, no bullet points. Write in the detected language.
 
 Be conservative with confidence. Health, financial, and PII fields warrant
-lower confidence unless the caller stated them unambiguously."""
+lower confidence unless the caller stated them unambiguously.
+
+PII gating: for any field flagged ``sensitive: true`` in fields_schema, if
+your confidence is below 0.85, OMIT the value from ``next_call_briefing``
+and replace it with the literal placeholder ``[needs human review]``. Still
+return the extraction in ``fields`` so the operator can verify it manually."""
 
 
 def _user_prompt(
@@ -115,14 +120,20 @@ def _user_prompt(
     domain_hint: str,
     prior_facts: str,
 ) -> str:
+    # Explicit section markers prevent the model from confusing prior facts
+    # with the current call. Flat concatenation used to bleed: Gemini would
+    # occasionally cite a 6-months-old detail as if it had just been heard.
     return (
+        "=== DOMAIN & TEMPLATE ===\n"
         f"Domain: {domain_hint}\n"
         f"Template: {template_name}\n\n"
         f"fields_schema:\n{json.dumps(fields_schema, ensure_ascii=False)}\n\n"
         f"action_types:\n{json.dumps(action_types, ensure_ascii=False)}\n\n"
         f"prompt_hints: {prompt_hints or '(none)'}\n\n"
-        f"prior_facts:\n{prior_facts or '(no prior facts)'}\n\n"
-        f"transcript:\n{transcript_text}\n"
+        "=== PRIOR FACTS (structured/RAG) ===\n"
+        f"{prior_facts or '(no prior facts)'}\n\n"
+        "=== CURRENT TRANSCRIPT ===\n"
+        f"{transcript_text}\n"
     )
 
 

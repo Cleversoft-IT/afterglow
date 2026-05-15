@@ -178,6 +178,9 @@ class ExtractedFields(Base):
     intent: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
     sentiment: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
     urgency: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    # Per-call snapshot of next_call_briefing — Customer.memory_summary holds
+    # only the latest; this preserves history for structured_history lookups.
+    briefing_snapshot: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = _ts()
 
 

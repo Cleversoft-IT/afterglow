@@ -28,7 +28,7 @@ import httpx
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.agents import call_analyzer, memory_retrieval
+from app.agents import action_planner, call_analyzer, memory_retrieval
 from app.audit.logger import audit_step
 from app.config import get_settings
 from app.db.models import (
@@ -73,7 +73,6 @@ async def run_pipeline(session: AsyncSession, call_id: uuid.UUID) -> None:
 
     # 1) Speechmatics — transcribe with diarization + language auto-detect.
     async with audit_step(
-        session,
         call_id=call.id,
         session_id=call.session_id,
         agent_name="speechmatics",
@@ -91,6 +90,26 @@ async def run_pipeline(session: AsyncSession, call_id: uuid.UUID) -> None:
         "raw": transcript.raw,
     }
     call.detected_language = transcript.language
+    await session.commit()
+
+    # 1b) Pre-classifier — short-circuit on empty / noise audio so we don't
+    # spend Gemini tokens on a transcript that has no semantic content.
+    if not _pre_classify(transcript.text):
+        async with audit_step(
+            call_id=call.id,
+            session_id=call.session_id,
+            agent_name="pre_classifier",
+            step_type="pre_classify",
+            status="skipped",
+            payload={"reason": "empty_or_noise_audio", "word_count": len(transcript.text.split())},
+        ):
+            pass
+        call.status = "failed"
+        call.error = "empty_or_noise_audio"
+        call.completed_at = datetime.now(tz=timezone.utc)
+        await session.commit()
+        return
+
     call.status = "analyzing"
     await session.commit()
 
@@ -105,31 +124,45 @@ async def run_pipeline(session: AsyncSession, call_id: uuid.UUID) -> None:
     )
     call.customer_id = customer.id
 
-    # 3) RAG pre-fetch — semantic lookup of past calls from this number.
-    # Skipped in demo mode: visitors are isolated, so we never read from the
-    # shared Vultr collection. The audit row keeps the wiring visible.
+    # 3) Memory lookup — structured-first, RAG only when the customer has
+    # enough history for semantic retrieval to beat a straight serialization.
+    # In demo we never read from the shared Vultr collection (cross-visitor
+    # leakage); the SQL fallback is already session-isolated upstream.
     collection_id = settings.vultr_vector_default_collection or None
+    total_calls = customer.total_calls or 0
+    use_structured = is_demo or total_calls <= 10
     prior_facts = ""
-    async with audit_step(
-        session,
-        call_id=call.id,
-        session_id=call.session_id,
-        agent_name="memory_lookup",
-        step_type="tool_call",
-        model="vultr-rag",
-        status="skipped" if is_demo else "success",
-        payload={"reason": "demo_session"} if is_demo else None,
-    ):
-        prior_facts = await memory_retrieval.retrieve_customer_context(
-            collection_id=collection_id,
-            phone_e164=call.phone_e164,
-            domain_hint=template.domain_hint,
-            is_demo=is_demo,
+
+    if use_structured:
+        history_text, source = await memory_retrieval.retrieve_structured_history(
+            session, customer
         )
+        async with audit_step(
+            call_id=call.id,
+            session_id=call.session_id,
+            agent_name="memory_lookup",
+            step_type="structured_history",
+            payload={"count": total_calls, "source": source, "demo": is_demo},
+        ):
+            prior_facts = history_text
+    else:
+        async with audit_step(
+            call_id=call.id,
+            session_id=call.session_id,
+            agent_name="memory_lookup",
+            step_type="rag_semantic",
+            model="vultr-rag",
+            payload={"count": total_calls},
+        ):
+            prior_facts = await memory_retrieval.retrieve_customer_context(
+                collection_id=collection_id,
+                phone_e164=call.phone_e164,
+                domain_hint=template.domain_hint,
+                is_demo=False,
+            )
 
     # 4) Single Gemini structured-output call.
     async with audit_step(
-        session,
         call_id=call.id,
         session_id=call.session_id,
         agent_name="call_analyzer",
@@ -146,7 +179,9 @@ async def run_pipeline(session: AsyncSession, call_id: uuid.UUID) -> None:
             prior_facts=prior_facts,
         )
 
-    # 5) Persist extracted fields.
+    # 5) Persist extracted fields. briefing_snapshot freezes the briefing
+    # generated for *this* call so future structured_history lookups can
+    # show how the operator's view of the customer evolved over time.
     fields_dict, confidence_dict, evidence_dict = _coerce_extractions(
         analysis.fields, template.fields_schema
     )
@@ -159,21 +194,51 @@ async def run_pipeline(session: AsyncSession, call_id: uuid.UUID) -> None:
             intent=analysis.intent,
             sentiment=analysis.sentiment,
             urgency=analysis.urgency,
+            briefing_snapshot=analysis.next_call_briefing,
         )
     )
 
-    # 6) Deterministic action executor.
-    plan = []
-    for a in analysis.planned_actions:
-        entry = a.model_dump()
-        try:
-            entry["payload"] = json.loads(entry.pop("payload_json") or "{}")
-        except json.JSONDecodeError:
-            entry["payload"] = {}
-            entry.pop("payload_json", None)
-        plan.append(entry)
+    # 5b) PII gate audit — flag any sensitive field that came back with low
+    # confidence. Gemini has already been instructed to keep its value out of
+    # the briefing; here we just leave a breadcrumb so the operator UI / audit
+    # log can show the warning. No data is mutated.
+    flagged = _flag_low_confidence_sensitive(
+        analysis.fields, template.fields_schema, threshold=0.85
+    )
+    if flagged:
+        async with audit_step(
+            call_id=call.id,
+            session_id=call.session_id,
+            agent_name="pii_gate",
+            step_type="pii_gate",
+            payload={"fields_flagged": flagged, "threshold": 0.85},
+        ):
+            pass
+
+    # 6a) Agentic action planning — Gemini ADK with the template's auto-mode
+    # action_types exposed as tools. The tools only *record* requested
+    # actions; the deterministic executor is the single place where they
+    # actually run. ``plan_actions`` degrades to the analyzer's hints when
+    # no GOOGLE_API_KEY is set or the ADK runner raises.
     async with audit_step(
-        session,
+        call_id=call.id,
+        session_id=call.session_id,
+        agent_name="action_planner",
+        step_type="agent_loop",
+        model=settings.gemini_default_model,
+    ) as planner_audit:
+        plan, planner_mode = await action_planner.plan_actions(
+            analysis=analysis,
+            template=template,
+            customer=customer,
+            transcript_text=transcript.text,
+        )
+        planner_audit.payload = {"mode": planner_mode, "count": len(plan)}
+
+    # 6b) Deterministic action executor — the only place where MOCK_REGISTRY
+    # is invoked. Hallucination rejection + execution_mode read from the
+    # template stay here so the agentic planner cannot bypass them.
+    async with audit_step(
         call_id=call.id,
         session_id=call.session_id,
         agent_name="action_executor",
@@ -208,6 +273,40 @@ async def run_pipeline(session: AsyncSession, call_id: uuid.UUID) -> None:
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+
+_MIN_TRANSCRIPT_WORDS = 8
+
+
+def _pre_classify(transcript_text: str) -> bool:
+    """Return False if the transcript is too short / empty to analyze.
+
+    Speechmatics happily transcribes silence into an empty string. Running the
+    full Gemini pipeline on those is wasted budget; we instead fail fast and
+    surface the reason in the audit trail.
+    """
+    if not transcript_text or not transcript_text.strip():
+        return False
+    if len(transcript_text.split()) < _MIN_TRANSCRIPT_WORDS:
+        return False
+    return True
+
+
+def _flag_low_confidence_sensitive(
+    extractions: list[call_analyzer.FieldExtraction],
+    fields_schema: list[dict[str, Any]],
+    *,
+    threshold: float = 0.85,
+) -> list[str]:
+    """Return the keys of sensitive fields whose confidence is below ``threshold``."""
+    sensitive_keys = {f["key"] for f in fields_schema if f.get("sensitive")}
+    if not sensitive_keys:
+        return []
+    return [
+        item.key
+        for item in extractions
+        if item.key in sensitive_keys and item.confidence < threshold
+    ]
 
 
 def _coerce_extractions(
@@ -363,7 +462,6 @@ async def _persist_memory(
     is_demo = call.session_id is not None
     if is_demo:
         async with audit_step(
-            session,
             call_id=call.id,
             session_id=call.session_id,
             agent_name="memory_updater",
@@ -399,7 +497,6 @@ async def _persist_memory(
     item_id: Optional[str] = None
     try:
         async with audit_step(
-            session,
             call_id=call.id,
             session_id=call.session_id,
             agent_name="memory_updater",

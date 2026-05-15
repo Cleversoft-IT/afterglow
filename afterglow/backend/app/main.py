@@ -12,6 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api import actions, audit, calls, customers, templates
 from app.api.session_context import DEMO_SESSION_HEADER
 from app.config import get_settings
+from app.tasks.orphan_recovery import recover_orphans
 from app.tasks.session_cleanup import run_cleanup_loop
 
 load_dotenv()
@@ -30,6 +31,13 @@ async def lifespan(app: FastAPI):
         logger.warning("VULTR_INFERENCE_API_KEY not set — Vultr inference in stub mode.")
     if not settings.speechmatics_api_key:
         logger.warning("SPEECHMATICS_API_KEY not set — Speechmatics in stub mode.")
+
+    try:
+        recovered = await recover_orphans()
+        if recovered:
+            logger.info("orphan_recovery: marked %d stuck calls as failed", recovered)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("orphan_recovery failed at startup: %s", exc)
 
     cleanup_task = asyncio.create_task(run_cleanup_loop())
     try:

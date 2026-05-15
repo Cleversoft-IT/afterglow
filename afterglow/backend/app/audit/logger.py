@@ -1,4 +1,11 @@
-"""Structured audit logger — every agent step + every action + every revert lands here."""
+"""Structured audit logger — every agent step + every action + every revert lands here.
+
+Each ``audit_step`` writes its row using its own short-lived session obtained from
+``SessionLocal``. The row is committed immediately so it survives even if the
+caller's business transaction rolls back (e.g. when ``run_pipeline`` raises and
+the BackgroundTasks wrapper does a ``rollback``). The previous design — flushing
+into the same session — meant a failure mid-pipeline wiped the entire audit trail.
+"""
 from __future__ import annotations
 
 import time
@@ -6,14 +13,12 @@ import uuid
 from contextlib import asynccontextmanager
 from typing import Any, Optional
 
-from sqlalchemy.ext.asyncio import AsyncSession
-
+from app.db.engine import SessionLocal
 from app.db.models import AuditLog
 
 
 @asynccontextmanager
 async def audit_step(
-    session: AsyncSession,
     *,
     agent_name: str,
     step_type: str,
@@ -25,10 +30,14 @@ async def audit_step(
 ):
     """Async context manager that writes one audit row per agent step.
 
-    Captures duration_ms and status automatically. `session_id` is the demo
+    Captures duration_ms and status automatically. ``session_id`` is the demo
     sandbox session that owns this step (None for production single-tenant);
-    it propagates the row so audit reads stay isolated per visitor.
-    `status` lets callers pre-flag rows as "skipped" without raising.
+    it propagates the row so audit reads stay isolated per visitor. ``status``
+    lets callers pre-flag rows as ``"skipped"`` without raising.
+
+    Implementation note: this no longer takes an ``AsyncSession`` argument —
+    every audit row gets its own session+commit so it survives external
+    rollbacks. Callers that previously passed ``session`` should drop that arg.
     """
     start = time.perf_counter()
     entry = AuditLog(
@@ -49,5 +58,6 @@ async def audit_step(
         raise
     finally:
         entry.duration_ms = int((time.perf_counter() - start) * 1000)
-        session.add(entry)
-        await session.flush()
+        async with SessionLocal() as audit_session:
+            audit_session.add(entry)
+            await audit_session.commit()

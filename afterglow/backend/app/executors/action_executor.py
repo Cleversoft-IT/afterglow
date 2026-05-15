@@ -42,7 +42,6 @@ async def execute_planned_actions(
         if action_type not in action_modes:
             # Hallucinated action — log it as a rejection and skip.
             async with audit_step(
-                session,
                 call_id=call.id,
                 session_id=call.session_id,
                 agent_name="action_executor",
@@ -74,7 +73,6 @@ async def execute_planned_actions(
 
         if mode == "auto":
             async with audit_step(
-                session,
                 call_id=call.id,
                 session_id=call.session_id,
                 agent_name="action_executor",
@@ -108,7 +106,6 @@ async def revert_action(
     from datetime import datetime, timezone
 
     async with audit_step(
-        session,
         call_id=action.call_id,
         session_id=action.session_id,
         agent_name="action_executor",
