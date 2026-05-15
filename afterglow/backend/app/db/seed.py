@@ -110,6 +110,7 @@ async def seed():
                     custom_dictionary=tpl["custom_dictionary"],
                     prompt_hints=tpl["prompt_hints"],
                     is_active=is_active,
+                    is_seed=True,
                 )
             )
 
@@ -124,6 +125,7 @@ async def seed():
                 memory_summary="Cliente abituale, intollerante al glutine. Ultima prenotazione: 4 persone, tavolo tranquillo.",
                 total_calls=2,
                 last_call_at=datetime(2026, 5, 7, 20, 30, tzinfo=timezone.utc),
+                is_seed=True,
             )
         )
         session.add(
@@ -136,6 +138,7 @@ async def seed():
                 memory_summary="Cliente VIP, ama il tavolo vicino alla finestra. Festeggerà anniversario il 20 maggio.",
                 total_calls=1,
                 last_call_at=datetime(2026, 4, 15, 21, 0, tzinfo=timezone.utc),
+                is_seed=True,
             )
         )
 

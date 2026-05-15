@@ -16,7 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.session_context import (
     SessionContext,
     get_session_context,
-    visibility_filter,
+    visibility_filter_seedable,
 )
 from app.db.engine import get_session
 from app.db.models import Customer
@@ -42,6 +42,18 @@ async def get_customer_by_phone(
         ).scalar_one_or_none()
         if clone is not None:
             return CustomerCard.model_validate(clone, from_attributes=True)
+        # No clone yet — fall through to the seed row.
+        seed = (
+            await session.execute(
+                select(Customer).where(
+                    Customer.phone_e164 == phone_e164,
+                    Customer.is_seed.is_(True),
+                )
+            )
+        ).scalar_one_or_none()
+        if seed is None:
+            return None
+        return CustomerCard.model_validate(seed, from_attributes=True)
 
     row = (
         await session.execute(
@@ -66,7 +78,9 @@ async def get_customer(
         await session.execute(
             select(Customer).where(
                 Customer.id == customer_id,
-                visibility_filter(Customer.session_id, ctx),
+                visibility_filter_seedable(
+                    Customer.session_id, Customer.is_seed, ctx
+                ),
             )
         )
     ).scalar_one_or_none()

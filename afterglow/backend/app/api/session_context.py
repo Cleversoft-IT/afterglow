@@ -107,12 +107,39 @@ async def get_session_context(
     return SessionContext(session_id=minted)
 
 
-def visibility_filter(column: ColumnElement, ctx: SessionContext) -> ColumnElement:
-    """SQL filter: 'rows visible to this caller'.
+def visibility_filter(
+    session_column: ColumnElement, ctx: SessionContext
+) -> ColumnElement:
+    """SQL filter for activity-log tables (`calls`, `audit_log`, etc).
 
-    - Production (no session) sees only seed rows (`session_id IS NULL`).
-    - Demo sees its own rows AND seed rows.
+    These tables have no notion of "seed" — they are pure activity. Each
+    caller sees strictly its own rows:
+      - Production (no session) sees only `session_id IS NULL` rows.
+      - Demo sees only its own `session_id = me` rows.
+
+    This guarantees that the production tenant's call log can never leak
+    into a public demo visitor's UI and vice versa.
     """
     if ctx.is_demo:
-        return or_(column.is_(None), column == ctx.session_id)
-    return column.is_(None)
+        return session_column == ctx.session_id
+    return session_column.is_(None)
+
+
+def visibility_filter_seedable(
+    session_column: ColumnElement,
+    is_seed_column: ColumnElement,
+    ctx: SessionContext,
+) -> ColumnElement:
+    """SQL filter for `templates` and `customers`, which DO have seed rows.
+
+    - Production tenant sees its own rows (`session_id IS NULL`). Seed
+      rows have `session_id IS NULL AND is_seed = TRUE`, so the same
+      filter naturally includes them.
+    - Demo session sees its own rows (`session_id = me`) plus seed rows
+      (`is_seed = TRUE`). Production-only writes (`session_id IS NULL,
+      is_seed = FALSE`) are excluded so the demo sandbox never sees real
+      tenant data.
+    """
+    if ctx.is_demo:
+        return or_(session_column == ctx.session_id, is_seed_column.is_(True))
+    return session_column.is_(None)

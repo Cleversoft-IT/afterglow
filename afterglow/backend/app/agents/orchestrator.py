@@ -286,7 +286,7 @@ async def _resolve_customer(
             await session.execute(
                 select(Customer).where(
                     Customer.phone_e164 == phone_e164,
-                    Customer.session_id.is_(None),
+                    Customer.is_seed.is_(True),
                 )
             )
         ).scalar_one_or_none()
@@ -301,6 +301,7 @@ async def _resolve_customer(
                 total_calls=seed.total_calls or 0,
                 last_call_at=seed.last_call_at,
                 session_id=session_id,
+                is_seed=False,
             )
             session.add(clone)
             await session.flush()

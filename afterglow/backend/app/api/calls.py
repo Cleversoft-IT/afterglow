@@ -69,8 +69,16 @@ async def _get_active_template(
             ).scalar_one_or_none()
             if template is not None:
                 return template
-        # Fallback to the seed-active template so demo sessions never get a
-        # 409 just because they have not picked anything yet.
+        # Fallback for a brand-new demo session: the SEED-active template only.
+        # Never fall back to a production tenant's own active row.
+        stmt = select(Template).where(
+            Template.is_active.is_(True),
+            Template.is_seed.is_(True),
+        )
+        template = (await session.execute(stmt)).scalar_one_or_none()
+        if template is None:
+            raise HTTPException(status_code=409, detail="no active template set")
+        return template
 
     stmt = select(Template).where(
         Template.is_active.is_(True),

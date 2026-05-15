@@ -20,7 +20,7 @@ from app.agents import template_builder
 from app.api.session_context import (
     SessionContext,
     get_session_context,
-    visibility_filter,
+    visibility_filter_seedable,
 )
 from app.db.engine import get_session
 from app.db.models import DemoSession, Template
@@ -44,7 +44,7 @@ async def list_templates(
 ) -> list[TemplateView]:
     stmt = (
         select(Template)
-        .where(visibility_filter(Template.session_id, ctx))
+        .where(visibility_filter_seedable(Template.session_id, Template.is_seed, ctx))
         .order_by(Template.created_at.desc())
     )
     rows = (await session.execute(stmt)).scalars().all()
@@ -72,11 +72,18 @@ async def get_active_template(
                 return TemplateView.model_validate(target, from_attributes=True)
         # Fallback: seed template currently marked active.
 
+    # In demo mode the fallback is the SEED active template (must be
+    # is_seed=TRUE) so we never expose a production-tenant active flag to a
+    # public visitor. In production, plain `is_active = TRUE` is enough — it
+    # includes the seed default and any tenant-owned non-seed templates.
+    fallback_filter = (
+        Template.is_seed.is_(True) if ctx.is_demo else Template.session_id.is_(None)
+    )
     row = (
         await session.execute(
             select(Template).where(
                 Template.is_active.is_(True),
-                Template.session_id.is_(None),
+                fallback_filter,
             )
         )
     ).scalar_one_or_none()
@@ -95,7 +102,7 @@ async def set_active_template(
         await session.execute(
             select(Template).where(
                 Template.id == payload.template_id,
-                visibility_filter(Template.session_id, ctx),
+                visibility_filter_seedable(Template.session_id, Template.is_seed, ctx),
             )
         )
     ).scalar_one_or_none()
@@ -137,7 +144,7 @@ async def get_template(
         await session.execute(
             select(Template).where(
                 Template.id == template_id,
-                visibility_filter(Template.session_id, ctx),
+                visibility_filter_seedable(Template.session_id, Template.is_seed, ctx),
             )
         )
     ).scalar_one_or_none()
