@@ -31,6 +31,10 @@ export default function TabsLayout() {
         options={{ title: 'Calls', tabBarLabel: 'Calls', tabBarIcon: tabIcon('call') }}
       />
       <Tabs.Screen
+        name="customers"
+        options={{ title: 'Customers', tabBarLabel: 'Customers', tabBarIcon: tabIcon('people') }}
+      />
+      <Tabs.Screen
         name="templates"
         options={{ title: 'Templates', tabBarLabel: 'Templates', tabBarIcon: tabIcon('albums') }}
       />

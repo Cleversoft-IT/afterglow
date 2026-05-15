@@ -8,9 +8,10 @@ card on the dialer can still light up on the first ring.
 from __future__ import annotations
 
 import uuid
+from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.session_context import (
@@ -23,6 +24,49 @@ from app.db.models import Customer
 from app.schemas import CustomerCard, CustomerProfileView
 
 router = APIRouter(prefix="/api/v1/customers", tags=["customers"])
+
+
+@router.get("", response_model=list[CustomerCard])
+async def list_customers(
+    q: Optional[str] = None,
+    limit: int = 50,
+    ctx: SessionContext = Depends(get_session_context),
+    session: AsyncSession = Depends(get_session),
+) -> list[CustomerCard]:
+    capped = max(1, min(limit, 200))
+    stmt = (
+        select(Customer)
+        .where(visibility_filter_seedable(Customer.session_id, Customer.is_seed, ctx))
+        .order_by(
+            Customer.last_call_at.desc().nulls_last(),
+            Customer.created_at.desc(),
+        )
+        .limit(capped)
+    )
+    if q:
+        like = f"%{q.strip()}%"
+        stmt = stmt.where(
+            or_(
+                Customer.phone_e164.ilike(like),
+                func.coalesce(Customer.display_name, "").ilike(like),
+            )
+        )
+    rows = list((await session.execute(stmt)).scalars().all())
+    # Demo dedup: when a seed and a session clone share the same phone the
+    # visibility filter returns both. The clone is the source of truth (it
+    # carries the post-call updates), so it wins.
+    if ctx.is_demo:
+        by_phone: dict[str, Customer] = {}
+        for r in rows:
+            existing = by_phone.get(r.phone_e164)
+            if existing is None or (existing.is_seed and not r.is_seed):
+                by_phone[r.phone_e164] = r
+        rows = sorted(
+            by_phone.values(),
+            key=lambda c: (c.last_call_at or c.created_at),
+            reverse=True,
+        )[:capped]
+    return [CustomerCard.model_validate(r, from_attributes=True) for r in rows]
 
 
 @router.get("/by-phone/{phone_e164}", response_model=CustomerCard | None)

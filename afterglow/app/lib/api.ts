@@ -185,6 +185,13 @@ export const api = {
     });
   },
 
+  listCustomers: (params?: { q?: string; limit?: number }) => {
+    const qs = new URLSearchParams();
+    if (params?.q) qs.set('q', params.q);
+    if (params?.limit) qs.set('limit', String(params.limit));
+    const suffix = qs.toString() ? `?${qs}` : '';
+    return request<CustomerCard[]>(`/api/v1/customers${suffix}`);
+  },
   getCustomerByPhone: (phone: string) =>
     request<CustomerCard | null>(`/api/v1/customers/by-phone/${encodeURIComponent(phone)}`),
   getCustomer: (id: string) => request<CustomerCard>(`/api/v1/customers/${id}`),

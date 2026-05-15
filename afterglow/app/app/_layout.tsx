@@ -36,6 +36,7 @@ export default function RootLayout() {
         <Stack.Screen name="simulator" options={{ title: 'Incoming call' }} />
         <Stack.Screen name="incoming-call" options={{ headerShown: false }} />
         <Stack.Screen name="call/[id]" options={{ title: 'Call detail' }} />
+        <Stack.Screen name="customer/[id]" options={{ title: 'Customer detail' }} />
       </Stack>
     </SafeAreaProvider>
   );
