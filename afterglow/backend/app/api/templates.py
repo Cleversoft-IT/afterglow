@@ -37,6 +37,58 @@ class SetActiveTemplateRequest(BaseModel):
     template_id: uuid.UUID
 
 
+async def _active_template_id_for_session(
+    session: AsyncSession, ctx: SessionContext
+) -> uuid.UUID | None:
+    """Resolve which template uuid is "active" for the current caller.
+
+    Demo: DemoSession.active_template_id, fallback to the seed-active row.
+    Production: Template.is_active=TRUE among seed/tenant rows.
+
+    Used to project `is_active` correctly onto the rows returned by
+    list_templates / set_active_template, since the underlying
+    `Template.is_active` boolean is the production-wide flag and never
+    flips for demo sessions.
+    """
+    if ctx.is_demo:
+        demo = (
+            await session.execute(
+                select(DemoSession).where(DemoSession.id == ctx.session_id)
+            )
+        ).scalar_one_or_none()
+        if demo is not None and demo.active_template_id is not None:
+            return demo.active_template_id
+        # Fallback to the seed-active template.
+        seed = (
+            await session.execute(
+                select(Template.id).where(
+                    Template.is_active.is_(True),
+                    Template.is_seed.is_(True),
+                )
+            )
+        ).scalar_one_or_none()
+        return seed
+
+    row = (
+        await session.execute(
+            select(Template.id).where(
+                Template.is_active.is_(True),
+                Template.session_id.is_(None),
+            )
+        )
+    ).scalar_one_or_none()
+    return row
+
+
+def _project_active(
+    row: Template, active_id: uuid.UUID | None
+) -> TemplateView:
+    """Pydantic view with is_active overridden by the caller's active template."""
+    view = TemplateView.model_validate(row, from_attributes=True)
+    view.is_active = active_id is not None and row.id == active_id
+    return view
+
+
 @router.get("", response_model=list[TemplateView])
 async def list_templates(
     ctx: SessionContext = Depends(get_session_context),
@@ -48,7 +100,8 @@ async def list_templates(
         .order_by(Template.created_at.desc())
     )
     rows = (await session.execute(stmt)).scalars().all()
-    return [TemplateView.model_validate(r, from_attributes=True) for r in rows]
+    active_id = await _active_template_id_for_session(session, ctx)
+    return [_project_active(r, active_id) for r in rows]
 
 
 @router.get("/active", response_model=TemplateView)
@@ -69,7 +122,7 @@ async def get_active_template(
                 )
             ).scalar_one_or_none()
             if target is not None:
-                return TemplateView.model_validate(target, from_attributes=True)
+                return _project_active(target, target.id)
         # Fallback: seed template currently marked active.
 
     # In demo mode the fallback is the SEED active template (must be
@@ -89,7 +142,7 @@ async def get_active_template(
     ).scalar_one_or_none()
     if row is None:
         raise HTTPException(status_code=409, detail="no active template")
-    return TemplateView.model_validate(row, from_attributes=True)
+    return _project_active(row, row.id)
 
 
 @router.put("/active", response_model=TemplateView)
@@ -116,7 +169,7 @@ async def set_active_template(
             .values(active_template_id=target.id)
         )
         await session.commit()
-        return TemplateView.model_validate(target, from_attributes=True)
+        return _project_active(target, target.id)
 
     # Production: two-step swap because of the partial unique index on
     # is_active=TRUE AND session_id IS NULL. Clearing all first guarantees
@@ -150,7 +203,8 @@ async def get_template(
     ).scalar_one_or_none()
     if row is None:
         raise HTTPException(status_code=404, detail="Template not found")
-    return TemplateView.model_validate(row, from_attributes=True)
+    active_id = await _active_template_id_for_session(session, ctx)
+    return _project_active(row, active_id)
 
 
 @router.post("/wizard", response_model=TemplateWizardResponse)
