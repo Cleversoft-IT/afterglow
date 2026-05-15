@@ -16,9 +16,9 @@ export default async function IncomingPage({
   const biz = businesses.find((b) => b.domain === scenario.business_domain);
   if (!biz) {
     return (
-      <main className="min-h-screen grid place-items-center bg-zinc-100">
-        <div className="p-8 text-zinc-700">
-          No business found for domain <code>{scenario.business_domain}</code>.
+      <main className="grid min-h-dvh place-items-center bg-ui-canvas px-6 py-10">
+        <div className="max-w-md rounded-2xl border border-ui-line bg-ui-surface p-8 text-center text-sm leading-relaxed text-ui-subtle shadow-soft">
+          No business found for domain <code className="font-mono text-ui-ink">{scenario.business_domain}</code>.
           Did you run the seed?
         </div>
       </main>
@@ -29,8 +29,8 @@ export default async function IncomingPage({
   const template = templates.find((t) => t.is_active) ?? templates[0];
   if (!template) {
     return (
-      <main className="min-h-screen grid place-items-center bg-zinc-100">
-        <div className="p-8 text-zinc-700">
+      <main className="grid min-h-dvh place-items-center bg-ui-canvas px-6 py-10">
+        <div className="max-w-md rounded-2xl border border-ui-line bg-ui-surface p-8 text-center text-sm leading-relaxed text-ui-subtle shadow-soft">
           No active template for {biz.name}.
         </div>
       </main>
@@ -42,7 +42,7 @@ export default async function IncomingPage({
     .catch(() => null);
 
   return (
-    <main className="min-h-screen bg-zinc-100 grid place-items-center py-10">
+    <main className="grid min-h-dvh place-items-center bg-ui-canvas py-10">
       <IncomingCallScreen
         phone={scenario.phone}
         business_id={biz.id}

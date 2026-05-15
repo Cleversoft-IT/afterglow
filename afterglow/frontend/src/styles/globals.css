@@ -3,8 +3,10 @@
 @tailwind utilities;
 
 :root {
-  --background: 250 250 251;
-  --foreground: 24 24 27;
+  --background: 247 247 244;
+  --foreground: 13 13 13;
+  --surface: 255 255 255;
+  --border-subtle: 229 229 223;
 }
 
 * { box-sizing: border-box; }
@@ -12,27 +14,64 @@
 html, body {
   padding: 0;
   margin: 0;
+  min-height: 100%;
   background: rgb(var(--background));
   color: rgb(var(--foreground));
   font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
     Roboto, "Helvetica Neue", Arial, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+::selection {
+  background: rgba(16, 163, 127, 0.18);
+  color: rgb(13 13 13);
+}
+
+/* Landing canvas: warm paper + whisper highlight (phone mock unchanged) */
+.landing-root {
+  position: relative;
+  isolation: isolate;
+  overflow-x: clip;
+}
+
+.landing-root::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background: radial-gradient(
+    ellipse 90% 55% at 50% -15%,
+    rgba(255, 255, 255, 0.9),
+    transparent 55%
+  );
+}
+
+.landing-root ::selection {
+  background: rgba(16, 163, 127, 0.2);
+  color: rgb(13 13 13);
 }
 
 .phone-shell {
-  width: 375px;
+  width: 100%;
+  max-width: 375px;
   min-height: 720px;
   border-radius: 36px;
-  background: linear-gradient(180deg, #0b1220 0%, #1e293b 100%);
+  background: linear-gradient(180deg, #0c1220 0%, #1a2332 55%, #1e293b 100%);
   color: white;
   overflow: hidden;
   position: relative;
-  box-shadow: 0 24px 60px -20px rgba(0, 0, 0, 0.4);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.06) inset,
+    0 28px 64px -28px rgba(15, 23, 42, 0.35),
+    0 12px 32px -16px rgba(15, 23, 42, 0.2);
 }
 
 .blue-glow {
   box-shadow:
-    0 0 0 6px rgba(37, 99, 235, 0.18),
-    0 0 0 14px rgba(37, 99, 235, 0.08);
+    0 0 0 5px rgba(37, 99, 235, 0.14),
+    0 0 0 12px rgba(37, 99, 235, 0.06),
+    0 8px 24px -12px rgba(0, 0, 0, 0.45);
 }

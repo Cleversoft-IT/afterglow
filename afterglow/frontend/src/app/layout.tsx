@@ -9,13 +9,13 @@ export const metadata: Metadata = {
   icons: { icon: "/icons/icon-192.png", apple: "/icons/icon-192.png" },
   appleWebApp: {
     capable: true,
-    statusBarStyle: "black-translucent",
+    statusBarStyle: "default",
     title: "Afterglow",
   },
 };
 
 export const viewport: Viewport = {
-  themeColor: "#1d4ed8",
+  themeColor: "#F7F7F4",
   width: "device-width",
   initialScale: 1,
 };
@@ -23,7 +23,7 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
-      <body className="bg-zinc-50 text-zinc-900">
+      <body className="min-h-dvh bg-ui-canvas text-ui-ink antialiased selection:bg-ui-mint/20 selection:text-ui-ink">
         {children}
       </body>
     </html>

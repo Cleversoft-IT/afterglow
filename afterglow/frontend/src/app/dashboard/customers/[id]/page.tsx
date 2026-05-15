@@ -10,37 +10,35 @@ export default async function CustomerProfilePage({
   const customer = await api.getCustomer(params.id).catch(() => null);
   if (!customer) notFound();
   return (
-    <div className="px-8 py-10 space-y-6 max-w-3xl">
+    <div className="max-w-3xl space-y-6 px-5 py-8 sm:px-8 sm:py-10">
       <header>
-        <h1 className="text-2xl font-semibold tracking-tight">
+        <h1 className="text-2xl font-semibold tracking-tight text-ui-ink">
           {customer.display_name ?? customer.phone_e164}
         </h1>
-        <p className="text-sm text-zinc-600 font-mono">{customer.phone_e164}</p>
+        <p className="mt-1 text-sm text-ui-subtle font-mono">{customer.phone_e164}</p>
       </header>
 
       {customer.memory_summary && (
-        <section className="rounded-xl border bg-white p-5">
-          <h2 className="text-xs uppercase tracking-widest text-zinc-500 mb-2">
+        <section className="rounded-2xl border border-ui-line bg-ui-surface p-6 shadow-soft">
+          <h2 className="mb-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-ui-subtle">
             Memory
           </h2>
-          <p className="text-sm leading-relaxed text-zinc-800">
-            {customer.memory_summary}
-          </p>
+          <p className="text-sm leading-relaxed text-ui-ink">{customer.memory_summary}</p>
         </section>
       )}
 
-      <section className="rounded-xl border bg-white p-5">
-        <h2 className="text-xs uppercase tracking-widest text-zinc-500 mb-2">
+      <section className="rounded-2xl border border-ui-line bg-ui-surface p-6 shadow-soft">
+        <h2 className="mb-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-ui-subtle">
           Tags
         </h2>
-        <div className="flex flex-wrap gap-1.5">
+        <div className="flex flex-wrap gap-2">
           {customer.tags.length === 0 ? (
-            <span className="text-sm text-zinc-500">No tags yet.</span>
+            <span className="text-sm text-ui-subtle">No tags yet.</span>
           ) : (
             customer.tags.map((t) => (
               <span
                 key={t}
-                className="rounded-full bg-afterglow-50 text-afterglow-700 text-xs px-2 py-0.5"
+                className="rounded-full border border-ui-line bg-ui-muted px-2.5 py-1 text-xs font-medium text-ui-ink"
               >
                 {t}
               </span>
@@ -49,7 +47,7 @@ export default async function CustomerProfilePage({
         </div>
       </section>
 
-      <section className="rounded-xl border bg-white p-5 text-sm text-zinc-500">
+      <section className="rounded-2xl border border-ui-line bg-ui-surface p-6 text-sm text-ui-subtle shadow-soft">
         Total calls: {customer.total_calls} · Last call: {customer.last_call_at ?? "—"}
       </section>
     </div>
