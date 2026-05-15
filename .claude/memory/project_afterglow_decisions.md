@@ -103,9 +103,21 @@ File `LICENSE` MIT nel repo dal primo commit.
 - Audio: oggi è dentro il container (`/var/data/audio` no volume). Persistent volume è in roadmap; nel frattempo i file audio sono ephemeral fra i redeploy.
 - Env vars: gestite in Coolify (Resource → Environment Variables, criptate at-rest). NIENTE secret committato. Il `.env` locale ha valori dev (Postgres podman su localhost, audio in `./data/audio`).
 - HTTPS: Traefik + Let's Encrypt sul dominio `*.95-179-245-107.sslip.io`. Sslip.io risolve `<dashes>.sslip.io` → IP corrispondente senza configurazione DNS aggiuntiva.
-- Coordinate complete in [[reference-devops-pipeline]]. Credenziali in 1Password.
+- Coordinate complete in [[reference-devops-pipeline]]. Credenziali fuori dalla repo (Coolify env vars + `~/.config/afterglow/`).
 
 ### 8.ter. Gemini default model — `gemini-flash-latest` (verificato 2026-05-15)
 Tutti i modelli **Flash** sono utilizzabili gratis con la key Google AI Studio (Workspace account). I **Pro** rispondono 429 RESOURCE_EXHAUSTED sul free tier. `gemini-3-flash-preview` è gratuito sul free-tier (la voce contraria su molti blog è errata) e resta come `GEMINI_TEMPLATE_BUILDER_MODEL` per l'Originality bonus.
 
 **How to apply:** se serve un modello reasoning Pro, sappi che il free-tier non lo serve. Per la demo restiamo su Flash, dove la qualità di estrazione è già più che sufficiente.
+
+### 9. Stato env in produzione (volatile, 2026-05-15)
+Sezione "what's live right now" — da rileggere prima di pushare grossi cambi al backend.
+
+- **`DEMO_MODE=true`** sul backend Coolify. Necessario finché gli MP3 demo sono placeholder silenziosi: Speechmatics SDK crasha con `KeyError: 'type'` su audio quasi-vuoti. Da invertire a `false` appena i 3 MP3 reali (`restaurant`, `dentist`, `bodyshop`) sono bundlati in `afterglow/app/assets/audio/`.
+- **`VULTR_VECTOR_DEFAULT_COLLECTION=afterglowbf073`** sul backend. Riusa la collection già provisionata (`afterglowbf073`); se viene svuotata, l'orchestrator degrada gracefully (skip RAG retrieval + skip write-back, briefing su Postgres comunque salvato).
+- **`CORS_ORIGINS`** (CSV) sul backend: `https://app.95-179-245-107.sslip.io,https://demo.95-179-245-107.sslip.io,https://95-179-245-107.sslip.io`. Sostituisce `AFTERGLOW_CORS_EXTRA_ORIGINS` (eliminata).
+- **`AFTERGLOW_DEFAULT_BUSINESS_ID`**: eliminata su Coolify e dal codice (single-tenant, niente più tabella `businesses`).
+
+**Why:** queste env divergono da `.env.example` (che è la baseline locale). Senza questa sezione, un nuovo collaboratore che legge solo il file finisce per non capire perché in prod la pipeline si comporta diversamente.
+
+**How to apply:** quando cambi env in Coolify ricordati di riportare qui le decisioni di stato (cosa è attivo, cosa è disattivato, da quando, perché). Quando inverti `DEMO_MODE`, aggiorna questa sezione di conseguenza.

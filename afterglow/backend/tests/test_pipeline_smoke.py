@@ -18,7 +18,6 @@ def test_db_models_metadata_has_all_tables():
 
     names = set(Base.metadata.tables.keys())
     expected = {
-        "businesses",
         "templates",
         "template_versions",
         "customers",
@@ -29,3 +28,20 @@ def test_db_models_metadata_has_all_tables():
         "customer_memory_chunks",
     }
     assert expected.issubset(names), f"missing: {expected - names}"
+    assert "businesses" not in names, (
+        "single-tenant invariant broken: 'businesses' table reintroduced"
+    )
+
+
+def test_no_business_id_columns():
+    """The single-tenant refactor removed business_id from every table.
+
+    Catches a regression where someone re-adds the FK without thinking it through.
+    """
+    from app.db.models import Call, Customer, Template
+
+    for model in (Template, Customer, Call):
+        cols = {c.name for c in model.__table__.columns}
+        assert "business_id" not in cols, (
+            f"{model.__name__} unexpectedly has a business_id column"
+        )

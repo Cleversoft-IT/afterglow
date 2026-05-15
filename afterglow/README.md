@@ -214,7 +214,8 @@ local podman                git push                   Coolify (Vultr VM, FRA, v
 Environment variables (DB connection string, API keys, CORS allow-list) are
 stored encrypted inside Coolify per Resource. They are **not** in the repo —
 see [`reference_devops_pipeline.md`](../.claude/memory/reference_devops_pipeline.md)
-for the source of truth and 1Password for the credentials themselves.
+for the source of truth. User-local credentials (Coolify API token etc.) live
+outside the repo in `~/.config/afterglow/`.
 
 Traefik on Coolify auto-issues a Let's Encrypt cert for each app domain.
 [sslip.io](https://sslip.io) resolves `<ip-with-dashes>.sslip.io` to the

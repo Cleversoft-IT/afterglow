@@ -29,7 +29,7 @@ local edit  →  git push origin main  →  GitHub App webhook  →  Coolify on 
 
 - Coolify admin: http://95.179.245.107:8000 (HTTP plain for the dashboard; Traefik + Let's Encrypt for the apps)
 - Auto-deploy fires within seconds of a push to `main`. There is **no manual deploy path** — no SSH into the VM for app changes, no `docker compose up` on the host.
-- Coordinates, IDs, and operational notes: [`reference_devops_pipeline.md`](.claude/memory/reference_devops_pipeline.md). Secrets live in 1Password, never in the repo.
+- Coordinates, IDs, and operational notes: [`reference_devops_pipeline.md`](.claude/memory/reference_devops_pipeline.md). Secrets live outside the repo in user-local files (typically `~/.config/afterglow/`) and inside Coolify Environment Variables — never committed.
 
 ## Hard constraints — do not change without re-discussion
 

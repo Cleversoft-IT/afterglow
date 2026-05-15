@@ -123,14 +123,15 @@ afterglow/app/app/
 ├── _layout.tsx              Stack root
 ├── (tabs)/
 │   ├── _layout.tsx          Bottom tabs
-│   ├── calls.tsx            Lista chiamate
-│   ├── customers.tsx        Lista/lookup clienti
+│   ├── index.tsx            Lista chiamate (Calls)
 │   ├── templates.tsx        3 preset + selettore Active
 │   ├── audit.tsx            Audit log
 │   └── settings.tsx         Diagnostica
 ├── call/[id].tsx            Dettaglio call: fields, actions (con Revert), transcript
 └── simulator.tsx            "Tasto blu" (incoming call simulator)
 ```
+
+**Customers tab — deferred (post-hackathon).** Il piano originale prevedeva `customers.tsx` ma la implementazione l'ha omessa di proposito: il backend espone solo `GET /customers/by-phone/{phone}` e `GET /customers/{id}` — manca un endpoint di lista, che sarebbe necessario per una screen utilizzabile. Costo non giustificato per la demo, dove l'unico flusso operativo è il "tasto blu" → call detail. Da riprendere se vorremo una vera dashboard cliente.
 
 ### B3. Componenti (RN primitives, niente HTML)
 Sotto `afterglow/app/components/`: `Card`, `Badge`, `Button`, `ListRow`, `TranscriptBlock`, `FieldRow`, `ActionRow`, `BlueCallButton`. Basati su `View / Text / Pressable / ScrollView / FlatList / Modal`. Audio in `simulator.tsx` con `expo-av`.
@@ -271,16 +272,24 @@ Eliminare:
 
 ## Verifica end-to-end
 
-### Smoke test in locale (dopo Giorno 1)
+### Smoke test in locale (backend-only)
+Richiede `DEMO_MODE=true` finché gli MP3 in `afterglow/backend/sample_audio/` sono i placeholder silenziosi (vedi sezione "Stato env in produzione" in [[project-afterglow-decisions]]).
+
 ```sh
 cd /home/sepa/cleversoft/hackaton/hackaton-lablab/afterglow
 docker compose up -d postgres backend
 curl -s http://localhost:8000/api/v1/templates | jq '.[].name'
-RESTO=$(curl -s http://localhost:8000/api/v1/templates | jq -r '.[]|select(.domain_hint=="restaurant")|.id')
+
+# Switch active template to restaurant
+RESTO=$(curl -s http://localhost:8000/api/v1/templates \
+  | jq -r '.[]|select(.domain_hint=="restaurant")|.id')
 curl -s -X PUT -H 'content-type: application/json' \
   -d "{\"template_id\":\"$RESTO\"}" http://localhost:8000/api/v1/templates/active
+
+# POST /calls only takes audio + phone_e164. The backend resolves template_id
+# from the currently active template (returns 409 if none).
 curl -s -F audio=@backend/sample_audio/restaurant.mp3 \
-     -F template_id=$RESTO -F phone_e164=+393331112233 \
+     -F phone_e164=+393331112233 \
      http://localhost:8000/api/v1/calls
 # poll fino a "completed" → GET /api/v1/calls/{id} → verificare extracted_fields + executed_actions.
 ```
