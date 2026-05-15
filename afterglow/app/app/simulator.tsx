@@ -1,29 +1,17 @@
+import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { BlueCallButton } from '../components/BlueCallButton';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Card } from '../components/Card';
 import { api, ApiError } from '../lib/api';
-import { resolveAudioBlob, type AudioDomain } from '../lib/audio';
-import { colors, spacing } from '../lib/theme';
+import { colors, radius, spacing } from '../lib/theme';
 import type { TemplateView } from '../lib/types';
-
-const DEMO_PHONE_BY_DOMAIN: Record<string, string> = {
-  restaurant: '+393331112233',
-  dentist: '+393339991122',
-  bodyshop: '+393338883344',
-};
-
-const POLL_INTERVAL_MS = 1500;
-const POLL_TIMEOUT_MS = 30000;
 
 export default function SimulatorScreen() {
   const router = useRouter();
   const [template, setTemplate] = useState<TemplateView | null>(null);
   const [loading, setLoading] = useState(true);
-  const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [progress, setProgress] = useState<string | null>(null);
 
   useEffect(() => {
     (async () => {
@@ -38,50 +26,20 @@ export default function SimulatorScreen() {
     })();
   }, []);
 
-  const startCall = async () => {
-    if (!template) return;
-    setBusy(true);
-    setError(null);
-    setProgress('Loading audio…');
-    try {
-      const domain = template.domain_hint as AudioDomain;
-      const blob = await resolveAudioBlob(domain);
-      const phone = DEMO_PHONE_BY_DOMAIN[domain] ?? '+393331112233';
-      setProgress('Uploading call…');
-      const submitted = await api.submitAudio(blob, phone, `${domain}.mp3`);
-
-      const deadline = Date.now() + POLL_TIMEOUT_MS;
-      while (Date.now() < deadline) {
-        const detail = await api.getCall(submitted.call_id);
-        setProgress(`Call ${detail.status}…`);
-        if (detail.status === 'completed' || detail.status === 'failed') {
-          router.replace(`/call/${detail.id}`);
-          return;
-        }
-        await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
-      }
-      setError('Pipeline timed out after 30s.');
-    } catch (e) {
-      setError(e instanceof ApiError ? e.message : String(e));
-    } finally {
-      setBusy(false);
-      setProgress(null);
-    }
-  };
-
   if (loading) return <ActivityIndicator color={colors.brand} style={{ marginTop: 32 }} />;
 
   return (
     <ScrollView contentContainerStyle={styles.scroll}>
       <Card>
-        <Text style={styles.heading}>Incoming call</Text>
+        <Text style={styles.heading}>Incoming call simulator</Text>
         {template ? (
           <>
             <Text style={styles.body}>
               Active template: <Text style={styles.bold}>{template.name}</Text> ({template.domain_hint})
             </Text>
             <Text style={styles.body}>
-              Tap the blue button to play the demo recording for this sector and run the post-call pipeline.
+              Tap the button below to ring the dialer with this sector's demo recording. Pick the blue
+              Afterglow handset to let the AI take the call and run the post-call pipeline.
             </Text>
           </>
         ) : (
@@ -92,8 +50,18 @@ export default function SimulatorScreen() {
       </Card>
 
       <View style={styles.cta}>
-        <BlueCallButton onPress={startCall} busy={busy} disabled={!template} />
-        {progress ? <Text style={styles.progress}>{progress}</Text> : null}
+        <Pressable
+          onPress={() => router.push('/incoming-call')}
+          disabled={!template}
+          style={({ pressed }) => [
+            styles.trigger,
+            { opacity: !template ? 0.5 : pressed ? 0.85 : 1, transform: [{ scale: pressed ? 0.98 : 1 }] },
+          ]}
+        >
+          <Ionicons name="call" size={22} color="#fff" />
+          <Text style={styles.triggerText}>Trigger incoming call</Text>
+        </Pressable>
+        <Text style={styles.hint}>Plays a ringtone, then the demo recording on accept.</Text>
       </View>
 
       {error ? (
@@ -110,7 +78,22 @@ const styles = StyleSheet.create({
   heading: { color: colors.text, fontWeight: '700', fontSize: 16 },
   body: { color: colors.textMuted, lineHeight: 20 },
   bold: { color: colors.text, fontWeight: '700' },
-  cta: { alignItems: 'center', paddingVertical: spacing.xl },
-  progress: { color: colors.textMuted, marginTop: spacing.md },
+  cta: { alignItems: 'center', paddingVertical: spacing.xl, gap: spacing.md },
+  trigger: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    backgroundColor: colors.brand,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.xl,
+    borderRadius: radius.pill,
+    shadowColor: colors.brand,
+    shadowOpacity: 0.5,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 8,
+  },
+  triggerText: { color: '#fff', fontWeight: '700', fontSize: 15, letterSpacing: 0.3 },
+  hint: { color: colors.textSubtle, fontSize: 12 },
   error: { color: colors.danger },
 });
