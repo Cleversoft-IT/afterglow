@@ -1,0 +1,4 @@
+# Claude Code runtime artifacts — never commit, vary per machine/session.
+# Everything else under .claude/ (memory, plans, skills, shared settings) stays tracked.
+scheduled_tasks.lock
+settings.local.json
