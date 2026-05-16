@@ -27,7 +27,7 @@ from typing import Any
 import jsonschema
 
 from app.config import get_settings
-from app.integrations.mocks import available_keys
+from app.integrations.action_catalog import available_keys
 from app.schemas.templates import (
     ProposedMock,
     TemplateWizardResponse,

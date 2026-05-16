@@ -238,5 +238,8 @@ def test_manual_only_action_queued_not_executed(monkeypatch):
     )
     assert len(persisted) == 1
     assert persisted[0].status == "manual_required"
-    assert persisted[0].result == {"mutates": True}
+    # manual-only rows also carry the `mock` flag so the UI knows whether a
+    # future operator-triggered run would touch a real integration or a stub.
+    # booking.create lives in the mock catalog → mock=True.
+    assert persisted[0].result == {"mutates": True, "mock": True}
     assert invoked == []

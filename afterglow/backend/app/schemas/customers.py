@@ -1,6 +1,6 @@
 """Pydantic schemas for customers."""
 from datetime import datetime
-from typing import Optional
+from typing import Any, Optional
 from uuid import UUID
 
 from pydantic import BaseModel, Field
@@ -12,6 +12,7 @@ class CustomerCard(BaseModel):
     display_name: Optional[str] = None
     preferred_language: Optional[str] = None
     tags: list[str] = Field(default_factory=list)
+    profile_facts: dict[str, Any] = Field(default_factory=dict)
     memory_summary: Optional[str] = None
     total_calls: int = 0
     last_call_at: Optional[datetime] = None

@@ -1,16 +1,22 @@
 """Deterministic (non-LLM) action executor.
 
-Walks the planned actions and runs each one against the mock registry, writing
-audit rows + ExecutedAction records. Actions marked `manual-only` are NOT
-executed automatically — they land as `status='manual_required'` so the operator
-sees them in the post-call screen and can trigger them by hand.
+Walks the planned actions and runs each one against the action catalog,
+writing audit rows + ExecutedAction records. Two execution paths based on
+the catalog entry's `integration_kind`:
+
+  - `mock_external`: dispatch to `MOCK_REGISTRY`. Result stamped `mock=True`
+    so the UI shows the "Simulated" badge.
+  - `internal_real`:  dispatch to `INTERNAL_HANDLERS`. Result stamped
+    `mock=False`. Postgres rows actually change (e.g. customer profile).
+
+Actions marked `manual-only` are NOT executed automatically — they land as
+`status='manual_required'` so the operator sees them in the post-call screen.
 
 Templates v2 enforcement (in addition to the legacy safety net):
-- `evidence_required=True` + empty evidence → refused, never reaches MOCK_REGISTRY.
+- `evidence_required=True` + empty evidence → refused, never reaches the catalog.
 - `payload_schema` present → `jsonschema.validate(payload, schema)` before
-  MOCK_REGISTRY; validation failure → status=`validation_failed`.
-- `mutates=True` → flagged in audit + ExecutedAction.result["mutates"] so the
-  UI marks the row irreversible and the (future) auto-retry loop skips it.
+  dispatch; validation failure → status=`validation_failed`.
+- `mutates=True` → flagged in audit + ExecutedAction.result["mutates"].
 """
 from __future__ import annotations
 
@@ -22,6 +28,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.audit.logger import audit_step
 from app.db.models import Call, Customer, ExecutedAction, Template
+from app.integrations import action_catalog
+from app.integrations.internal import INTERNAL_HANDLERS, INTERNAL_REVERTERS
 from app.integrations.mocks import MOCK_REGISTRY
 
 
@@ -155,29 +163,44 @@ async def execute_planned_actions(
         )
 
         if mode == "auto":
+            catalog_entry = action_catalog.get(action_type)
+            integration_kind = (
+                catalog_entry.integration_kind if catalog_entry else "mock_external"
+            )
             async with audit_step(
                 call_id=call.id,
                 session_id=call.session_id,
                 agent_name="action_executor",
                 step_type="action_exec",
-                payload={"action_type": action_type, "mutates": mutates},
+                payload={
+                    "action_type": action_type,
+                    "integration_kind": integration_kind,
+                    "mutates": mutates,
+                },
             ):
-                mock_fn = MOCK_REGISTRY.get(action_type)
-                if mock_fn is None:
-                    record.status = "failed"
-                    record.result = {"error": f"no mock for {action_type}", "mutates": mutates}
+                if integration_kind == "internal_real":
+                    record.result = _run_internal_real(
+                        catalog_entry, customer=customer, payload=payload, mutates=mutates
+                    )
+                    if not record.result.get("applied"):
+                        record.status = "failed"
                 else:
-                    mock_result = mock_fn(payload) or {}
-                    if not isinstance(mock_result, dict):
-                        mock_result = {"value": mock_result}
-                    # `mock: True` lets the UI render a "Simulated external call"
-                    # badge on every action whose target is a MOCK_REGISTRY entry
-                    # instead of a real integration. Honest signal for judges.
-                    record.result = {**mock_result, "mutates": mutates, "mock": True}
+                    record.result = _run_mock_external(action_type, payload, mutates=mutates)
+                    if "error" in record.result:
+                        record.status = "failed"
         else:
             # manual-only: still surface mutates flag so the UI can render the
-            # right warning ("irreversible — confirm before running").
-            record.result = {"mutates": mutates}
+            # right warning ("irreversible — confirm before running"), and
+            # carry integration_kind so the UI knows whether a future manual
+            # run would touch real records or stubs.
+            catalog_entry = action_catalog.get(action_type)
+            record.result = {
+                "mutates": mutates,
+                "mock": (
+                    catalog_entry is None
+                    or catalog_entry.integration_kind == "mock_external"
+                ),
+            }
 
         session.add(record)
         persisted.append(record)
@@ -186,28 +209,136 @@ async def execute_planned_actions(
     return persisted
 
 
-async def revert_action(
-    session: AsyncSession, action: ExecutedAction, *, reverted_by: str = "operator"
-) -> ExecutedAction:
-    """Mark an action as reverted + emit a compensating audit row.
+def _run_mock_external(
+    action_type: str, payload: dict[str, Any], *, mutates: bool
+) -> dict[str, Any]:
+    mock_fn = MOCK_REGISTRY.get(action_type)
+    if mock_fn is None:
+        # Unknown action key but still in mock_external bucket — surface the
+        # failure with `mock=True` so the UI badge stays honest.
+        return {
+            "error": f"no mock for {action_type}",
+            "mutates": mutates,
+            "mock": True,
+        }
+    mock_result = mock_fn(payload) or {}
+    if not isinstance(mock_result, dict):
+        mock_result = {"value": mock_result}
+    return {**mock_result, "mutates": mutates, "mock": True}
 
-    Idempotent: reverting an already-reverted action is a no-op.
+
+def _run_internal_real(
+    catalog_entry: Optional["action_catalog.ActionCatalogEntry"],
+    *,
+    customer: Optional[Customer],
+    payload: dict[str, Any],
+    mutates: bool,
+) -> dict[str, Any]:
+    if customer is None or catalog_entry is None or not catalog_entry.internal_handler:
+        return {
+            "applied": False,
+            "error": "no_customer_or_handler",
+            "mutates": mutates,
+            "mock": False,
+        }
+    handler = INTERNAL_HANDLERS.get(catalog_entry.internal_handler)
+    if handler is None:
+        return {
+            "applied": False,
+            "error": f"unknown_internal_handler:{catalog_entry.internal_handler}",
+            "mutates": mutates,
+            "mock": False,
+        }
+    out = handler(customer, payload)
+    # Carry the catalog handler name on the result so revert knows which
+    # reverter to invoke without re-deriving it.
+    out["internal_handler"] = catalog_entry.internal_handler
+    return out
+
+
+async def undo_action(
+    session: AsyncSession,
+    action: ExecutedAction,
+    *,
+    customer: Optional[Customer] = None,
+    reverted_by: str = "operator",
+) -> ExecutedAction:
+    """Move an executed action into `undone` state + emit an audit row.
+
+    For internal_real actions whose handler registered a reverter (today:
+    `customer_profile.apply_update`) we also REPLAY the previous_state
+    snapshot onto the customer row, so undoing a tag-add actually removes
+    the tag from Postgres. For mock_external actions this is purely a
+    status flip — the mock "world" has no memory of past calls anyway.
+
+    Idempotent: undoing an already-undone action is a no-op.
     """
-    if action.status == "reverted":
+    if action.status in ("undone", "reverted"):
         return action
 
     from datetime import datetime, timezone
+
+    reverter_summary: dict[str, Any] = {"replayed": False}
+    if (
+        customer is not None
+        and isinstance(action.result, dict)
+        and action.result.get("internal_handler")
+    ):
+        reverter = INTERNAL_REVERTERS.get(action.result["internal_handler"])
+        if reverter is not None:
+            reverter_summary = reverter(customer, action)
 
     async with audit_step(
         call_id=action.call_id,
         session_id=action.session_id,
         agent_name="action_executor",
-        step_type="revert",
-        payload={"action_id": str(action.id), "action_type": action.action_type, "by": reverted_by},
+        step_type="undo",
+        payload={
+            "action_id": str(action.id),
+            "action_type": action.action_type,
+            "by": reverted_by,
+            "reverter": reverter_summary,
+        },
     ):
-        action.status = "reverted"
+        action.status = "undone"
         action.reverted_at = datetime.now(tz=timezone.utc)
         action.reverted_by = reverted_by
 
     await session.flush()
     return action
+
+
+async def redo_action(
+    session: AsyncSession, action: ExecutedAction, *, redone_by: str = "operator"
+) -> ExecutedAction:
+    """Flip an undone action back to `executed`. Status-only — no replay of
+    the underlying mock or internal handler.
+
+    Idempotent: redoing an action that is already executed is a no-op.
+    """
+    if action.status != "undone":
+        return action
+
+    async with audit_step(
+        call_id=action.call_id,
+        session_id=action.session_id,
+        agent_name="action_executor",
+        step_type="redo",
+        payload={
+            "action_id": str(action.id),
+            "action_type": action.action_type,
+            "by": redone_by,
+        },
+    ):
+        action.status = "executed"
+        action.reverted_at = None
+        action.reverted_by = None
+
+    await session.flush()
+    return action
+
+
+# Backwards-compat alias for the existing /actions/{id}/revert endpoint and
+# any test that still imports the old name. New code should call undo_action
+# / redo_action directly.
+revert_action = undo_action
