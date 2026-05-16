@@ -96,6 +96,12 @@ class Template(Base):
         UUID(as_uuid=True), nullable=True
     )
     is_seed: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    # Per-template demo recording config (caller name + phone + TTS script +
+    # audio file location). Null for seed templates that ship the bundled
+    # MP3s under app/assets/audio/. See migration 0010.
+    simulation_config: Mapped[Optional[dict[str, Any]]] = mapped_column(
+        JSONB, nullable=True
+    )
     created_at: Mapped[datetime] = _ts()
     updated_at: Mapped[datetime] = _ts_updated()
 
@@ -125,6 +131,12 @@ class Customer(Base):
     display_name: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
     preferred_language: Mapped[Optional[str]] = mapped_column(String(10), nullable=True)
     tags: Mapped[list[str]] = mapped_column(ARRAY(String), default=list)
+    # Free-form bag of facts learned across calls (allergies, seating
+    # preferences, occasion, etc.). `customer.update_profile` is the only
+    # writer; the orchestrator reads it on the next call's caller card.
+    profile_facts: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, nullable=False, default=dict, server_default=text("'{}'::jsonb")
+    )
     memory_summary: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     total_calls: Mapped[int] = mapped_column(Integer, default=0)
     last_call_at: Mapped[Optional[datetime]] = mapped_column(
@@ -168,6 +180,7 @@ class Call(Base):
     session_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), nullable=True
     )
+    is_seed: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     created_at: Mapped[datetime] = _ts()
 
 
@@ -221,6 +234,7 @@ class ExecutedAction(Base):
     session_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), nullable=True
     )
+    is_seed: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     created_at: Mapped[datetime] = _ts()
 
 
