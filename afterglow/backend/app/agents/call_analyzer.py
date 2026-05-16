@@ -55,12 +55,19 @@ class PlannedAction(BaseModel):
     action_type: str = Field(description="Action key from the template's action_types.")
     title: str
     summary: str
-    payload: dict[str, Any] = Field(
-        default_factory=dict,
+    # `payload` is typed as `Any` (not `dict[str, Any]`) because Gemini's
+    # structured-output endpoint rejects any schema containing
+    # `additionalProperties` — which Pydantic emits for `dict[str, Any]`.
+    # `Any` generates an empty schema slot, which Gemini accepts and treats
+    # as "any value"; the model still returns a JSON object literal in
+    # practice. Downstream consumers must `isinstance(payload, dict)` before
+    # treating it as a mapping.
+    payload: Any = Field(
+        default=None,
         description=(
-            "Action arguments as a JSON object. Keys must match the action's "
+            "Action arguments as a JSON object whose keys match the action's "
             'payload_schema when present. Example: {"party_size": 4, '
-            '"booking_time": "20:30"}. Empty object when there are no arguments.'
+            '"booking_time": "20:30"}. Use null when there are no arguments.'
         ),
     )
     confidence: float = Field(ge=0.0, le=1.0)
