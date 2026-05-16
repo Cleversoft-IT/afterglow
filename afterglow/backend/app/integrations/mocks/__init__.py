@@ -1,7 +1,10 @@
 """Mock external integrations — bookings, WhatsApp, email, CRM.
 
 Each mock returns a deterministic-looking payload so the demo feels real
-without touching live systems. Wired into the deterministic ActionExecutor.
+without touching live systems. The ActionExecutor stamps `mock: True` on the
+resulting `ExecutedAction.result` so the UI can render a "Simulated external
+call" badge — judges see the boundary between real AI work and stubbed
+integrations.
 """
 from app.integrations.mocks.booking import create_booking_mock, cancel_booking_mock
 from app.integrations.mocks.whatsapp import send_whatsapp_mock, request_photos_mock

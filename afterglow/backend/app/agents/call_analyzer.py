@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import json
 import logging
+from dataclasses import dataclass
 from typing import Any, Optional
 
 from pydantic import BaseModel, Field
@@ -180,6 +181,29 @@ def _user_prompt(
     )
 
 
+@dataclass
+class TokenUsage:
+    """Token-count snapshot extracted from a Gemini response's usage_metadata.
+
+    Both fields are Optional[int] because the Gemini SDK does not always
+    populate them (e.g. cached responses). The orchestrator writes them
+    straight onto `audit_log.input_tokens` / `output_tokens`.
+    """
+
+    input_tokens: Optional[int] = None
+    output_tokens: Optional[int] = None
+
+    @classmethod
+    def from_gemini(cls, resp: Any) -> "TokenUsage":
+        usage = getattr(resp, "usage_metadata", None)
+        if usage is None:
+            return cls()
+        return cls(
+            input_tokens=getattr(usage, "prompt_token_count", None),
+            output_tokens=getattr(usage, "candidates_token_count", None),
+        )
+
+
 async def analyze_call(
     *,
     transcript_text: str,
@@ -190,8 +214,8 @@ async def analyze_call(
     prior_structured: Optional[dict[str, Any]] = None,
     domain_hint: str,
     prior_facts: str,
-) -> CallAnalysis:
-    """Run the single Gemini call and return a parsed CallAnalysis.
+) -> tuple[CallAnalysis, TokenUsage]:
+    """Run the single Gemini call and return the parsed analysis + token usage.
 
     Fail-fast: missing GOOGLE_API_KEY, network/SDK exceptions, empty
     responses, and schema mismatches all raise `CallAnalysisError`. The
@@ -237,7 +261,7 @@ async def analyze_call(
         raise CallAnalysisError("Gemini returned empty response")
 
     try:
-        return CallAnalysis.model_validate_json(text)
+        return CallAnalysis.model_validate_json(text), TokenUsage.from_gemini(resp)
     except Exception as exc:  # noqa: BLE001
         raise CallAnalysisError(f"Gemini response failed schema validation: {exc}") from exc
 

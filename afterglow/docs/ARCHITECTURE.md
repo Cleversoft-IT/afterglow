@@ -44,8 +44,9 @@ FastAPI background task ─► Speechmatics batch (diarization + lang detect + c
        │       Fail-fast: ADK runner error → Call.failed (no fallback).
        │
        ├─► Action Executor (deterministic Python) ─► jsonschema.validate(payload),
-       │       evidence_required gate, mutates flag → mock registry + Postgres +
-       │       audit_log
+       │       evidence_required gate, mutates flag, `mock: True` stamp on the
+       │       result (renders a "Simulated" badge in the operator UI) →
+       │       mock registry + Postgres + audit_log
        │
        └─► Memory write-back ─► customer.memory_summary (Postgres, operator-visible)
                                 + extracted_fields.briefing_snapshot (sanitized per-call copy)
@@ -188,3 +189,17 @@ operator's spoken language and the embedding model's bias toward
 English. Failure of the bilingual call lands as
 `audit.memory_summarizer_bilingual.status=degraded` and the chunk falls
 back to native-only — the briefing on Postgres is unaffected.
+
+## Token accounting
+
+Every LLM step on the post-call path writes the token counts it consumed
+into `audit_log.input_tokens` / `audit_log.output_tokens`:
+
+- `call_analyzer.llm_call` — Gemini `response.usage_metadata`
+  (`prompt_token_count` / `candidates_token_count`).
+- `memory_summarizer_bilingual.llm_call` — same source.
+- `memory_lookup.rag_semantic` — Vultr RAG's `usage.prompt_tokens` /
+  `usage.completion_tokens` from the JSON response body.
+
+The wizard surface (`template_builder`, `template_validator`) is not in
+the post-call path and is not audited per token today.

@@ -159,23 +159,23 @@ async def retrieve_customer_context(
     phone_e164: str,
     domain_hint: str,
     is_demo: bool = False,
-) -> str:
+) -> tuple[str, Optional[int], Optional[int]]:
     """Ask Vultr RAG for any prior facts about this phone number.
 
-    Returns a short paragraph (or empty string) the Orchestrator can splice into
-    its prompt as additional context. Failures degrade gracefully to "" so the
-    rest of the pipeline keeps running.
+    Returns ``(prior_facts, input_tokens, output_tokens)``. The two int fields
+    come from Vultr's ``usage`` block (prompt_tokens / completion_tokens) and
+    feed `audit_log.input_tokens` / `output_tokens` so the cost-per-call view
+    covers Vultr too, not just Gemini. They are ``None`` when the call was
+    skipped (demo / no collection) or when the SDK omitted the usage block.
 
-    ``is_demo=True`` skips the RAG call entirely. Demo visitors are isolated
-    per session (see SessionContext); we never read from the shared Vultr
-    collection in demo mode so one visitor's calls cannot leak into another's
-    briefing. The orchestrator now prefers the SQL-based structured history
-    for demo, so this function is reached only in production with > 10 calls.
+    Failures degrade gracefully to ``("", None, None)`` so the rest of the
+    pipeline keeps running. ``is_demo=True`` skips the RAG call entirely —
+    demo visitors are isolated per session (see SessionContext); we never
+    read from the shared Vultr collection in demo mode so one visitor's
+    calls cannot leak into another's briefing.
     """
-    if is_demo:
-        return ""
-    if not collection_id:
-        return ""
+    if is_demo or not collection_id:
+        return "", None, None
 
     messages = [
         {
@@ -205,20 +205,24 @@ async def retrieve_customer_context(
             "memory_retrieval: Vultr RAG returned %s — proceeding without prior memory.",
             exc.response.status_code,
         )
-        return ""
+        return "", None, None
     except httpx.HTTPError as exc:
         logger.warning(
             "memory_retrieval: Vultr RAG network error (%s) — proceeding without prior memory.",
             exc,
         )
-        return ""
+        return "", None, None
+
+    usage = raw.get("usage") if isinstance(raw, dict) else None
+    input_tokens = usage.get("prompt_tokens") if isinstance(usage, dict) else None
+    output_tokens = usage.get("completion_tokens") if isinstance(usage, dict) else None
 
     try:
         content = raw["choices"][0]["message"]["content"] or ""
     except (KeyError, IndexError):
-        return ""
+        return "", input_tokens, output_tokens
 
     content = _THINK_BLOCK_RE.sub("", content).strip()
     if not content or content.upper().startswith("NO_MEMORY"):
-        return ""
-    return content
+        return "", input_tokens, output_tokens
+    return content, input_tokens, output_tokens

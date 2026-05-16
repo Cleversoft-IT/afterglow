@@ -170,7 +170,10 @@ async def execute_planned_actions(
                     mock_result = mock_fn(payload) or {}
                     if not isinstance(mock_result, dict):
                         mock_result = {"value": mock_result}
-                    record.result = {**mock_result, "mutates": mutates}
+                    # `mock: True` lets the UI render a "Simulated external call"
+                    # badge on every action whose target is a MOCK_REGISTRY entry
+                    # instead of a real integration. Honest signal for judges.
+                    record.result = {**mock_result, "mutates": mutates, "mock": True}
         else:
             # manual-only: still surface mutates flag so the UI can render the
             # right warning ("irreversible — confirm before running").

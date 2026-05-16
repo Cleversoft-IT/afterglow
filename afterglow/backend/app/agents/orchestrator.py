@@ -164,13 +164,17 @@ async def run_pipeline(session: AsyncSession, call_id: uuid.UUID) -> None:
             step_type="rag_semantic",
             model="vultr-rag",
             payload={"count": total_calls},
-        ):
-            prior_facts = await memory_retrieval.retrieve_customer_context(
-                collection_id=collection_id,
-                phone_e164=call.phone_e164,
-                domain_hint=template.domain_hint,
-                is_demo=False,
+        ) as rag_audit:
+            prior_facts, rag_input_tokens, rag_output_tokens = (
+                await memory_retrieval.retrieve_customer_context(
+                    collection_id=collection_id,
+                    phone_e164=call.phone_e164,
+                    domain_hint=template.domain_hint,
+                    is_demo=False,
+                )
             )
+            rag_audit.input_tokens = rag_input_tokens
+            rag_audit.output_tokens = rag_output_tokens
 
     # 4) Single Gemini structured-output call. Fail-fast: a missing key or a
     # Gemini error bubbles up as CallAnalysisError; the orchestrator catches
@@ -182,8 +186,8 @@ async def run_pipeline(session: AsyncSession, call_id: uuid.UUID) -> None:
             agent_name="call_analyzer",
             step_type="llm_call",
             model=settings.gemini_default_model,
-        ):
-            analysis = await call_analyzer.analyze_call(
+        ) as analyzer_audit:
+            analysis, analyzer_usage = await call_analyzer.analyze_call(
                 transcript_text=transcript.text,
                 template_name=template.name,
                 fields_schema=template.fields_schema,
@@ -193,6 +197,8 @@ async def run_pipeline(session: AsyncSession, call_id: uuid.UUID) -> None:
                 domain_hint=template.domain_hint,
                 prior_facts=prior_facts,
             )
+            analyzer_audit.input_tokens = analyzer_usage.input_tokens
+            analyzer_audit.output_tokens = analyzer_usage.output_tokens
     except call_analyzer.CallAnalysisError as exc:
         logger.warning("call_analyzer failed for call %s: %s", call.id, exc)
         async with audit_step(
@@ -586,8 +592,10 @@ async def _persist_memory(
             model=settings.gemini_default_model,
         ) as bilingual_audit:
             try:
-                briefing_en = await _summarize_to_english(briefing)
+                briefing_en, bilingual_usage = await _summarize_to_english(briefing)
                 bilingual_audit.payload = {"chars": len(briefing_en or "")}
+                bilingual_audit.input_tokens = bilingual_usage.input_tokens
+                bilingual_audit.output_tokens = bilingual_usage.output_tokens
             except Exception as exc:  # noqa: BLE001
                 logger.warning(
                     "memory_summarizer_bilingual: failed (%s) — native-only chunk",
@@ -649,7 +657,7 @@ async def _persist_memory(
         )
 
 
-async def _summarize_to_english(briefing: str) -> str:
+async def _summarize_to_english(briefing: str) -> tuple[str, call_analyzer.TokenUsage]:
     """Translate / summarize the briefing to a one-sentence English line.
 
     Used to populate the bilingual chunk for the Vultr Vector Store: native
@@ -683,4 +691,4 @@ async def _summarize_to_english(briefing: str) -> str:
     out = (resp.text or "").strip()
     if not out:
         raise RuntimeError("empty response")
-    return out
+    return out, call_analyzer.TokenUsage.from_gemini(resp)

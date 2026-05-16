@@ -84,10 +84,14 @@ export default function CallDetailScreen() {
           <Text style={styles.section}>Actions ({call.executed_actions.length})</Text>
           {call.executed_actions.map((a) => {
             const isReverted = a.status === 'reverted';
+            const isMock = a.result?.mock === true;
             return (
               <View key={a.id} style={styles.actionRow}>
                 <View style={{ flex: 1, gap: 4 }}>
-                  <Text style={styles.actionTitle}>{a.title}</Text>
+                  <View style={styles.actionHeader}>
+                    <Text style={styles.actionTitle}>{a.title}</Text>
+                    {isMock ? <Badge tone="brand">Simulated</Badge> : null}
+                  </View>
                   <Text style={styles.actionMeta}>{a.action_type}</Text>
                   {a.summary ? <Text style={styles.actionSummary}>{a.summary}</Text> : null}
                 </View>
@@ -142,6 +146,7 @@ const styles = StyleSheet.create({
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: colors.border,
   },
+  actionHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, flexWrap: 'wrap' },
   actionTitle: { color: colors.text, fontWeight: '600' },
   actionMeta: { color: colors.textSubtle, fontSize: 11, fontFamily: 'monospace' },
   actionSummary: { color: colors.textMuted, fontSize: 13 },
