@@ -13,9 +13,11 @@ __pycache__/
 .agents/
 .codex/
 
-# Local-only data (runtime usa /var/data/audio)
+# Local-only data (runtime usa /var/data/audio). sample_audio/ è invece
+# spedito nel container perché i seed template puntano a
+# /app/sample_audio/<domain>.mp3 e /api/v1/templates/{id}/simulation/audio
+# streamma quei file al dialer.
 data/
-sample_audio/
 sample_templates/
 
 # Test & docs
