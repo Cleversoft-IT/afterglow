@@ -26,13 +26,23 @@ from app.api.session_context import (
 )
 from app.config import get_settings
 from app.db.engine import SessionLocal, get_session
-from app.db.models import Call, DemoSession, ExecutedAction, ExtractedFields, Template
+from app.db.models import (
+    Call,
+    Customer,
+    DemoSession,
+    ExecutedAction,
+    ExtractedFields,
+    Template,
+)
+from app.integrations import action_catalog
 from app.schemas import (
     CallActionView,
     CallDetailView,
     CallExtractedView,
     CallListItem,
     CallSubmittedResponse,
+    CustomerCard,
+    FieldDefinitionLite,
 )
 
 router = APIRouter(prefix="/api/v1/calls", tags=["calls"])
@@ -186,9 +196,60 @@ async def get_call(
         )
     ).scalars().all()
 
+    customer_row: Optional[Customer] = None
+    if call.customer_id is not None:
+        customer_row = (
+            await session.execute(
+                select(Customer).where(Customer.id == call.customer_id)
+            )
+        ).scalar_one_or_none()
+
+    # Pull the template once so we can label extracted fields with their
+    # human-readable label and pii_class. Templates v2 schema-only fields
+    # may be missing from older rows, so default everything defensively.
+    template_row: Optional[Template] = (
+        await session.execute(
+            select(Template).where(Template.id == call.template_id)
+        )
+    ).scalar_one_or_none()
+
+    extracted_view: Optional[CallExtractedView] = None
+    if extracted is not None:
+        field_defs: list[FieldDefinitionLite] = []
+        if template_row is not None and extracted.fields:
+            present_keys = set(extracted.fields.keys())
+            for raw in (template_row.fields_schema or []):
+                if not isinstance(raw, dict):
+                    continue
+                key = raw.get("key")
+                if not key or key not in present_keys:
+                    continue
+                field_defs.append(
+                    FieldDefinitionLite(
+                        key=key,
+                        label=raw.get("label") or key,
+                        type=raw.get("type") or "string",
+                        pii_class=raw.get("pii_class") or "none",
+                    )
+                )
+        extracted_view = CallExtractedView(
+            fields=extracted.fields or {},
+            confidence=extracted.confidence or {},
+            evidence=extracted.evidence or {},
+            intent=extracted.intent,
+            sentiment=extracted.sentiment,
+            urgency=extracted.urgency,
+            field_definitions=field_defs,
+        )
+
     return CallDetailView(
         id=call.id,
         customer_id=call.customer_id,
+        customer=(
+            CustomerCard.model_validate(customer_row, from_attributes=True)
+            if customer_row is not None
+            else None
+        ),
         template_id=call.template_id,
         phone_e164=call.phone_e164,
         detected_language=call.detected_language,
@@ -198,18 +259,7 @@ async def get_call(
         started_at=call.started_at,
         completed_at=call.completed_at,
         created_at=call.created_at,
-        extracted=(
-            CallExtractedView(
-                fields=extracted.fields or {},
-                confidence=extracted.confidence or {},
-                evidence=extracted.evidence or {},
-                intent=extracted.intent,
-                sentiment=extracted.sentiment,
-                urgency=extracted.urgency,
-            )
-            if extracted
-            else None
-        ),
+        extracted=extracted_view,
         executed_actions=[
             CallActionView(
                 id=a.id,
@@ -224,6 +274,8 @@ async def get_call(
                 status=a.status,
                 reverted_at=a.reverted_at,
                 created_at=a.created_at,
+                is_simulated=action_catalog.is_simulated(a.action_type),
+                can_undo=action_catalog.can_undo(a.action_type),
             )
             for a in actions
         ],

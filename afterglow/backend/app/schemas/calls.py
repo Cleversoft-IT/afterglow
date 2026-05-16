@@ -5,10 +5,23 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
+from app.schemas.customers import CustomerCard
+
 
 class CallSubmittedResponse(BaseModel):
     call_id: UUID
     status: str = "pending"
+
+
+class FieldDefinitionLite(BaseModel):
+    """Subset of the template's FieldDefinition used to label extracted fields
+    in the call detail UI (label, type, pii_class). The full definition lives
+    on the Template; we only ship what the renderer needs."""
+
+    key: str
+    label: str
+    type: str = "string"
+    pii_class: str = "none"
 
 
 class CallActionView(BaseModel):
@@ -24,6 +37,11 @@ class CallActionView(BaseModel):
     status: str
     reverted_at: Optional[datetime] = None
     created_at: datetime
+    # Server-computed visibility hints. `is_simulated` drives the
+    # "Simulated" badge in the UI (true for mock_external + unknown keys);
+    # `can_undo` controls whether the Undo button is shown at all.
+    is_simulated: bool = True
+    can_undo: bool = False
 
 
 class CallExtractedView(BaseModel):
@@ -33,11 +51,15 @@ class CallExtractedView(BaseModel):
     intent: Optional[str] = None
     sentiment: Optional[str] = None
     urgency: Optional[str] = None
+    # Per-key metadata so the UI can show a human label next to the machine
+    # key. Only fields actually present in `fields` get an entry here.
+    field_definitions: list[FieldDefinitionLite] = Field(default_factory=list)
 
 
 class CallDetailView(BaseModel):
     id: UUID
     customer_id: Optional[UUID] = None
+    customer: Optional[CustomerCard] = None
     template_id: UUID
     phone_e164: str
     detected_language: Optional[str] = None

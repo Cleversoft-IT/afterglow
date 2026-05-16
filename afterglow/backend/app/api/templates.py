@@ -11,21 +11,34 @@ Session-aware:
 from __future__ import annotations
 
 import uuid
+from datetime import datetime, timezone
+from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.agents import template_builder, template_validator
+from app.agents import (
+    simulation_script,
+    template_builder,
+    template_validator,
+    wizard_chat,
+)
+from app.agents.simulation_script import ScriptBuilderError
 from app.agents.template_builder import TemplateBuilderError
+from app.agents.wizard_chat import WizardChatError
 from app.api.session_context import (
     SessionContext,
     get_session_context,
     visibility_filter_seedable,
 )
+from app.config import get_settings
 from app.db.engine import get_session
 from app.db.models import DemoSession, Template
+from app.integrations import speechmatics_tts
+from app.integrations.speechmatics_tts import TtsError
 from app.schemas import (
     CreateTemplateRequest,
     TemplateView,
@@ -34,6 +47,8 @@ from app.schemas import (
     UpdateTemplateRequest,
     ValidateDraftRequest,
     ValidationReport,
+    WizardChatRequest,
+    WizardChatResponse,
 )
 
 router = APIRouter(prefix="/api/v1/templates", tags=["templates"])
@@ -240,6 +255,182 @@ async def validate_draft(
 ) -> ValidationReport:
     """Re-run the validator on a draft the refine UI just edited."""
     return await template_validator.validate_template(payload.template)
+
+
+@router.post("/wizard/chat", response_model=WizardChatResponse)
+async def wizard_chat_turn(
+    payload: WizardChatRequest,
+    ctx: SessionContext = Depends(get_session_context),
+) -> WizardChatResponse:
+    """Drive one turn of the conversational template builder.
+
+    Stateless: the client owns the message history + draft. Returns the next
+    assistant message + updated slots + (when ready) a complete draft.
+    """
+    try:
+        return await wizard_chat.run_wizard_chat(payload)
+    except WizardChatError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+# ---------------------------------------------------------------------------
+# Simulation config — script generator + Speechmatics TTS + upload
+# ---------------------------------------------------------------------------
+
+
+_SUPPORTED_UPLOAD_MIME = {
+    "audio/wav": "wav",
+    "audio/x-wav": "wav",
+    "audio/mpeg": "mp3",
+    "audio/mp3": "mp3",
+}
+
+
+async def _load_template_for_simulation(
+    session: AsyncSession, template_id: uuid.UUID, ctx: SessionContext
+) -> Template:
+    row = (
+        await session.execute(
+            select(Template).where(
+                Template.id == template_id,
+                visibility_filter_seedable(Template.session_id, Template.is_seed, ctx),
+            )
+        )
+    ).scalar_one_or_none()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Template not found")
+    return row
+
+
+@router.post("/{template_id}/simulation/script", response_model=TemplateView)
+async def generate_simulation_script(
+    template_id: uuid.UUID,
+    ctx: SessionContext = Depends(get_session_context),
+    session: AsyncSession = Depends(get_session),
+) -> TemplateView:
+    """Generate the demo script for this template (no audio yet).
+
+    Writes `simulation_config.script_turns` + `audio_status="pending"`. Call
+    `POST /generate-audio` next to actually render the WAV.
+    """
+    row = await _load_template_for_simulation(session, template_id, ctx)
+    try:
+        parsed = await simulation_script.build_simulation_script(row)
+    except ScriptBuilderError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+    row.simulation_config = simulation_script.script_response_to_simulation_config(
+        parsed, audio_url=None, audio_status="pending"
+    )
+    await session.commit()
+    await session.refresh(row)
+    active_id = await _active_template_id_for_session(session, ctx)
+    return _project_active(row, active_id)
+
+
+@router.post("/{template_id}/simulation/generate-audio", response_model=TemplateView)
+async def generate_simulation_audio(
+    template_id: uuid.UUID,
+    ctx: SessionContext = Depends(get_session_context),
+    session: AsyncSession = Depends(get_session),
+) -> TemplateView:
+    """Render `simulation_config.script_turns` to an MP3 via Speechmatics TTS.
+
+    Requires the script to have been generated first (or supplied via PUT).
+    """
+    row = await _load_template_for_simulation(session, template_id, ctx)
+    config = dict(row.simulation_config or {})
+    raw_turns = config.get("script_turns") or []
+    try:
+        turns = speechmatics_tts.script_turns_from_dicts(raw_turns)
+    except TtsError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    out_path = speechmatics_tts.template_audio_path(str(template_id))
+    try:
+        await speechmatics_tts.render_script_to_wav(turns, out_path)
+    except TtsError as exc:
+        # Persist a `failed` audio_status so the UI can show the error.
+        config["audio_status"] = "failed"
+        config["audio_generated_at"] = datetime.now(tz=timezone.utc).isoformat()
+        row.simulation_config = config
+        await session.commit()
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+    config["audio_url"] = str(out_path)
+    config["audio_status"] = "ready"
+    config["audio_generated_at"] = datetime.now(tz=timezone.utc).isoformat()
+    config["audio_source"] = "tts_generated"
+    row.simulation_config = config
+    await session.commit()
+    await session.refresh(row)
+    active_id = await _active_template_id_for_session(session, ctx)
+    return _project_active(row, active_id)
+
+
+@router.post("/{template_id}/simulation/upload-audio", response_model=TemplateView)
+async def upload_simulation_audio(
+    template_id: uuid.UUID,
+    audio: UploadFile = File(...),
+    ctx: SessionContext = Depends(get_session_context),
+    session: AsyncSession = Depends(get_session),
+) -> TemplateView:
+    """Operator-supplied demo recording for the active template.
+
+    Used when the user has a real call recording they want to play back
+    through the simulator instead of generating one via TTS.
+    """
+    row = await _load_template_for_simulation(session, template_id, ctx)
+
+    content_type = (audio.content_type or "").lower()
+    ext = _SUPPORTED_UPLOAD_MIME.get(content_type)
+    if ext is None:
+        raise HTTPException(
+            status_code=415, detail=f"Unsupported audio mime type: {content_type}"
+        )
+    raw = await audio.read()
+    settings = get_settings()
+    max_bytes = settings.max_file_size_mb * 1024 * 1024
+    if len(raw) > max_bytes:
+        raise HTTPException(status_code=413, detail="Audio file too large")
+    if not raw:
+        raise HTTPException(status_code=400, detail="Empty audio file")
+
+    out_path = (
+        Path(settings.audio_storage_dir) / "templates" / f"{template_id}.{ext}"
+    )
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_bytes(raw)
+
+    config = dict(row.simulation_config or {})
+    config["audio_url"] = str(out_path)
+    config["audio_status"] = "ready"
+    config["audio_generated_at"] = datetime.now(tz=timezone.utc).isoformat()
+    config["audio_source"] = "user_uploaded"
+    row.simulation_config = config
+    await session.commit()
+    await session.refresh(row)
+    active_id = await _active_template_id_for_session(session, ctx)
+    return _project_active(row, active_id)
+
+
+@router.get("/{template_id}/simulation/audio")
+async def get_simulation_audio(
+    template_id: uuid.UUID,
+    ctx: SessionContext = Depends(get_session_context),
+    session: AsyncSession = Depends(get_session),
+) -> FileResponse:
+    """Stream back the demo audio so the dialer can play it."""
+    row = await _load_template_for_simulation(session, template_id, ctx)
+    config = row.simulation_config or {}
+    audio_url = config.get("audio_url")
+    if not audio_url:
+        raise HTTPException(status_code=404, detail="No audio recorded for this template")
+    path = Path(audio_url)
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="Audio file is missing on disk")
+    media_type = "audio/wav" if path.suffix.lower() == ".wav" else "audio/mpeg"
+    return FileResponse(path, media_type=media_type, filename=path.name)
 
 
 @router.post("", response_model=TemplateView, status_code=201)
