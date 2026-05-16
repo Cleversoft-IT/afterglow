@@ -5,6 +5,7 @@ from app.schemas.calls import (
     CallExtractedView,
     CallListItem,
     CallSubmittedResponse,
+    FieldDefinitionLite,
 )
 from app.schemas.customers import CustomerCard, CustomerProfileView
 from app.schemas.templates import (
@@ -15,6 +16,9 @@ from app.schemas.templates import (
     UpdateTemplateRequest,
     ValidateDraftRequest,
     ValidationReport,
+    WizardChatRequest,
+    WizardChatResponse,
+    WizardChatTurn,
 )
 
 __all__ = [
@@ -27,10 +31,14 @@ __all__ = [
     'CustomerCard',
     'CustomerProfileView',
     'CreateTemplateRequest',
+    'FieldDefinitionLite',
     'TemplateView',
     'TemplateWizardRequest',
     'TemplateWizardResponse',
     'UpdateTemplateRequest',
     'ValidateDraftRequest',
     'ValidationReport',
+    'WizardChatRequest',
+    'WizardChatResponse',
+    'WizardChatTurn',
 ]

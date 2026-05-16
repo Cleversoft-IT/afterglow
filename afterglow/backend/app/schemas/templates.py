@@ -202,3 +202,39 @@ class ValidateDraftRequest(BaseModel):
     """
 
     template: TemplateWizardResponse
+
+
+# --- Wizard chat (stateless, multi-turn) ---------------------------------
+
+
+WizardChatRole = Literal["user", "assistant"]
+
+
+class WizardChatTurn(BaseModel):
+    role: WizardChatRole
+    content: str
+
+
+class WizardChatRequest(BaseModel):
+    """Client → server payload for each conversational turn.
+
+    Stateless: the client owns the conversation history and the running
+    `draft_partial` / `slots_filled`. Server returns the next assistant
+    message along with the updated draft, so the client can re-render the
+    sidebar preview and decide when to surface "Ready to save".
+    """
+
+    messages: list[WizardChatTurn]
+    draft_partial: Optional[TemplateWizardResponse] = None
+    slots_filled: dict[str, Any] = Field(default_factory=dict)
+    language: str = "en"
+
+
+class WizardChatResponse(BaseModel):
+    assistant_message: str
+    slots_filled: dict[str, Any] = Field(default_factory=dict)
+    confidence: float = Field(ge=0.0, le=1.0, default=0.0)
+    ready: bool = False
+    draft_partial: Optional[TemplateWizardResponse] = None
+    validation: Optional[ValidationReport] = None
+    proposed_actions_from_catalog: list[str] = Field(default_factory=list)
