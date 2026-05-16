@@ -51,10 +51,16 @@ class _WizardModelOutput(BaseModel):
     assistant_message: str = Field(
         description="The next thing to say to the user — one focused question or a wrap-up."
     )
-    slots_filled: dict[str, Any] = Field(
-        default_factory=dict,
+    # `slots_filled` is typed as `Any` (not `dict[str, Any]`) because Gemini's
+    # structured-output endpoint rejects any schema containing
+    # `additionalProperties` — which Pydantic emits for `dict[str, Any]`.
+    # `Any` produces an empty schema slot that Gemini treats as "any value";
+    # the model still returns a JSON object literal in practice. We coerce
+    # to a dict downstream before forwarding to the public response.
+    slots_filled: Any = Field(
+        default=None,
         description=(
-            "Running dict of what has been collected so far. Allowed keys: "
+            "Running JSON object of what has been collected so far. Allowed keys: "
             "`business_type`, `customer_facing_name`, `fields_required`, "
             "`fields_optional`, `actions_needed`, `dictionary_terms`, "
             "`special_rules`. Always echo back the full slots dict (merge, "
@@ -203,9 +209,11 @@ async def run_wizard_chat(payload: WizardChatRequest) -> WizardChatResponse:
         except Exception as exc:  # noqa: BLE001
             logger.warning("wizard_chat: validation pass skipped (%s)", exc)
 
+    slots_dict: dict[str, Any] = parsed.slots_filled if isinstance(parsed.slots_filled, dict) else {}
+
     return WizardChatResponse(
         assistant_message=parsed.assistant_message,
-        slots_filled=parsed.slots_filled,
+        slots_filled=slots_dict,
         confidence=parsed.confidence,
         ready=parsed.ready,
         draft_partial=parsed.draft_partial,
