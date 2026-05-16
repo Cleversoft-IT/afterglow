@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.session_context import (
     SessionContext,
     get_session_context,
-    visibility_filter,
+    visibility_filter_seedable,
 )
 from app.db.engine import get_session
 from app.db.models import Customer, ExecutedAction
@@ -29,7 +29,9 @@ async def _resolve_action(
         await session.execute(
             select(ExecutedAction).where(
                 ExecutedAction.id == action_id,
-                visibility_filter(ExecutedAction.session_id, ctx),
+                visibility_filter_seedable(
+                    ExecutedAction.session_id, ExecutedAction.is_seed, ctx
+                ),
             )
         )
     ).scalar_one_or_none()

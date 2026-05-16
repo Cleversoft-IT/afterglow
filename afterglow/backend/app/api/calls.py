@@ -23,6 +23,7 @@ from app.api.session_context import (
     SessionContext,
     get_session_context,
     visibility_filter,
+    visibility_filter_seedable,
 )
 from app.config import get_settings
 from app.db.engine import SessionLocal, get_session
@@ -175,7 +176,7 @@ async def get_call(
         await session.execute(
             select(Call).where(
                 Call.id == call_id,
-                visibility_filter(Call.session_id, ctx),
+                visibility_filter_seedable(Call.session_id, Call.is_seed, ctx),
             )
         )
     ).scalar_one_or_none()
@@ -291,7 +292,7 @@ async def list_calls(
 ) -> list[CallListItem]:
     stmt = (
         select(Call)
-        .where(visibility_filter(Call.session_id, ctx))
+        .where(visibility_filter_seedable(Call.session_id, Call.is_seed, ctx))
         .order_by(Call.created_at.desc())
         .limit(limit)
     )
