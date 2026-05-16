@@ -1,5 +1,7 @@
+import { useMemo } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { colors, radius, spacing } from '../lib/theme';
+import { useTheme } from '../lib/ThemeContext';
+import { radius, spacing } from '../lib/theme';
 
 type Option = { label: string; value: string };
 
@@ -14,6 +16,27 @@ export function Select({
   onChange: (next: string) => void;
   placeholder?: string;
 }) {
+  const { colors } = useTheme();
+  const styles = useMemo(
+    () =>
+      StyleSheet.create({
+        row: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, alignItems: 'center' },
+        chip: {
+          paddingHorizontal: spacing.md + 2,
+          paddingVertical: spacing.sm,
+          borderRadius: radius.pill,
+          borderWidth: 1,
+          borderColor: colors.border,
+          backgroundColor: colors.surface,
+        },
+        chipActive: { borderColor: colors.brand, backgroundColor: colors.brand },
+        label: { color: colors.textMuted, fontSize: 13, fontWeight: '500' },
+        labelActive: { color: colors.onPrimary, fontWeight: '500' },
+        placeholder: { color: colors.textSubtle, fontSize: 13 },
+      }),
+    [colors],
+  );
+
   return (
     <View style={styles.row}>
       {options.map((opt) => {
@@ -34,19 +57,3 @@ export function Select({
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  row: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, alignItems: 'center' },
-  chip: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs,
-    borderRadius: radius.pill,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surfaceAlt,
-  },
-  chipActive: { borderColor: colors.brand, backgroundColor: colors.brand },
-  label: { color: colors.textMuted, fontSize: 12, fontWeight: '500' },
-  labelActive: { color: '#fff', fontWeight: '700' },
-  placeholder: { color: colors.textSubtle, fontSize: 12 },
-});

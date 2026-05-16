@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Pressable,
@@ -13,12 +13,14 @@ import { Badge } from '../components/Badge';
 import { Button } from '../components/Button';
 import { Card } from '../components/Card';
 import { api, ApiError } from '../lib/api';
-import { colors, radius, spacing } from '../lib/theme';
+import { useTheme } from '../lib/ThemeContext';
+import { radius, spacing } from '../lib/theme';
 import type { SimulationConfig, SimulationScenario, TemplateView } from '../lib/types';
 
 type CallerMode = 'existing' | 'new';
 
 export default function SimulatorScreen() {
+  const { colors } = useTheme();
   const router = useRouter();
   const [template, setTemplate] = useState<TemplateView | null>(null);
   const [loading, setLoading] = useState(true);
@@ -105,6 +107,26 @@ export default function SimulatorScreen() {
     };
     input.click();
   };
+
+  const styles = useMemo(
+    () =>
+      StyleSheet.create({
+        scroll: { padding: spacing.lg, gap: spacing.lg, paddingBottom: spacing.xxxl },
+        headerRow: {
+          flexDirection: 'row',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          marginBottom: spacing.sm,
+        },
+        heading: { color: colors.text, fontWeight: '600', fontSize: 16, flex: 1 },
+        section: { color: colors.text, fontWeight: '600', fontSize: 15, marginBottom: spacing.sm },
+        body: { color: colors.textMuted, fontSize: 14, lineHeight: 21 },
+        bold: { color: colors.text, fontWeight: '600' },
+        cta: { alignItems: 'stretch', paddingVertical: spacing.md, gap: spacing.sm },
+        error: { color: colors.danger, fontSize: 14 },
+      }),
+    [colors],
+  );
 
   if (loading) return <ActivityIndicator color={colors.brand} style={{ marginTop: 32 }} />;
 
@@ -210,6 +232,31 @@ export default function SimulatorScreen() {
 }
 
 function ScriptPreview({ sim }: { sim: SimulationConfig | null | undefined }) {
+  const { colors } = useTheme();
+  const styles = useMemo(
+    () =>
+      StyleSheet.create({
+        scriptBlock: {
+          marginTop: spacing.md,
+          padding: spacing.md + 2,
+          borderRadius: radius.lg,
+          backgroundColor: colors.surfaceAlt,
+          borderWidth: StyleSheet.hairlineWidth,
+          borderColor: colors.border,
+          gap: 4,
+        },
+        scriptTitle: {
+          color: colors.text,
+          fontWeight: '600',
+          fontSize: 13,
+          marginBottom: spacing.xs,
+        },
+        scriptLine: { color: colors.textMuted, fontSize: 13, lineHeight: 20 },
+        scriptSpeaker: { color: colors.text, fontWeight: '600' },
+      }),
+    [colors],
+  );
+
   if (!sim) return null;
   const fromScenarios: Array<{ key: CallerMode; label: string; scenario: SimulationScenario }> = [];
   if (sim.scenarios?.existing?.script_turns?.length) {
@@ -262,6 +309,39 @@ function TriggerButton({
   mode: CallerMode;
   onPress: () => void;
 }) {
+  const { colors } = useTheme();
+  const styles = useMemo(
+    () =>
+      StyleSheet.create({
+        triggerExisting: {
+          flexDirection: 'row',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: spacing.sm,
+          backgroundColor: colors.brand,
+          paddingVertical: spacing.md + 2,
+          paddingHorizontal: spacing.xl,
+          borderRadius: radius.pill,
+          minHeight: 48,
+        },
+        triggerNew: {
+          flexDirection: 'row',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: spacing.sm,
+          backgroundColor: colors.surface,
+          paddingVertical: spacing.md + 2,
+          paddingHorizontal: spacing.xl,
+          borderRadius: radius.pill,
+          borderWidth: 1,
+          borderColor: colors.border,
+          minHeight: 48,
+        },
+        triggerText: { color: colors.onPrimary, fontWeight: '500', fontSize: 15 },
+        triggerTextOutline: { color: colors.text },
+      }),
+    [colors],
+  );
   const existing = mode === 'existing';
   return (
     <Pressable
@@ -271,66 +351,15 @@ function TriggerButton({
         { opacity: pressed ? 0.85 : 1, transform: [{ scale: pressed ? 0.98 : 1 }] },
       ]}
     >
-      <Ionicons name={existing ? 'person' : 'person-add'} size={18} color="#fff" />
-      <Text style={styles.triggerText}>
+      <Ionicons
+        name={existing ? 'person' : 'person-add'}
+        size={18}
+        color={existing ? colors.onPrimary : colors.text}
+      />
+      <Text style={[styles.triggerText, !existing && styles.triggerTextOutline]}>
         {existing ? 'Call from existing customer' : 'Call from new customer'}
       </Text>
     </Pressable>
   );
 }
 
-const styles = StyleSheet.create({
-  scroll: { padding: spacing.lg, gap: spacing.lg },
-  headerRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: spacing.sm,
-  },
-  heading: { color: colors.text, fontWeight: '700', fontSize: 16, flex: 1 },
-  section: { color: colors.text, fontWeight: '700', fontSize: 14, marginBottom: spacing.sm },
-  body: { color: colors.textMuted, lineHeight: 20 },
-  bold: { color: colors.text, fontWeight: '700' },
-  cta: { alignItems: 'stretch', paddingVertical: spacing.md, gap: spacing.sm },
-  triggerExisting: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing.sm,
-    backgroundColor: colors.brand,
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.xl,
-    borderRadius: radius.pill,
-  },
-  triggerNew: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing.sm,
-    backgroundColor: colors.surface,
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.xl,
-    borderRadius: radius.pill,
-    borderWidth: 1,
-    borderColor: colors.brand,
-  },
-  triggerText: { color: '#fff', fontWeight: '700', fontSize: 14, letterSpacing: 0.3 },
-  scriptBlock: {
-    marginTop: spacing.md,
-    padding: spacing.md,
-    borderRadius: radius.md,
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-    gap: 4,
-  },
-  scriptTitle: {
-    color: colors.text,
-    fontWeight: '700',
-    fontSize: 13,
-    marginBottom: spacing.xs,
-  },
-  scriptLine: { color: colors.textMuted, fontSize: 12, lineHeight: 18 },
-  scriptSpeaker: { color: colors.brand, fontWeight: '700' },
-  error: { color: colors.danger, fontSize: 13 },
-});

@@ -6,7 +6,8 @@ import { CallButton } from '../components/CallButton';
 import { api, ApiError } from '../lib/api';
 import type { AudioDomain } from '../lib/audio';
 import { setPipelineToast } from '../lib/pipelineToast';
-import { colors, radius, spacing } from '../lib/theme';
+import { useTheme } from '../lib/ThemeContext';
+import { radius, spacing, type ColorPalette } from '../lib/theme';
 import type { CallListItem, CustomerCard, TemplateView } from '../lib/types';
 import { usePhoneAudio } from '../lib/usePhoneAudio';
 
@@ -51,6 +52,8 @@ function generateNewCallerPhone(): { e164: string; pretty: string } {
 type Phase = 'loading' | 'ringing' | 'human' | 'talking' | 'error';
 
 export default function IncomingCallScreen() {
+  const { colors } = useTheme();
+  const styles = useIncomingCallStyles();
   const router = useRouter();
   const audio = usePhoneAudio();
   const params = useLocalSearchParams<{ caller?: string }>();
@@ -365,6 +368,9 @@ type CallerContextProps = {
 };
 
 function CallerContext({ customer, recentCalls, callerMode }: CallerContextProps) {
+  const { colors } = useTheme();
+  const styles = useIncomingCallStyles();
+
   if (!customer) {
     return (
       <View style={styles.newCallerBadge}>
@@ -464,161 +470,167 @@ function relativeTime(iso: string): string {
   return `${years}y ago`;
 }
 
-const styles = StyleSheet.create({
-  root: {
-    flex: 1,
-    backgroundColor: colors.bg,
-    paddingHorizontal: spacing.xl,
-    paddingTop: spacing.xxl + spacing.xl,
-    paddingBottom: spacing.xxl,
-  },
-  scroll: { flex: 1 },
-  scrollContent: { alignItems: 'center', gap: spacing.md, paddingBottom: spacing.xl },
-  subtitle: {
-    color: colors.textMuted,
-    fontSize: 13,
-    letterSpacing: 1.2,
-    textTransform: 'uppercase',
-    marginBottom: spacing.lg,
-  },
-  avatar: {
-    width: 132,
-    height: 132,
-    borderRadius: 66,
-    backgroundColor: colors.surfaceAlt,
-    borderWidth: 2,
-    borderColor: colors.border,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: spacing.md,
-  },
-  caller: { color: colors.text, fontSize: 26, fontWeight: '700' },
-  phone: { color: colors.textMuted, fontSize: 16, letterSpacing: 0.5 },
-  timer: {
-    color: colors.textMuted,
-    fontSize: 18,
-    fontVariant: ['tabular-nums'],
-    marginTop: spacing.md,
-  },
-  tag: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: radius.pill,
-    backgroundColor: 'rgba(59, 130, 246, 0.15)',
-    marginTop: spacing.sm,
-  },
-  tagText: { color: colors.brand, fontSize: 11, fontWeight: '600', letterSpacing: 0.5 },
-  errorText: { color: colors.danger, textAlign: 'center', marginTop: spacing.lg },
-  bottomBlock: { alignItems: 'center', gap: spacing.lg, paddingTop: spacing.lg },
-  dialerRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    justifyContent: 'space-between',
-    width: '100%',
-    maxWidth: 360,
-    paddingHorizontal: spacing.md,
-  },
-  singleRow: { alignItems: 'center' },
-  dismiss: {
-    paddingHorizontal: spacing.xl,
-    paddingVertical: spacing.md,
-    backgroundColor: colors.surface,
-    borderRadius: radius.pill,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  dismissText: { color: colors.text, fontWeight: '600' },
-  // Caller-context block (shown while ringing).
-  contextBlock: {
-    width: '100%',
-    maxWidth: 360,
-    gap: spacing.sm,
-    marginTop: spacing.md,
-  },
-  metaRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'center',
-    gap: spacing.sm,
-  },
-  metaPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: radius.pill,
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  metaText: { color: colors.textMuted, fontSize: 12, fontWeight: '500' },
-  tagRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'center',
-    gap: 6,
-  },
-  chip: {
-    paddingHorizontal: 10,
-    paddingVertical: 3,
-    borderRadius: radius.pill,
-    backgroundColor: 'rgba(59, 130, 246, 0.12)',
-    borderWidth: 1,
-    borderColor: 'rgba(59, 130, 246, 0.3)',
-  },
-  chipText: { color: colors.brand, fontSize: 11, fontWeight: '600' },
-  briefingCard: {
-    backgroundColor: colors.surface,
-    borderRadius: radius.lg,
-    borderWidth: 1,
-    borderColor: colors.border,
-    padding: spacing.md,
-    gap: spacing.xs,
-  },
-  briefingHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  briefingTitle: {
-    color: colors.brand,
-    fontSize: 11,
-    fontWeight: '700',
-    letterSpacing: 0.8,
-    textTransform: 'uppercase',
-  },
-  briefingText: { color: colors.text, fontSize: 13, lineHeight: 18 },
-  timelineBlock: { gap: 4, paddingTop: spacing.xs },
-  timelineTitle: {
-    color: colors.textSubtle,
-    fontSize: 10,
-    fontWeight: '700',
-    letterSpacing: 0.8,
-    textTransform: 'uppercase',
-  },
-  timelineRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  timelineDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: colors.brand,
-  },
-  timelineText: { color: colors.textMuted, fontSize: 12 },
-  newCallerBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: radius.pill,
-    backgroundColor: colors.surfaceAlt,
-    borderWidth: 1,
-    borderColor: colors.border,
-    marginTop: spacing.sm,
-  },
-  newCallerText: { color: colors.brand, fontSize: 11, fontWeight: '600', letterSpacing: 0.5 },
-});
+function useIncomingCallStyles() {
+  const { colors } = useTheme();
+  return useMemo(() => createIncomingCallStyles(colors), [colors]);
+}
+
+function createIncomingCallStyles(colors: ColorPalette) {
+  return StyleSheet.create({
+    root: {
+      flex: 1,
+      backgroundColor: colors.bg,
+      paddingHorizontal: spacing.xl,
+      paddingTop: spacing.xxl + spacing.xl,
+      paddingBottom: spacing.xxl,
+    },
+    scroll: { flex: 1 },
+    scrollContent: { alignItems: 'center', gap: spacing.md, paddingBottom: spacing.xl },
+    subtitle: {
+      color: colors.textMuted,
+      fontSize: 13,
+      letterSpacing: 0.4,
+      marginBottom: spacing.lg,
+    },
+    avatar: {
+      width: 120,
+      height: 120,
+      borderRadius: 60,
+      backgroundColor: colors.surface,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: colors.border,
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginBottom: spacing.md,
+    },
+    caller: { color: colors.text, fontSize: 26, fontWeight: '600', letterSpacing: -0.3 },
+    phone: { color: colors.textMuted, fontSize: 16, letterSpacing: 0.5 },
+    timer: {
+      color: colors.textMuted,
+      fontSize: 18,
+      fontVariant: ['tabular-nums'],
+      marginTop: spacing.md,
+    },
+    tag: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+      paddingHorizontal: 10,
+      paddingVertical: 4,
+      borderRadius: radius.pill,
+      backgroundColor: colors.highlightBg,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: colors.highlightBorder,
+      marginTop: spacing.sm,
+    },
+    tagText: { color: colors.callAfterglow, fontSize: 12, fontWeight: '500' },
+    errorText: { color: colors.danger, textAlign: 'center', marginTop: spacing.lg },
+    bottomBlock: { alignItems: 'center', gap: spacing.lg, paddingTop: spacing.lg },
+    dialerRow: {
+      flexDirection: 'row',
+      alignItems: 'flex-end',
+      justifyContent: 'space-between',
+      width: '100%',
+      maxWidth: 360,
+      paddingHorizontal: spacing.md,
+    },
+    singleRow: { alignItems: 'center' },
+    dismiss: {
+      paddingHorizontal: spacing.xl,
+      paddingVertical: spacing.md + 2,
+      backgroundColor: colors.surface,
+      borderRadius: radius.pill,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: colors.border,
+      minHeight: 44,
+    },
+    dismissText: { color: colors.text, fontWeight: '500', fontSize: 15 },
+    contextBlock: {
+      width: '100%',
+      maxWidth: 360,
+      gap: spacing.sm,
+      marginTop: spacing.md,
+    },
+    metaRow: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      justifyContent: 'center',
+      gap: spacing.sm,
+    },
+    metaPill: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+      paddingHorizontal: 10,
+      paddingVertical: 4,
+      borderRadius: radius.pill,
+      backgroundColor: colors.surface,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: colors.border,
+    },
+    metaText: { color: colors.textMuted, fontSize: 12, fontWeight: '500' },
+    tagRow: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      justifyContent: 'center',
+      gap: 6,
+    },
+    chip: {
+      paddingHorizontal: 10,
+      paddingVertical: 3,
+      borderRadius: radius.pill,
+      backgroundColor: colors.surfaceAlt,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: colors.border,
+    },
+    chipText: { color: colors.textMuted, fontSize: 12, fontWeight: '500' },
+    briefingCard: {
+      backgroundColor: colors.surface,
+      borderRadius: radius.lg,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: colors.border,
+      padding: spacing.md + 2,
+      gap: spacing.xs,
+    },
+    briefingHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+    },
+    briefingTitle: {
+      color: colors.textMuted,
+      fontSize: 12,
+      fontWeight: '600',
+      letterSpacing: 0.2,
+    },
+    briefingText: { color: colors.text, fontSize: 14, lineHeight: 21 },
+    timelineBlock: { gap: 4, paddingTop: spacing.xs },
+    timelineTitle: {
+      color: colors.textSubtle,
+      fontSize: 11,
+      fontWeight: '600',
+      letterSpacing: 0.2,
+    },
+    timelineRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+    timelineDot: {
+      width: 6,
+      height: 6,
+      borderRadius: 3,
+      backgroundColor: colors.brand,
+    },
+    timelineText: { color: colors.textMuted, fontSize: 12 },
+    newCallerBadge: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+      paddingHorizontal: 10,
+      paddingVertical: 4,
+      borderRadius: radius.pill,
+      backgroundColor: colors.surfaceAlt,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: colors.border,
+      marginTop: spacing.sm,
+    },
+    newCallerText: { color: colors.textMuted, fontSize: 12, fontWeight: '500' },
+  });
+}

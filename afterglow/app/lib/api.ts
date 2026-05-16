@@ -4,6 +4,7 @@
 import type {
   ActionCatalogEntry,
   AuditLogEntry,
+  BookingListItem,
   CallDetailView,
   CallListItem,
   CallSubmittedResponse,
@@ -254,6 +255,13 @@ export const api = {
   getCustomerByPhone: (phone: string) =>
     request<CustomerCard | null>(`/api/v1/customers/by-phone/${encodeURIComponent(phone)}`),
   getCustomer: (id: string) => request<CustomerCard>(`/api/v1/customers/${id}`),
+
+  listBookings: (params?: { limit?: number }) => {
+    const qs = new URLSearchParams();
+    if (params?.limit) qs.set('limit', String(params.limit));
+    const suffix = qs.toString() ? `?${qs}` : '';
+    return request<BookingListItem[]>(`/api/v1/bookings${suffix}`);
+  },
 
   listAudit: (params?: { call_id?: string }) => {
     const qs = new URLSearchParams();

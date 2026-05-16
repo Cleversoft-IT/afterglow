@@ -1,18 +1,12 @@
 import { useFocusEffect, useRouter } from 'expo-router';
-import { useCallback, useEffect, useRef, useState } from 'react';
-import {
-  ActivityIndicator,
-  FlatList,
-  RefreshControl,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from 'react-native';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { ActivityIndicator, FlatList, RefreshControl, StyleSheet, Text, View } from 'react-native';
 import { Badge } from '../../components/Badge';
+import { Input } from '../../components/Input';
 import { ListRow } from '../../components/ListRow';
 import { api, ApiError } from '../../lib/api';
-import { colors, radius, spacing } from '../../lib/theme';
+import { useTheme } from '../../lib/ThemeContext';
+import { spacing } from '../../lib/theme';
 import type { CustomerCard } from '../../lib/types';
 
 function formatLastCall(iso?: string | null): string {
@@ -21,6 +15,7 @@ function formatLastCall(iso?: string | null): string {
 }
 
 export default function CustomersScreen() {
+  const { colors } = useTheme();
   const router = useRouter();
   const [customers, setCustomers] = useState<CustomerCard[]>([]);
   const [loading, setLoading] = useState(true);
@@ -52,15 +47,32 @@ export default function CustomersScreen() {
     load(debouncedQuery);
   }, [debouncedQuery, load]);
 
+  const styles = useMemo(
+    () =>
+      StyleSheet.create({
+        container: { flex: 1, backgroundColor: colors.bg },
+        searchBox: { paddingHorizontal: spacing.lg, paddingTop: spacing.lg, paddingBottom: spacing.sm },
+        list: { padding: spacing.lg, paddingTop: spacing.sm },
+        empty: {
+          color: colors.textMuted,
+          textAlign: 'center',
+          marginTop: spacing.xxxl,
+          fontSize: 15,
+          lineHeight: 22,
+          paddingHorizontal: spacing.xl,
+        },
+        error: { color: colors.danger, padding: spacing.lg, fontSize: 14 },
+      }),
+    [colors],
+  );
+
   return (
     <View style={styles.container}>
       <View style={styles.searchBox}>
-        <TextInput
+        <Input
           value={query}
           onChangeText={setQuery}
           placeholder="Search phone or name"
-          placeholderTextColor={colors.textSubtle}
-          style={styles.input}
           autoCapitalize="none"
           autoCorrect={false}
         />
@@ -124,20 +136,3 @@ function useDebounced<T>(value: T, delayMs: number): T {
   return debounced;
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.bg },
-  searchBox: { padding: spacing.lg },
-  input: {
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radius.md,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    color: colors.text,
-    fontSize: 14,
-  },
-  list: { padding: spacing.lg, paddingTop: 0 },
-  empty: { color: colors.textMuted, textAlign: 'center', marginTop: 32 },
-  error: { color: colors.danger, padding: spacing.lg },
-});

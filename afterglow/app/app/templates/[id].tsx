@@ -18,7 +18,8 @@ import { Input } from '../../components/Input';
 import { Select } from '../../components/Select';
 import { Textarea } from '../../components/Textarea';
 import { api, ApiError } from '../../lib/api';
-import { colors, radius, spacing } from '../../lib/theme';
+import { useTheme } from '../../lib/ThemeContext';
+import { radius, spacing, type ColorPalette } from '../../lib/theme';
 import type {
   ActionCatalogEntry,
   ActionDefinition,
@@ -61,6 +62,8 @@ const EXECUTION_MODES: { value: ExecutionMode; label: string }[] = [
 ];
 
 export default function TemplateDetailScreen() {
+  const { colors } = useTheme();
+  const styles = useTemplateDetailStyles();
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const [template, setTemplate] = useState<TemplateView | null>(null);
@@ -393,6 +396,8 @@ function FieldEditor({
   onChange: (next: FieldDefinition) => void;
   onRemove: () => void;
 }) {
+  const { colors } = useTheme();
+  const styles = useTemplateDetailStyles();
   const [expanded, setExpanded] = useState(false);
   return (
     <View style={styles.editorRow}>
@@ -532,6 +537,8 @@ function ActionEditor({
   onChange: (next: ActionDefinition) => void;
   onRemove: () => void;
 }) {
+  const { colors } = useTheme();
+  const styles = useTemplateDetailStyles();
   const [expanded, setExpanded] = useState(false);
   const catalogEntry = catalog.find((c) => c.key === action.key);
   const integrationBadge = catalogEntry?.integration_kind ?? 'unknown';
@@ -676,56 +683,63 @@ function ActionEditor({
   );
 }
 
-const styles = StyleSheet.create({
-  container: { padding: spacing.lg, gap: spacing.md },
-  headerRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, marginBottom: spacing.md },
-  title: { color: colors.text, fontSize: 18, fontWeight: '700' },
-  meta: { color: colors.textMuted, fontSize: 12, marginTop: 2 },
-  cloneRow: { gap: spacing.sm, marginBottom: spacing.md },
-  readOnlyNote: { color: colors.textMuted, fontStyle: 'italic', fontSize: 13 },
-  error: { color: colors.danger, marginTop: spacing.sm, fontSize: 13 },
-  sectionHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: spacing.sm,
-  },
-  sectionTitle: { color: colors.text, fontWeight: '700', fontSize: 14 },
-  addBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 4,
-    borderRadius: radius.pill,
-    backgroundColor: 'rgba(59, 130, 246, 0.12)',
-    borderWidth: 1,
-    borderColor: 'rgba(59, 130, 246, 0.3)',
-  },
-  addBtnText: { color: colors.brand, fontSize: 12, fontWeight: '600' },
-  editorRow: {
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
-    paddingTop: spacing.sm,
-    paddingBottom: spacing.sm,
-  },
-  editorHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  editorBody: {
-    paddingTop: spacing.sm,
-    paddingLeft: spacing.lg,
-    gap: spacing.sm,
-  },
-  itemName: { color: colors.text, fontSize: 14, fontWeight: '600' },
-  itemMeta: { color: colors.textSubtle, fontSize: 11, marginTop: 2, fontFamily: 'monospace' },
-  hint: { color: colors.textSubtle, fontSize: 11, marginTop: 4 },
-  itemRow: {
-    flexDirection: 'row',
-    gap: spacing.sm,
-    alignItems: 'flex-start',
-    marginBottom: spacing.sm,
-    paddingBottom: spacing.sm,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
-  footer: { paddingTop: spacing.md, paddingBottom: spacing.xl },
-});
+function useTemplateDetailStyles() {
+  const { colors } = useTheme();
+  return useMemo(() => createTemplateDetailStyles(colors), [colors]);
+}
+
+function createTemplateDetailStyles(colors: ColorPalette) {
+  return StyleSheet.create({
+    container: { padding: spacing.lg, gap: spacing.md },
+    headerRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, marginBottom: spacing.md },
+    title: { color: colors.text, fontSize: 18, fontWeight: '600' },
+    meta: { color: colors.textMuted, fontSize: 12, marginTop: 2 },
+    cloneRow: { gap: spacing.sm, marginBottom: spacing.md },
+    readOnlyNote: { color: colors.textMuted, fontStyle: 'italic', fontSize: 13 },
+    error: { color: colors.danger, marginTop: spacing.sm, fontSize: 13 },
+    sectionHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      marginBottom: spacing.sm,
+    },
+    sectionTitle: { color: colors.text, fontWeight: '600', fontSize: 15 },
+    addBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+      paddingHorizontal: spacing.sm + 2,
+      paddingVertical: 5,
+      borderRadius: radius.pill,
+      backgroundColor: colors.infoBg,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: colors.infoBorder,
+    },
+    addBtnText: { color: colors.text, fontSize: 12, fontWeight: '500' },
+    editorRow: {
+      borderTopWidth: 1,
+      borderTopColor: colors.border,
+      paddingTop: spacing.sm,
+      paddingBottom: spacing.sm,
+    },
+    editorHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+    editorBody: {
+      paddingTop: spacing.sm,
+      paddingLeft: spacing.lg,
+      gap: spacing.sm,
+    },
+    itemName: { color: colors.text, fontSize: 14, fontWeight: '600' },
+    itemMeta: { color: colors.textSubtle, fontSize: 11, marginTop: 2, fontFamily: 'monospace' },
+    hint: { color: colors.textSubtle, fontSize: 11, marginTop: 4 },
+    itemRow: {
+      flexDirection: 'row',
+      gap: spacing.sm,
+      alignItems: 'flex-start',
+      marginBottom: spacing.sm,
+      paddingBottom: spacing.sm,
+      borderBottomWidth: 1,
+      borderBottomColor: colors.border,
+    },
+    footer: { paddingTop: spacing.md, paddingBottom: spacing.xl },
+  });
+}

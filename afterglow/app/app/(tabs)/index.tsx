@@ -1,6 +1,13 @@
 import { useFocusEffect, useRouter } from 'expo-router';
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, FlatList, RefreshControl, StyleSheet, Text, View } from 'react-native';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  ActivityIndicator,
+  FlatList,
+  RefreshControl,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import { Badge } from '../../components/Badge';
 import { Button } from '../../components/Button';
 import { ListRow } from '../../components/ListRow';
@@ -10,7 +17,8 @@ import {
   subscribePipelineToast,
   type PipelineToast,
 } from '../../lib/pipelineToast';
-import { colors, radius, spacing } from '../../lib/theme';
+import { useTheme } from '../../lib/ThemeContext';
+import { radius, spacing } from '../../lib/theme';
 import type { CallListItem } from '../../lib/types';
 
 const NON_TERMINAL_STATUSES = new Set(['pending', 'transcribing', 'analyzing']);
@@ -25,6 +33,7 @@ function statusTone(status: string): 'neutral' | 'success' | 'warning' | 'danger
 }
 
 export default function CallsScreen() {
+  const { colors } = useTheme();
   const router = useRouter();
   const [calls, setCalls] = useState<CallListItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -79,6 +88,26 @@ export default function CallsScreen() {
     return () => clearInterval(id);
   }, [calls, load]);
 
+  const styles = useMemo(
+    () =>
+      StyleSheet.create({
+        container: { flex: 1, backgroundColor: colors.bg },
+        cta: { paddingHorizontal: spacing.lg, paddingTop: spacing.lg, paddingBottom: spacing.sm },
+        list: { padding: spacing.lg, paddingTop: spacing.sm },
+        empty: {
+          color: colors.textMuted,
+          textAlign: 'center',
+          marginTop: spacing.xxxl,
+          fontSize: 15,
+          lineHeight: 22,
+          paddingHorizontal: spacing.xl,
+        },
+        error: { color: colors.danger, padding: spacing.lg, fontSize: 14 },
+        rightCell: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+      }),
+    [colors],
+  );
+
   return (
     <View style={styles.container}>
       <View style={styles.cta}>
@@ -108,7 +137,9 @@ export default function CallsScreen() {
           }
           ItemSeparatorComponent={() => <View style={{ height: spacing.sm }} />}
           ListEmptyComponent={
-            <Text style={styles.empty}>No calls yet. Tap the blue button to simulate one.</Text>
+            <Text style={styles.empty}>
+              No calls yet. Use the button above to simulate an incoming call.
+            </Text>
           }
           renderItem={({ item }) => {
             const inFlight = NON_TERMINAL_STATUSES.has(item.status);
@@ -139,7 +170,28 @@ export default function CallsScreen() {
 }
 
 function PipelineBanner({ toast }: { toast: PipelineToast }) {
+  const { colors } = useTheme();
   const [elapsed, setElapsed] = useState(0);
+  const styles = useMemo(
+    () =>
+      StyleSheet.create({
+        banner: {
+          flexDirection: 'row',
+          alignItems: 'center',
+          gap: spacing.md,
+          marginHorizontal: spacing.lg,
+          marginBottom: spacing.md,
+          padding: spacing.md + 2,
+          borderRadius: radius.lg,
+          backgroundColor: colors.infoBg,
+          borderWidth: StyleSheet.hairlineWidth,
+          borderColor: colors.infoBorder,
+        },
+        bannerTitle: { color: colors.text, fontWeight: '600', fontSize: 14 },
+        bannerSub: { color: colors.textMuted, fontSize: 13, marginTop: 2, lineHeight: 18 },
+      }),
+    [colors],
+  );
   useEffect(() => {
     setElapsed(Math.floor((Date.now() - toast.startedAt) / 1000));
     const id = setInterval(
@@ -161,25 +213,3 @@ function PipelineBanner({ toast }: { toast: PipelineToast }) {
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.bg },
-  cta: { padding: spacing.lg },
-  list: { padding: spacing.lg, paddingTop: 0 },
-  empty: { color: colors.textMuted, textAlign: 'center', marginTop: 32 },
-  error: { color: colors.danger, padding: spacing.lg },
-  rightCell: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  banner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    marginHorizontal: spacing.lg,
-    marginBottom: spacing.md,
-    padding: spacing.md,
-    borderRadius: radius.md,
-    backgroundColor: 'rgba(59, 130, 246, 0.12)',
-    borderWidth: 1,
-    borderColor: 'rgba(59, 130, 246, 0.3)',
-  },
-  bannerTitle: { color: colors.brand, fontWeight: '700', fontSize: 13 },
-  bannerSub: { color: colors.textMuted, fontSize: 12, marginTop: 2 },
-});

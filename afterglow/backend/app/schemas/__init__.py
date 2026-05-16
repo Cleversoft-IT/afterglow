@@ -1,4 +1,5 @@
 from app.schemas.audit import AuditLogEntry
+from app.schemas.bookings import BookingListItem
 from app.schemas.calls import (
     CallActionView,
     CallDetailView,
@@ -23,6 +24,7 @@ from app.schemas.templates import (
 
 __all__ = [
     'AuditLogEntry',
+    'BookingListItem',
     'CallActionView',
     'CallDetailView',
     'CallExtractedView',

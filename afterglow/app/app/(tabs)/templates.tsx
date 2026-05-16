@@ -1,6 +1,6 @@
 import { useIsFocused } from '@react-navigation/native';
 import { router, useFocusEffect, useNavigation } from 'expo-router';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -14,10 +14,12 @@ import { Badge } from '../../components/Badge';
 import { Button } from '../../components/Button';
 import { Card } from '../../components/Card';
 import { api, ApiError, isDemoMode } from '../../lib/api';
-import { colors, radius, spacing } from '../../lib/theme';
+import { useTheme } from '../../lib/ThemeContext';
+import { radius, spacing } from '../../lib/theme';
 import type { TemplateView } from '../../lib/types';
 
 export default function TemplatesScreen() {
+  const { colors } = useTheme();
   const [templates, setTemplates] = useState<TemplateView[]>([]);
   const [loading, setLoading] = useState(true);
   const [switching, setSwitching] = useState<string | null>(null);
@@ -99,6 +101,41 @@ export default function TemplatesScreen() {
     }
   };
 
+  const styles = useMemo(
+    () =>
+      StyleSheet.create({
+        list: { padding: spacing.lg, paddingBottom: spacing.xxxl },
+        helpText: { color: colors.textMuted, fontSize: 14, lineHeight: 21 },
+        row: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+        name: { color: colors.text, fontSize: 16, fontWeight: '600' },
+        domain: { color: colors.textSubtle, fontSize: 12, letterSpacing: 0.3 },
+        desc: { color: colors.textMuted, fontSize: 14, lineHeight: 20 },
+        meta: { color: colors.textSubtle, fontSize: 12 },
+        error: { color: colors.danger, padding: spacing.lg, fontSize: 14 },
+        modalScrim: {
+          flex: 1,
+          backgroundColor: colors.overlay,
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: spacing.lg,
+        },
+        modalCard: {
+          backgroundColor: colors.surface,
+          borderRadius: radius.xl,
+          borderWidth: StyleSheet.hairlineWidth,
+          borderColor: colors.border,
+          padding: spacing.xl,
+          gap: spacing.md,
+          maxWidth: 420,
+          width: '100%',
+        },
+        modalTitle: { color: colors.text, fontSize: 18, fontWeight: '600' },
+        modalBody: { color: colors.textMuted, fontSize: 15, lineHeight: 22 },
+        modalActions: { gap: spacing.sm, marginTop: spacing.sm },
+      }),
+    [colors],
+  );
+
   if (loading) {
     return <ActivityIndicator color={colors.brand} style={{ marginTop: 32 }} />;
   }
@@ -179,33 +216,3 @@ export default function TemplatesScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  list: { padding: spacing.lg },
-  helpText: { color: colors.textMuted, marginBottom: spacing.md },
-  row: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
-  name: { color: colors.text, fontSize: 16, fontWeight: '700' },
-  domain: { color: colors.textMuted, fontSize: 12, textTransform: 'uppercase', letterSpacing: 1 },
-  desc: { color: colors.textMuted, fontSize: 13 },
-  meta: { color: colors.textSubtle, fontSize: 12 },
-  error: { color: colors.danger, padding: spacing.lg },
-  modalScrim: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.55)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: spacing.lg,
-  },
-  modalCard: {
-    backgroundColor: colors.surface,
-    borderRadius: radius.lg,
-    borderWidth: 1,
-    borderColor: colors.border,
-    padding: spacing.lg,
-    gap: spacing.md,
-    maxWidth: 420,
-    width: '100%',
-  },
-  modalTitle: { color: colors.text, fontSize: 17, fontWeight: '700' },
-  modalBody: { color: colors.textMuted, fontSize: 14, lineHeight: 20 },
-  modalActions: { gap: spacing.sm, marginTop: spacing.sm },
-});

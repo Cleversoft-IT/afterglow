@@ -6,10 +6,12 @@ import { Badge } from '../../components/Badge';
 import { Button } from '../../components/Button';
 import { Card } from '../../components/Card';
 import { api, ApiError } from '../../lib/api';
-import { colors, radius, spacing } from '../../lib/theme';
+import { useTheme } from '../../lib/ThemeContext';
+import { radius, spacing } from '../../lib/theme';
 import type { CallDetailView, FieldDefinitionLite } from '../../lib/types';
 
 export default function CallDetailScreen() {
+  const { colors } = useTheme();
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const [call, setCall] = useState<CallDetailView | null>(null);
@@ -65,6 +67,69 @@ export default function CallDetailScreen() {
     }
     return out;
   }, [call]);
+
+  const styles = useMemo(
+    () =>
+      StyleSheet.create({
+        scroll: { padding: spacing.lg, gap: spacing.lg, paddingBottom: spacing.xxxl },
+        headerRow: {
+          flexDirection: 'row',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: spacing.md,
+        },
+        callerLink: {
+          flexDirection: 'row',
+          alignItems: 'center',
+          gap: spacing.xs,
+          paddingHorizontal: spacing.sm + 2,
+          paddingVertical: 5,
+          borderRadius: radius.pill,
+          backgroundColor: colors.infoBg,
+          borderWidth: StyleSheet.hairlineWidth,
+          borderColor: colors.infoBorder,
+          flexShrink: 1,
+        },
+        heading: { color: colors.text, fontSize: 16, fontWeight: '600' },
+        meta: { color: colors.textMuted, fontSize: 13 },
+        errorBanner: {
+          color: colors.danger,
+          fontSize: 12,
+          marginTop: spacing.sm,
+          paddingTop: spacing.sm,
+          borderTopWidth: StyleSheet.hairlineWidth,
+          borderTopColor: colors.border,
+        },
+        section: { color: colors.text, fontWeight: '600', fontSize: 15, marginBottom: 4 },
+        classifyRow: { flexDirection: 'row', gap: 6, flexWrap: 'wrap', marginBottom: spacing.sm },
+        fieldRow: {
+          flexDirection: 'row',
+          justifyContent: 'space-between',
+          gap: spacing.md,
+          paddingVertical: 6,
+          borderTopWidth: StyleSheet.hairlineWidth,
+          borderTopColor: colors.border,
+        },
+        fieldLabel: { color: colors.text, fontSize: 13, fontWeight: '600' },
+        fieldKey: { color: colors.textSubtle, fontSize: 10, fontFamily: 'monospace', marginTop: 1 },
+        fieldValue: { color: colors.text, fontSize: 13, flex: 1, textAlign: 'right' },
+        actionRow: {
+          flexDirection: 'row',
+          alignItems: 'center',
+          gap: spacing.md,
+          paddingVertical: spacing.sm,
+          borderTopWidth: StyleSheet.hairlineWidth,
+          borderTopColor: colors.border,
+        },
+        actionHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, flexWrap: 'wrap' },
+        actionTitle: { color: colors.text, fontWeight: '600' },
+        actionMeta: { color: colors.textSubtle, fontSize: 11, fontFamily: 'monospace' },
+        actionSummary: { color: colors.textMuted, fontSize: 13 },
+        transcript: { color: colors.textMuted, lineHeight: 20, fontSize: 13 },
+        error: { color: colors.danger, padding: spacing.lg },
+      }),
+    [colors],
+  );
 
   if (loading) return <ActivityIndicator color={colors.brand} style={{ marginTop: 32 }} />;
   if (error || !call) return <Text style={styles.error}>{error ?? 'Call not found.'}</Text>;
@@ -182,56 +247,3 @@ function formatValue(v: unknown): string {
   return String(v);
 }
 
-const styles = StyleSheet.create({
-  scroll: { padding: spacing.lg, gap: spacing.md },
-  headerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.md },
-  callerLink: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 4,
-    borderRadius: radius.pill,
-    backgroundColor: 'rgba(59, 130, 246, 0.10)',
-    borderWidth: 1,
-    borderColor: 'rgba(59, 130, 246, 0.25)',
-    flexShrink: 1,
-  },
-  heading: { color: colors.text, fontSize: 16, fontWeight: '700' },
-  meta: { color: colors.textMuted, fontSize: 13 },
-  errorBanner: {
-    color: colors.danger,
-    fontSize: 12,
-    marginTop: spacing.sm,
-    paddingTop: spacing.sm,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.border,
-  },
-  section: { color: colors.text, fontWeight: '700', fontSize: 15, marginBottom: 4 },
-  classifyRow: { flexDirection: 'row', gap: 6, flexWrap: 'wrap', marginBottom: spacing.sm },
-  fieldRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    gap: spacing.md,
-    paddingVertical: 6,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.border,
-  },
-  fieldLabel: { color: colors.text, fontSize: 13, fontWeight: '600' },
-  fieldKey: { color: colors.textSubtle, fontSize: 10, fontFamily: 'monospace', marginTop: 1 },
-  fieldValue: { color: colors.text, fontSize: 13, flex: 1, textAlign: 'right' },
-  actionRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-    paddingVertical: spacing.sm,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.border,
-  },
-  actionHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, flexWrap: 'wrap' },
-  actionTitle: { color: colors.text, fontWeight: '600' },
-  actionMeta: { color: colors.textSubtle, fontSize: 11, fontFamily: 'monospace' },
-  actionSummary: { color: colors.textMuted, fontSize: 13 },
-  transcript: { color: colors.textMuted, lineHeight: 20, fontSize: 13 },
-  error: { color: colors.danger, padding: spacing.lg },
-});
