@@ -129,7 +129,7 @@ def _make_tool(action_def: dict[str, Any]):
         tool.__annotations__ = {
             "payload": payload_model,
             "confidence": float,
-            "evidence": list,
+            "evidence": list[str],
             "tool_context": Any,
             "return": dict,
         }
@@ -159,7 +159,7 @@ def _make_tool(action_def: dict[str, Any]):
         tool.__annotations__ = {
             "payload": dict,
             "confidence": float,
-            "evidence": list,
+            "evidence": list[str],
             "tool_context": Any,
             "return": dict,
         }
