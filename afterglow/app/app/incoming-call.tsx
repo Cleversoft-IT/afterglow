@@ -243,8 +243,14 @@ export default function IncomingCallScreen() {
     audio.playCallAudio(
       audioKey,
       () => {
-        // Audio finished playing — fire-and-forget submit, then close.
-        void submitAndClose();
+        // Natural hang-up beat: HTML5 'ended' fires a hair early on some MP3s
+        // (Chrome rounds `currentTime` against an imprecise duration tag),
+        // and even when it doesn't, a real call always has a short pause
+        // between "goodbye" and "click". Holding for ~800ms lets the last
+        // word breathe before the dialer chiude.
+        setTimeout(() => {
+          void submitAndClose();
+        }, 800);
       },
       (err) => {
         setError(err.message);
