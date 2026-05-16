@@ -32,23 +32,24 @@ from app.db.models import (
 
 
 # Bundled demo MP3s shipped inside the backend container at /app/sample_audio/.
-# The Simulator UI reads `simulation_config.audio_url` and the Calls endpoint
-# /simulation/audio serves the file straight from this path. Seed templates
-# get the bundled audio out of the box; custom templates have to generate or
-# upload their own (see /simulation/script + /generate-audio + /upload-audio).
+# Each seed template ships TWO recordings — `<domain>_existing.mp3` for the
+# "Call from existing customer" simulator button (caller already known by
+# phone, no self-introduction) and `<domain>_new.mp3` for the new-caller
+# button (first-time caller, full self-introduction). Custom wizard-built
+# templates still produce ONE recording reused across both modes until
+# the wizard is upgraded.
 _SAMPLE_AUDIO_DIR = Path(__file__).resolve().parents[2] / "sample_audio"
 
 
-def _bundled_simulation_config(
+def _bundled_scenario(
     *,
     domain_file: str,
-    caller_name: str,
-    caller_phone_e164: str,
+    caller_name: str | None,
+    caller_phone_e164: str | None,
     operator_voice: str,
     caller_voice: str,
     lines: list[tuple[str, str]],
 ) -> dict:
-    """Build a simulation_config dict for one of the three bundled seeds."""
     return {
         "caller_name": caller_name,
         "caller_phone_e164": caller_phone_e164,
@@ -64,6 +65,41 @@ def _bundled_simulation_config(
         "audio_status": "ready",
         "audio_generated_at": "2026-05-16T00:00:00Z",
         "audio_source": "bundled",
+    }
+
+
+def _bundled_simulation_config(
+    *,
+    domain_file_existing: str,
+    domain_file_new: str,
+    caller_name_existing: str,
+    caller_phone_e164_existing: str,
+    operator_voice: str,
+    caller_voice_existing: str,
+    caller_voice_new: str,
+    existing_lines: list[tuple[str, str]],
+    new_lines: list[tuple[str, str]],
+) -> dict:
+    """Build a simulation_config dict with two scenarios for one bundled seed."""
+    return {
+        "scenarios": {
+            "existing": _bundled_scenario(
+                domain_file=domain_file_existing,
+                caller_name=caller_name_existing,
+                caller_phone_e164=caller_phone_e164_existing,
+                operator_voice=operator_voice,
+                caller_voice=caller_voice_existing,
+                lines=existing_lines,
+            ),
+            "new": _bundled_scenario(
+                domain_file=domain_file_new,
+                caller_name=None,
+                caller_phone_e164=None,
+                operator_voice=operator_voice,
+                caller_voice=caller_voice_new,
+                lines=new_lines,
+            ),
+        }
     }
 
 
@@ -479,68 +515,107 @@ BODYSHOP_TEMPLATE = {
 def _bundled_simulation_configs() -> dict[str, dict]:
     """Return a domain_hint → simulation_config map for the three seeds.
 
-    Texts mirror what `scripts/generate_demo_audio.py` already encodes into
-    the bundled MP3s, so the script_turns shown in the Simulator UI match
-    what the operator will actually hear.
+    Texts mirror what `scripts/generate_demo_audio.py` encodes into the six
+    bundled MP3s, so the script_turns shown in the Simulator UI match what
+    the operator will actually hear in each mode.
     """
     return {
         "restaurant": _bundled_simulation_config(
-            domain_file="restaurant.mp3",
-            caller_name="Mark Ross",
-            caller_phone_e164="+15551112233",
+            domain_file_existing="restaurant_existing.mp3",
+            domain_file_new="restaurant_new.mp3",
+            caller_name_existing="Mark Ross",
+            caller_phone_e164_existing="+15551112233",
             operator_voice="sarah",
-            caller_voice="theo",
-            lines=[
-                ("operator", "Good evening, La Trattoria. How may I help you?"),
-                ("caller", "Hi, I'd like to book a table for Friday evening."),
-                ("operator", "Of course. How many people?"),
-                ("caller", "Four of us, around eight thirty. My name is Mark."),
-                ("operator", "Got it, Mark. Any special requests?"),
-                ("caller", "Yes — one person is gluten intolerant. Can you handle that?"),
-                ("operator", "Absolutely, the kitchen has a dedicated gluten free menu."),
-                ("caller", "Great. Could you confirm by WhatsApp?"),
-                ("operator", "Sure, I'll send the confirmation right away. See you Friday!"),
-                ("caller", "Thanks, goodbye."),
+            caller_voice_existing="theo",
+            caller_voice_new="megan",
+            existing_lines=[
+                ("operator", "La Trattoria, good evening, this is Sarah."),
+                ("caller", "Hi Sarah, it's Mark."),
+                ("operator", "Hi Mark, lovely to hear you. The usual Friday booking?"),
+                ("caller", "Yes please, party of four, around eight thirty."),
+                ("operator", "Quiet table and gluten free menu, like last time?"),
+                ("caller", "Exactly, same setup. Could you confirm on WhatsApp?"),
+                ("operator", "Of course, I'll send it over in a minute. See you Friday."),
+                ("caller", "Thanks Sarah, see you Friday."),
+            ],
+            new_lines=[
+                ("operator", "La Trattoria, good evening, this is Sarah. How can I help?"),
+                ("caller", "Hi, I've never booked with you before. I'd like a table for Saturday evening."),
+                ("operator", "Of course. Could I have your name please?"),
+                ("caller", "It's Hannah Clarke."),
+                ("operator", "Thanks Hannah. How many guests, and what time?"),
+                ("caller", "Three of us, around seven forty five."),
+                ("operator", "Noted. Any allergies or special requests we should know about?"),
+                ("caller", "Yes, one of us is lactose intolerant. Window table if you have one."),
+                ("operator", "All set. I'll text you the confirmation by SMS. See you Saturday."),
+                ("caller", "Perfect, thank you. Goodbye."),
             ],
         ),
         "dentist": _bundled_simulation_config(
-            domain_file="dentist.mp3",
-            caller_name="Laura Bennett",
-            caller_phone_e164="+15559991122",
+            domain_file_existing="dentist_existing.mp3",
+            domain_file_new="dentist_new.mp3",
+            caller_name_existing="Laura Bennett",
+            caller_phone_e164_existing="+15559991122",
             operator_voice="jack",
-            caller_voice="megan",
-            lines=[
-                ("operator", "Greenwood Dental, this is the front desk. How can I help you?"),
-                (
-                    "caller",
-                    "Hi, I urgently need an appointment. My filling came off and I have severe pain in my lower right molar.",
-                ),
-                ("operator", "I'm sorry to hear that. We can fit you in tomorrow morning. What's your name?"),
-                ("caller", "I'm Laura Bennett, you already have my chart on file."),
-                ("operator", "Perfect Laura. Do you have insurance coverage?"),
-                ("caller", "Yes, BlueCross. I'll send the policy number on WhatsApp."),
-                ("operator", "Great. Does nine fifteen tomorrow work for you?"),
-                ("caller", "Yes, that's perfect."),
-                ("operator", "I'll text you the details. Take care, see you tomorrow."),
-                ("caller", "Thank you, goodbye."),
+            caller_voice_existing="megan",
+            caller_voice_new="sarah",
+            existing_lines=[
+                ("operator", "Greenwood Dental, this is Jack at the front desk."),
+                ("caller", "Hi Jack, it's Laura."),
+                ("operator", "Hi Laura, good to hear from you. What can we do today?"),
+                ("caller", "The crown you fitted last month is feeling a little loose, I'd like it checked."),
+                ("operator", "I'm sorry to hear that. Same chair as last time, with Dr. Patel?"),
+                ("caller", "Yes please, if she has space."),
+                ("operator", "She has a slot tomorrow at ten fifteen. Does that work?"),
+                ("caller", "Tomorrow at ten fifteen is fine."),
+                ("operator", "Booked. I'll WhatsApp you the reminder on your usual number. Take care."),
+                ("caller", "Thanks Jack, see you tomorrow."),
+            ],
+            new_lines=[
+                ("operator", "Greenwood Dental, this is Jack. How can I help?"),
+                ("caller", "Hi, I'm not a patient here yet. I need an urgent appointment."),
+                ("operator", "I'm sorry to hear that. May I have your name?"),
+                ("caller", "Sophie Turner. I cracked a molar this morning eating a hard candy."),
+                ("operator", "Painful. We can fit you in this afternoon. Is the tooth bleeding?"),
+                ("caller", "No bleeding, but it's very sharp pain on the lower right."),
+                ("operator", "Understood. Three thirty today with Dr. Patel — does that work?"),
+                ("caller", "Yes, three thirty is perfect."),
+                ("operator", "I'll text you the address and the new patient form. See you later."),
+                ("caller", "Thank you so much, goodbye."),
             ],
         ),
         "bodyshop": _bundled_simulation_config(
-            domain_file="bodyshop.mp3",
-            caller_name="Andrew Green",
-            caller_phone_e164="+15558883344",
+            domain_file_existing="bodyshop_existing.mp3",
+            domain_file_new="bodyshop_new.mp3",
+            caller_name_existing="Andrew Green",
+            caller_phone_e164_existing="+15558883344",
             operator_voice="megan",
-            caller_voice="jack",
-            lines=[
-                ("operator", "Greenline Auto Body, good afternoon. How can I help?"),
-                ("caller", "Hello, I backed into a pole and need to fix the rear bumper of a 2019 Fiat Panda."),
-                ("operator", "Have you already opened an insurance claim?"),
-                ("caller", "No, I'm not filing one. I'm paying out of pocket — I just need a quote."),
-                ("operator", "Got it. When can you come in for the inspection?"),
-                ("caller", "I'm free Thursday afternoon. My name is Andrew Green."),
-                ("operator", "Let's say two o'clock Thursday. I'll text you the address."),
-                ("caller", "Perfect. Thanks for the help."),
-                ("operator", "You're welcome. See you Thursday."),
+            caller_voice_existing="jack",
+            caller_voice_new="theo",
+            existing_lines=[
+                ("operator", "Greenline Auto Body, good afternoon, this is Megan."),
+                ("caller", "Hey Megan, it's Andrew."),
+                ("operator", "Hi Andrew. Is it the Fiat Panda again?"),
+                ("caller", "Same car, yeah. I clipped a bollard, the front bumper has a dent and a long scratch."),
+                ("operator", "Out of pocket like last time, or going through insurance this round?"),
+                ("caller", "Out of pocket, same as before. Just need a quick quote."),
+                ("operator", "Thursday afternoon at two works, same bay?"),
+                ("caller", "Thursday at two is good. Thanks Megan."),
+                ("operator", "See you Thursday, Andrew."),
+            ],
+            new_lines=[
+                ("operator", "Greenline Auto Body, good afternoon, this is Megan. How can I help?"),
+                ("caller", "Hi, first time calling you. I had a small fender-bender this morning."),
+                ("operator", "Sorry to hear that. May I have your name and the vehicle?"),
+                ("caller", "It's Daniel Reed. Twenty twenty Toyota Corolla, plate Bravo Mike six four Lima Whisky."),
+                ("operator", "Got it. What's the damage, and is the car drivable?"),
+                ("caller", "Rear quarter panel is dented, taillight is cracked. It's drivable, lights still work."),
+                ("operator", "Are you opening an insurance claim?"),
+                ("caller", "Yes, I've already filed with my insurer."),
+                ("operator", "Understood. Could you come in Friday morning at ten for an inspection?"),
+                ("caller", "Friday at ten is fine, thank you."),
+                ("operator", "Great, I'll text you the address. See you Friday."),
+                ("caller", "Thanks, goodbye."),
             ],
         ),
     }
@@ -556,11 +631,13 @@ async def seed():
         # Restaurant is the active preset out of the box; the others are
         # selectable from the dashboard's Templates screen.
         restaurant_id = uuid.uuid4()
+        dentist_id = uuid.uuid4()
+        bodyshop_id = uuid.uuid4()
         sim_configs = _bundled_simulation_configs()
         for tpl, tpl_id, is_active in (
             (RESTAURANT_TEMPLATE, restaurant_id, True),
-            (DENTIST_TEMPLATE, uuid.uuid4(), False),
-            (BODYSHOP_TEMPLATE, uuid.uuid4(), False),
+            (DENTIST_TEMPLATE, dentist_id, False),
+            (BODYSHOP_TEMPLATE, bodyshop_id, False),
         ):
             session.add(
                 Template(
@@ -579,7 +656,9 @@ async def seed():
                 )
             )
 
-        # Two known customers on the restaurant scenario for cross-call demo.
+        # Four known customers — one per (template, returning caller) so the
+        # "Call from existing customer" button produces a coherent memory
+        # card on every preset, not just the restaurant.
         mark = Customer(
             id=uuid.uuid4(),
             phone_e164="+15551112233",
@@ -608,12 +687,46 @@ async def seed():
             last_call_at=datetime(2026, 4, 15, 21, 0, tzinfo=timezone.utc),
             is_seed=True,
         )
-        session.add_all([mark, julia])
+        laura = Customer(
+            id=uuid.uuid4(),
+            phone_e164="+15559991122",
+            display_name="Laura Bennett",
+            preferred_language="en",
+            tags=["returning_patient", "crown"],
+            memory_summary=(
+                "Laura had a porcelain crown fitted on her lower-right molar on 8 April "
+                "by Dr. Patel. Sensitivity has settled; flag any looseness on the next visit."
+            ),
+            total_calls=1,
+            last_call_at=datetime(2026, 4, 8, 9, 30, tzinfo=timezone.utc),
+            is_seed=True,
+        )
+        andrew = Customer(
+            id=uuid.uuid4(),
+            phone_e164="+15558883344",
+            display_name="Andrew Green",
+            preferred_language="en",
+            tags=["returning_customer", "out_of_pocket"],
+            memory_summary=(
+                "Andrew drives a 2019 Fiat Panda (plate AB123CD). Pays out of pocket — "
+                "no insurance claim. Last visit: rear bumper repair on 3 May, paid invoice INV-DEMO0012."
+            ),
+            total_calls=1,
+            last_call_at=datetime(2026, 5, 3, 14, 0, tzinfo=timezone.utc),
+            is_seed=True,
+        )
+        session.add_all([mark, julia, laura, andrew])
 
         # Flush so the customer IDs are usable for the seeded Call rows.
         await session.flush()
 
-        for spec in _seed_call_specs(restaurant_id, mark.id, julia.id):
+        call_specs = list(
+            _seed_call_specs(
+                restaurant_id, dentist_id, bodyshop_id,
+                mark.id, julia.id, laura.id, andrew.id,
+            )
+        )
+        for spec in call_specs:
             # Two-phase insert: Postgres rejects the audit_log batch with
             # audit_log_call_id_fkey unless the matching Call has already
             # landed on disk. audit_log.call_id is ON DELETE SET NULL +
@@ -628,19 +741,29 @@ async def seed():
 
         await session.commit()
         print(
-            f"[seed] Demo data inserted: 3 templates, 2 customers, "
-            f"{sum(1 for _ in _seed_call_specs(restaurant_id, mark.id, julia.id))} seeded calls."
+            f"[seed] Demo data inserted: 3 templates, 4 customers, "
+            f"{len(call_specs)} seeded calls."
         )
 
 
 # ---------------------------------------------------------------------------
-# Seeded calls for Mark / Julia — restaurant scenario
+# Seeded calls — one per (template, returning caller).
+#   restaurant: Mark (×2), Julia (×1)
+#   dentist:    Laura (×1)
+#   bodyshop:   Andrew (×1)
 # ---------------------------------------------------------------------------
 
 
-def _seed_call_specs(restaurant_template_id, mark_id, julia_id):
-    """Yield the SeedCallSpec list. Kept as a generator so the count line in
-    `seed()` can rerun it cheaply without keeping the full list around."""
+def _seed_call_specs(
+    restaurant_template_id,
+    dentist_template_id,
+    bodyshop_template_id,
+    mark_id,
+    julia_id,
+    laura_id,
+    andrew_id,
+):
+    """Yield the SeedCallSpec list."""
     yield {
         "id": uuid.UUID("11111111-1111-4111-8111-000000000001"),
         "customer_id": mark_id,
@@ -933,6 +1056,144 @@ def _seed_call_specs(restaurant_template_id, mark_id, julia_id):
                     "tags_added": ["vip", "anniversary"],
                     "mock": False,
                     "mutates": False,
+                },
+            },
+        ],
+    }
+    yield {
+        "id": uuid.UUID("11111111-1111-4111-8111-000000000004"),
+        "customer_id": laura_id,
+        "template_id": dentist_template_id,
+        "phone_e164": "+15559991122",
+        "phone_display": "Laura Bennett",
+        "language": "en",
+        "created_at": datetime(2026, 4, 8, 9, 30, tzinfo=timezone.utc),
+        "transcript": (
+            "Operator: Greenwood Dental, this is the front desk.\n"
+            "Caller: Hi, it's Laura Bennett. I'm confirming the crown fitting today.\n"
+            "Operator: Yes, ten o'clock with Dr. Patel — lower-right molar.\n"
+            "Caller: Perfect, I'll be there in twenty minutes."
+        ),
+        "fields": {
+            "patient_name": "Laura Bennett",
+            "is_new_patient": False,
+            "reason": "crown fitting on lower-right molar",
+            "urgency": "soon",
+            "preferred_date": "2026-04-08",
+            "preferred_time_window": "morning",
+        },
+        "confidence": {
+            "patient_name": 0.95,
+            "is_new_patient": 0.92,
+            "reason": 0.94,
+            "urgency": 0.86,
+            "preferred_date": 0.96,
+            "preferred_time_window": 0.84,
+        },
+        "evidence": {
+            "patient_name": "it's Laura Bennett",
+            "is_new_patient": "Yes, ten o'clock with Dr. Patel",
+            "reason": "crown fitting today",
+            "urgency": "in twenty minutes",
+            "preferred_date": "today",
+            "preferred_time_window": "ten o'clock",
+        },
+        "intent": "appointment_confirm",
+        "sentiment": "neutral",
+        "urgency": "soon",
+        "briefing": (
+            "Laura had a porcelain crown fitted on her lower-right molar on 8 April. "
+            "Sensitivity settled; flag any looseness on the next visit."
+        ),
+        "actions": [
+            {
+                "action_type": "appointment.create",
+                "title": "Confirm appointment",
+                "summary": "Crown fitting · 8 Apr · 10:00 with Dr. Patel",
+                "payload": {
+                    "patient_name": "Laura Bennett",
+                    "is_new_patient": False,
+                    "reason": "crown fitting on lower-right molar",
+                    "urgency": "soon",
+                    "preferred_date": "2026-04-08",
+                    "preferred_time_window": "morning",
+                },
+                "confidence": 0.93,
+                "evidence": ["ten o'clock with Dr. Patel"],
+                "result": {
+                    "booking_id": "BK-DENT0001",
+                    "status": "confirmed",
+                    "mock": True,
+                    "mutates": True,
+                },
+            },
+        ],
+    }
+    yield {
+        "id": uuid.UUID("11111111-1111-4111-8111-000000000005"),
+        "customer_id": andrew_id,
+        "template_id": bodyshop_template_id,
+        "phone_e164": "+15558883344",
+        "phone_display": "Andrew Green",
+        "language": "en",
+        "created_at": datetime(2026, 5, 3, 14, 0, tzinfo=timezone.utc),
+        "transcript": (
+            "Operator: Greenline Auto Body, good afternoon.\n"
+            "Caller: Hi, it's Andrew. The Panda needs a rear bumper repair.\n"
+            "Operator: Same plate, AB123CD? Out of pocket as usual?\n"
+            "Caller: Yes, no insurance. When can I bring it in?\n"
+            "Operator: Thursday at two, same bay."
+        ),
+        "fields": {
+            "customer_name": "Andrew Green",
+            "vehicle_make_model": "2019 Fiat Panda",
+            "license_plate": "AB123CD",
+            "damage_type": "rear bumper dent",
+            "insurance_involved": False,
+            "drivable": True,
+        },
+        "confidence": {
+            "customer_name": 0.94,
+            "vehicle_make_model": 0.93,
+            "license_plate": 0.90,
+            "damage_type": 0.88,
+            "insurance_involved": 0.96,
+            "drivable": 0.80,
+        },
+        "evidence": {
+            "customer_name": "it's Andrew",
+            "vehicle_make_model": "The Panda",
+            "license_plate": "AB123CD",
+            "damage_type": "rear bumper repair",
+            "insurance_involved": "no insurance",
+            "drivable": "When can I bring it in?",
+        },
+        "intent": "repair_quote",
+        "sentiment": "neutral",
+        "urgency": "routine",
+        "briefing": (
+            "Andrew drives a 2019 Fiat Panda (plate AB123CD). Pays out of pocket — "
+            "no insurance claim. Last visit: rear bumper repair on 3 May."
+        ),
+        "actions": [
+            {
+                "action_type": "appointment.create_inspection",
+                "title": "Schedule inspection",
+                "summary": "Rear bumper · Thursday 14:00",
+                "payload": {
+                    "customer_name": "Andrew Green",
+                    "vehicle_make_model": "2019 Fiat Panda",
+                    "license_plate": "AB123CD",
+                    "damage_type": "rear bumper dent",
+                    "drivable": True,
+                },
+                "confidence": 0.90,
+                "evidence": ["Thursday at two, same bay"],
+                "result": {
+                    "booking_id": "BK-BSHOP0001",
+                    "status": "confirmed",
+                    "mock": True,
+                    "mutates": True,
                 },
             },
         ],

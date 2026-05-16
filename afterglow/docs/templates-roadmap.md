@@ -124,3 +124,21 @@ The three "open questions" from the old roadmap (parent_id lineage,
 `is_active` tri-state, wizard learning loop) intentionally did **not**
 land in v2. They are documented as pitch material — "what we would do
 next if this project continued past the hackathon."
+
+### Two-mode wizard scripts (post-hackathon)
+
+The Simulator's "existing" / "new" buttons each play their own MP3 for
+the three seeded templates (restaurant / dentist / bodyshop): each ships
+two recordings via `_bundled_simulation_configs()` in
+`backend/app/db/seed.py`, and the dialer reads
+`simulation_config.scenarios.{existing,new}` to pick which one to play.
+
+Custom wizard-built templates still produce ONE recording reused across
+both buttons (graceful fallback: the API's
+`GET /templates/{id}/simulation/audio?mode=…` falls back to the legacy
+flat `audio_url` when no scenarios map is present). Follow-up: teach
+`backend/app/agents/simulation_script.py` to emit two distinct scripts —
+one that assumes the caller is already known by phone and one that
+assumes a cold first contact — and have the wizard render two MP3s via
+`speechmatics_tts.render_script_to_wav`. Effort: ~half a day for the
+prompt + storage + UI (two upload slots, two TTS buttons).
