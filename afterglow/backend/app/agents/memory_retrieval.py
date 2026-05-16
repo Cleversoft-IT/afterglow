@@ -28,6 +28,25 @@ from app.integrations import vultr_inference
 
 logger = logging.getLogger("afterglow")
 
+
+def _confidence_value(raw: Any) -> float:
+    """Extract a scalar confidence from the JSONB column.
+
+    `_coerce_extractions` writes either a plain float or a dict of the form
+    `{"value": <float>, "status": "manual_review", ...}` when a field's
+    `depends_on` chain is unmet. Older rows that were never re-coerced may
+    still carry plain floats, so the reader must handle both shapes.
+    """
+    if isinstance(raw, dict):
+        try:
+            return float(raw.get("value", 0.0) or 0.0)
+        except (TypeError, ValueError):
+            return 0.0
+    try:
+        return float(raw or 0.0)
+    except (TypeError, ValueError):
+        return 0.0
+
 # Vultr's RAG models (kimi-k2, MiniMax-M2) emit reasoning inside <think>...</think>
 # blocks before the answer. We strip them so the orchestrator passes clean facts
 # (not raw chain-of-thought) to Gemini as prior_facts.
@@ -126,7 +145,7 @@ async def retrieve_structured_facts(
         for key, value in extracted.fields.items():
             if key in out:
                 continue  # most-recent wins (rows are DESC by created_at)
-            conf = float(confidences.get(key, 0.0) or 0.0)
+            conf = _confidence_value(confidences.get(key))
             if conf < confidence_threshold:
                 continue
             out[key] = str(value) if value is not None else ""
@@ -140,11 +159,11 @@ def _top_fields(extracted: Optional[ExtractedFields], *, threshold: float = 0.7,
     confidences = extracted.confidence or {}
     ranked = sorted(
         extracted.fields.items(),
-        key=lambda kv: -float(confidences.get(kv[0], 0.0) or 0.0),
+        key=lambda kv: -_confidence_value(confidences.get(kv[0])),
     )
     kept: list[str] = []
     for key, value in ranked:
-        conf = float(confidences.get(key, 0.0) or 0.0)
+        conf = _confidence_value(confidences.get(key))
         if conf < threshold:
             continue
         kept.append(f"{key}={value!r}")
