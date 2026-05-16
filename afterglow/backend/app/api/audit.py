@@ -5,8 +5,9 @@ import uuid
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import select
+from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.sql.elements import ColumnElement
 
 from app.api.session_context import (
     SessionContext,
@@ -14,10 +15,27 @@ from app.api.session_context import (
     visibility_filter,
 )
 from app.db.engine import get_session
-from app.db.models import AuditLog
+from app.db.models import AuditLog, Call
 from app.schemas import AuditLogEntry
 
 router = APIRouter(prefix="/api/v1/audit", tags=["audit"])
+
+
+def _audit_visibility(ctx: SessionContext) -> ColumnElement:
+    """Demo visitors see their own steps plus seed pipeline rows.
+
+    Seed audit rows keep ``session_id IS NULL`` (written before any demo
+    session exists). Calls/bookings use ``visibility_filter_seedable`` via
+    ``Call.is_seed``; audit must join the call for the same behaviour.
+    """
+    base = visibility_filter(AuditLog.session_id, ctx)
+    if not ctx.is_demo:
+        return base
+    seed_call_ids = select(Call.id).where(Call.is_seed.is_(True))
+    return or_(
+        base,
+        and_(AuditLog.session_id.is_(None), AuditLog.call_id.in_(seed_call_ids)),
+    )
 
 
 @router.get("", response_model=list[AuditLogEntry])
@@ -30,7 +48,7 @@ async def list_audit(
 ) -> list[AuditLogEntry]:
     stmt = (
         select(AuditLog)
-        .where(visibility_filter(AuditLog.session_id, ctx))
+        .where(_audit_visibility(ctx))
         .order_by(AuditLog.created_at.desc())
         .limit(limit)
     )

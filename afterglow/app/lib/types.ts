@@ -182,6 +182,22 @@ export type CallActionView = {
   can_undo?: boolean;
 };
 
+export type BookingListItem = {
+  id: string;
+  call_id: string;
+  customer_id?: string | null;
+  action_type: string;
+  title: string;
+  summary?: string | null;
+  payload: Record<string, unknown>;
+  status: string;
+  created_at: string;
+  customer_display_name?: string | null;
+  customer_phone_e164?: string | null;
+  is_simulated?: boolean;
+  can_undo?: boolean;
+};
+
 export type ActionCatalogEntry = {
   key: string;
   label: string;

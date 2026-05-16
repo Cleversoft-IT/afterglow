@@ -92,7 +92,7 @@ export function CallButton({
           <Ionicons
             name={spec.icon}
             size={iconSize}
-            color={variant === 'ai' ? '#FFFFFF' : colors.onPrimary}
+            color={colors.onPrimary}
           />
         </View>
       </Pressable>

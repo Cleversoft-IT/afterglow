@@ -88,6 +88,7 @@ function RootLayoutInner() {
         <Stack.Screen name="incoming-call" options={{ headerShown: false }} />
         <Stack.Screen name="call/[id]" options={{ title: 'Call detail' }} />
         <Stack.Screen name="customer/[id]" options={{ title: 'Customer detail' }} />
+        <Stack.Screen name="audit" options={{ title: 'Audit log' }} />
       </Stack>
       {gateChecked ? null : (
         <View style={styles.splashOverlay} pointerEvents="auto">

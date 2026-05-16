@@ -95,6 +95,15 @@ export default function SettingsScreen() {
         </Text>
       </Card>
 
+      <Card>
+        <Text style={styles.heading}>Audit log</Text>
+        <Text style={styles.body}>
+          Full trace of every pipeline step — agents, tokens, and errors. Useful for demos and
+          debugging, not day-to-day operations.
+        </Text>
+        <Button title="Open audit log" variant="secondary" onPress={() => router.push('/audit')} />
+      </Card>
+
       {isDemoMode() ? (
         <Card>
           <Text style={styles.heading}>Demo controls</Text>

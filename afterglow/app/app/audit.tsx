@@ -1,17 +1,17 @@
 import { useFocusEffect } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
-import { ActivityIndicator, FlatList, StyleSheet, Text, View } from 'react-native';
-import { Badge } from '../../components/Badge';
-import { Card } from '../../components/Card';
-import { api, ApiError } from '../../lib/api';
+import { ActivityIndicator, FlatList, RefreshControl, StyleSheet, Text, View } from 'react-native';
+import { Badge } from '../components/Badge';
+import { Card } from '../components/Card';
+import { api, ApiError } from '../lib/api';
 import {
   friendlyAgentLabel,
   friendlyStepLabel,
   humanLabelFromPayload,
-} from '../../lib/auditLabels';
-import { useTheme } from '../../lib/ThemeContext';
-import { spacing } from '../../lib/theme';
-import type { AuditLogEntry } from '../../lib/types';
+} from '../lib/auditLabels';
+import { useTheme } from '../lib/ThemeContext';
+import { spacing } from '../lib/theme';
+import type { AuditLogEntry } from '../lib/types';
 
 function toneFor(status: string): 'success' | 'warning' | 'danger' | 'neutral' {
   if (status === 'success') return 'success';
@@ -24,6 +24,7 @@ export default function AuditScreen() {
   const { colors } = useTheme();
   const [rows, setRows] = useState<AuditLogEntry[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -35,13 +36,14 @@ export default function AuditScreen() {
       setError(e instanceof ApiError ? e.message : String(e));
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   }, []);
 
   useFocusEffect(
     useCallback(() => {
       load();
-    }, [load])
+    }, [load]),
   );
 
   const styles = useMemo(
@@ -74,6 +76,16 @@ export default function AuditScreen() {
       data={rows}
       keyExtractor={(r) => r.id}
       contentContainerStyle={{ padding: spacing.lg }}
+      refreshControl={
+        <RefreshControl
+          tintColor={colors.brand}
+          refreshing={refreshing}
+          onRefresh={() => {
+            setRefreshing(true);
+            load();
+          }}
+        />
+      }
       ItemSeparatorComponent={() => <View style={{ height: spacing.sm }} />}
       ListEmptyComponent={<Text style={styles.empty}>No audit entries yet.</Text>}
       renderItem={({ item }) => {
@@ -104,4 +116,3 @@ export default function AuditScreen() {
     />
   );
 }
-

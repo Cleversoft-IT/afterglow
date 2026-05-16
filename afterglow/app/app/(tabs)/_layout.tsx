@@ -47,12 +47,16 @@ export default function TabsLayout() {
         options={{ title: 'Customers', tabBarLabel: 'Customers', tabBarIcon: tabIcon('people-outline') }}
       />
       <Tabs.Screen
-        name="templates"
-        options={{ title: 'Templates', tabBarLabel: 'Templates', tabBarIcon: tabIcon('albums-outline') }}
+        name="bookings"
+        options={{
+          title: 'Bookings',
+          tabBarLabel: 'Bookings',
+          tabBarIcon: tabIcon('calendar-outline'),
+        }}
       />
       <Tabs.Screen
-        name="audit"
-        options={{ title: 'Audit', tabBarLabel: 'Audit', tabBarIcon: tabIcon('shield-checkmark-outline') }}
+        name="templates"
+        options={{ title: 'Templates', tabBarLabel: 'Templates', tabBarIcon: tabIcon('albums-outline') }}
       />
       <Tabs.Screen
         name="settings"
