@@ -1,6 +1,6 @@
-import { useFocusEffect } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useState } from 'react';
-import { ActivityIndicator, FlatList, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Badge } from '../../components/Badge';
 import { Button } from '../../components/Button';
 import { Card } from '../../components/Card';
@@ -58,33 +58,43 @@ export default function TemplatesScreen() {
       contentContainerStyle={styles.list}
       ItemSeparatorComponent={() => <View style={{ height: spacing.md }} />}
       ListHeaderComponent={
-        <Text style={styles.helpText}>
-          Pick which preset drives the call analysis. Exactly one template can be active at a time.
-        </Text>
+        <View style={{ gap: spacing.md, marginBottom: spacing.md }}>
+          <Text style={styles.helpText}>
+            Pick which preset drives the call analysis. Exactly one template can be active at a time.
+          </Text>
+          <Button
+            title="+ New from prompt"
+            variant="primary"
+            onPress={() => router.push('/templates/wizard' as never)}
+          />
+        </View>
       }
       renderItem={({ item }) => (
-        <Card>
-          <View style={styles.row}>
-            <View style={{ flex: 1, gap: 4 }}>
-              <Text style={styles.name}>{item.name}</Text>
-              <Text style={styles.domain}>{item.domain_hint}</Text>
+        <Pressable onPress={() => router.push(`/templates/${item.id}` as never)}>
+          <Card>
+            <View style={styles.row}>
+              <View style={{ flex: 1, gap: 4 }}>
+                <Text style={styles.name}>{item.name}</Text>
+                <Text style={styles.domain}>{item.domain_hint}</Text>
+              </View>
+              {item.is_active ? (
+                <Badge tone="brand">Active</Badge>
+              ) : (
+                <Button
+                  title="Activate"
+                  variant="secondary"
+                  onPress={() => activate(item.id)}
+                  loading={switching === item.id}
+                />
+              )}
             </View>
-            {item.is_active ? (
-              <Badge tone="brand">Active</Badge>
-            ) : (
-              <Button
-                title="Activate"
-                variant="secondary"
-                onPress={() => activate(item.id)}
-                loading={switching === item.id}
-              />
-            )}
-          </View>
-          {item.description ? <Text style={styles.desc}>{item.description}</Text> : null}
-          <Text style={styles.meta}>
-            {item.fields_schema.length} fields · {item.action_types.length} actions
-          </Text>
-        </Card>
+            {item.description ? <Text style={styles.desc}>{item.description}</Text> : null}
+            <Text style={styles.meta}>
+              {item.fields_schema.length} fields · {item.action_types.length} actions
+              {item.is_seed ? ' · seed' : ''}
+            </Text>
+          </Card>
+        </Pressable>
       )}
     />
   );

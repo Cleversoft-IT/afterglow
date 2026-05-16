@@ -1,5 +1,9 @@
 // Backend DTOs mirrored on the client. Keep in sync with afterglow/backend/app/schemas.
 
+export type PiiClass = 'none' | 'contact' | 'health' | 'financial' | 'identity';
+export type ExtractorHint = 'regex' | 'freeform' | 'enum' | 'llm_only';
+export type ExecutionMode = 'auto' | 'manual-only';
+
 export type FieldDefinition = {
   key: string;
   type: string;
@@ -7,15 +11,33 @@ export type FieldDefinition = {
   required?: boolean;
   sensitive?: boolean;
   options?: string[];
-  description?: string;
+  description?: string | null;
+
+  // v2 additions
+  pii_class?: PiiClass;
+  confidence_threshold?: number | null;
+  extractor_hint?: ExtractorHint;
+  depends_on?: string[];
 };
 
 export type ActionDefinition = {
   key: string;
   label: string;
-  execution_mode: 'auto' | 'manual-only';
+  execution_mode: ExecutionMode;
   mock_target?: string;
-  description?: string;
+  description?: string | null;
+
+  // v2 additions
+  preconditions?: string[];
+  confidence_threshold?: number;
+  mutates?: boolean;
+  evidence_required?: boolean;
+  payload_schema?: Record<string, unknown> | null;
+};
+
+export type PromptHintRule = {
+  when: string;
+  then: string;
 };
 
 export type TemplateView = {
@@ -27,10 +49,64 @@ export type TemplateView = {
   fields_schema: FieldDefinition[];
   action_types: ActionDefinition[];
   custom_dictionary: string[];
-  prompt_hints?: string | null;
+  prompt_hints?: PromptHintRule[] | null;
   is_active: boolean;
+  is_seed?: boolean;
+  session_id?: string | null;
   created_at: string;
 };
+
+// --- Wizard / validation ----------------------------------------------------
+
+export type ValidationIssue = {
+  field_path: string;
+  severity: 'error' | 'warning' | 'info';
+  message: string;
+};
+
+export type ProposedMock = {
+  action_key: string;
+  suggested_mock_target: string;
+  rationale: string;
+};
+
+export type ValidationReport = {
+  issues: ValidationIssue[];
+  proposed_mocks: ProposedMock[];
+};
+
+export type TemplateWizardRequest = {
+  description: string;
+  language?: string;
+};
+
+export type TemplateWizardResponse = {
+  name: string;
+  description: string;
+  domain_hint?: string;
+  fields_schema: FieldDefinition[];
+  action_types: ActionDefinition[];
+  custom_dictionary: string[];
+  prompt_hints: PromptHintRule[];
+  validation?: ValidationReport | null;
+};
+
+export type CreateTemplateRequest = {
+  template: TemplateWizardResponse;
+  set_active?: boolean;
+  parent_seed_id?: string | null;
+};
+
+export type UpdateTemplateRequest = {
+  description?: string | null;
+  domain_hint?: string | null;
+  fields_schema?: FieldDefinition[];
+  action_types?: ActionDefinition[];
+  custom_dictionary?: string[];
+  prompt_hints?: PromptHintRule[];
+};
+
+// --- Calls / customers / audit (unchanged) ---------------------------------
 
 export type CustomerCard = {
   id: string;
@@ -52,7 +128,7 @@ export type CallActionView = {
   result?: Record<string, unknown> | null;
   confidence?: number | null;
   evidence?: string[] | null;
-  execution_mode: 'auto' | 'manual-only';
+  execution_mode: ExecutionMode;
   status: string;
   reverted_at?: string | null;
   created_at: string;

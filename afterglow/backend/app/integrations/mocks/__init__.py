@@ -22,4 +22,15 @@ MOCK_REGISTRY = {
     "case.open_insurance": update_customer_mock,
 }
 
-__all__ = ["MOCK_REGISTRY"]
+
+def available_keys() -> list[str]:
+    """List the action_type keys backed by a registered mock target.
+
+    Used by the template_validator's deterministic step to flag action_types
+    in a generated template that would land as `status='failed'` because
+    nothing in MOCK_REGISTRY knows how to handle them.
+    """
+    return sorted(MOCK_REGISTRY.keys())
+
+
+__all__ = ["MOCK_REGISTRY", "available_keys"]

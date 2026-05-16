@@ -46,7 +46,26 @@ def _ts_updated() -> Mapped[datetime]:
 class Template(Base):
     __tablename__ = "templates"
     __table_args__ = (
-        UniqueConstraint("name", "version", name="uq_template_name_version"),
+        # Uniqueness of (name, version) is enforced by two partial indexes —
+        # one for prod tenant rows (session_id IS NULL) and one for demo
+        # session rows. A plain UniqueConstraint that includes session_id
+        # would let multiple prod rows share the same name/version because
+        # Postgres treats NULL as distinct.
+        Index(
+            "uq_template_name_version_prod",
+            "name",
+            "version",
+            unique=True,
+            postgresql_where=text("session_id IS NULL"),
+        ),
+        Index(
+            "uq_template_name_version_session",
+            "name",
+            "version",
+            "session_id",
+            unique=True,
+            postgresql_where=text("session_id IS NOT NULL"),
+        ),
         Index(
             "uq_template_active",
             "is_active",
@@ -68,7 +87,10 @@ class Template(Base):
     custom_dictionary: Mapped[list[str]] = mapped_column(
         ARRAY(String), default=list
     )
-    prompt_hints: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    # JSONB array of {when, then} rules. See schemas.templates.PromptHintRule.
+    prompt_hints: Mapped[Optional[list[dict[str, Any]]]] = mapped_column(
+        JSONB, nullable=True
+    )
     is_active: Mapped[bool] = mapped_column(Boolean, default=False)
     session_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), nullable=True

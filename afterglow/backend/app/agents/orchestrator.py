@@ -29,6 +29,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agents import action_planner, call_analyzer, memory_retrieval
+from app.agents.pii_sanitizer import sanitize_analysis
 from app.audit.logger import audit_step
 from app.config import get_settings
 from app.db.models import (
@@ -128,10 +129,20 @@ async def run_pipeline(session: AsyncSession, call_id: uuid.UUID) -> None:
     # enough history for semantic retrieval to beat a straight serialization.
     # In demo we never read from the shared Vultr collection (cross-visitor
     # leakage); the SQL fallback is already session-isolated upstream.
+    #
+    # We pull TWO things from prior calls:
+    #   (a) `prior_facts` — Markdown-formatted text, spliced into the analyzer
+    #       prompt as PRIOR FACTS section.
+    #   (b) `prior_structured` — typed dict[field_key, latest_value], used by
+    #       the analyzer to evaluate `prompt_hints` rules (`when: field.X is
+    #       null`) deterministically BEFORE the LLM call.
     collection_id = settings.vultr_vector_default_collection or None
     total_calls = customer.total_calls or 0
     use_structured = is_demo or total_calls <= 10
     prior_facts = ""
+    prior_structured: dict[str, Any] = await memory_retrieval.retrieve_structured_facts(
+        session, customer
+    )
 
     if use_structured:
         history_text, source = await memory_retrieval.retrieve_structured_history(
@@ -161,27 +172,75 @@ async def run_pipeline(session: AsyncSession, call_id: uuid.UUID) -> None:
                 is_demo=False,
             )
 
-    # 4) Single Gemini structured-output call.
-    async with audit_step(
-        call_id=call.id,
-        session_id=call.session_id,
-        agent_name="call_analyzer",
-        step_type="llm_call",
-        model=settings.gemini_default_model,
-    ):
-        analysis = await call_analyzer.analyze_call(
-            transcript_text=transcript.text,
-            template_name=template.name,
-            fields_schema=template.fields_schema,
-            action_types=template.action_types,
-            prompt_hints=template.prompt_hints,
-            domain_hint=template.domain_hint,
-            prior_facts=prior_facts,
-        )
+    # 4) Single Gemini structured-output call. Fail-fast: a missing key or a
+    # Gemini error bubbles up as CallAnalysisError; the orchestrator catches
+    # it below, marks the call as failed, and surfaces the reason to the UI.
+    try:
+        async with audit_step(
+            call_id=call.id,
+            session_id=call.session_id,
+            agent_name="call_analyzer",
+            step_type="llm_call",
+            model=settings.gemini_default_model,
+        ):
+            analysis = await call_analyzer.analyze_call(
+                transcript_text=transcript.text,
+                template_name=template.name,
+                fields_schema=template.fields_schema,
+                action_types=template.action_types,
+                prompt_hints=template.prompt_hints,
+                prior_structured=prior_structured,
+                domain_hint=template.domain_hint,
+                prior_facts=prior_facts,
+            )
+    except call_analyzer.CallAnalysisError as exc:
+        logger.warning("call_analyzer failed for call %s: %s", call.id, exc)
+        async with audit_step(
+            call_id=call.id,
+            session_id=call.session_id,
+            agent_name="call_analyzer",
+            step_type="llm_call",
+            status="error",
+            payload={"reason": str(exc)},
+        ):
+            pass
+        call.status = "failed"
+        call.error = f"call_analyzer: {exc}"
+        call.completed_at = datetime.now(tz=timezone.utc)
+        await session.commit()
+        return
 
-    # 5) Persist extracted fields. briefing_snapshot freezes the briefing
-    # generated for *this* call so future structured_history lookups can
-    # show how the operator's view of the customer evolved over time.
+    # 4b) PII sanitization. Runs IMMEDIATELY after the analyzer so every
+    # downstream surface (briefing_snapshot, planned_actions evidence,
+    # memory write-back, vector chunk, audit payloads) sees only the
+    # redacted version. `analysis.fields[]` keeps the raw values — the
+    # operator UI + the action executor still need them.
+    sanitized = sanitize_analysis(template.fields_schema, analysis)
+    analysis = sanitized.analysis
+    if sanitized.audit_pii_actions:
+        async with audit_step(
+            call_id=call.id,
+            session_id=call.session_id,
+            agent_name="pii_sanitizer",
+            step_type="pii_policy_applied",
+            payload={
+                "actions": [
+                    {
+                        "field": r.field,
+                        "pii_class": r.pii_class,
+                        "action": r.action,
+                        "threshold": r.threshold,
+                        "confidence": r.confidence,
+                    }
+                    for r in sanitized.audit_pii_actions
+                ],
+            },
+        ):
+            pass
+
+    # 5) Persist extracted fields. briefing_snapshot freezes the SANITIZED
+    # briefing generated for *this* call so future structured_history lookups
+    # can show the operator-visible view, never the raw PII.
     fields_dict, confidence_dict, evidence_dict = _coerce_extractions(
         analysis.fields, template.fields_schema
     )
@@ -198,42 +257,42 @@ async def run_pipeline(session: AsyncSession, call_id: uuid.UUID) -> None:
         )
     )
 
-    # 5b) PII gate audit — flag any sensitive field that came back with low
-    # confidence. Gemini has already been instructed to keep its value out of
-    # the briefing; here we just leave a breadcrumb so the operator UI / audit
-    # log can show the warning. No data is mutated.
-    flagged = _flag_low_confidence_sensitive(
-        analysis.fields, template.fields_schema, threshold=0.85
-    )
-    if flagged:
+    # 6a) Agentic action planning — Gemini ADK with the template's auto-mode
+    # action_types exposed as typed tools (Pydantic models built from each
+    # action's payload_schema). The tools only *record* requested actions;
+    # the deterministic executor is the single place where they actually
+    # run. Fail-fast: an ADK error becomes a failed call (no fallback).
+    try:
         async with audit_step(
             call_id=call.id,
             session_id=call.session_id,
-            agent_name="pii_gate",
-            step_type="pii_gate",
-            payload={"fields_flagged": flagged, "threshold": 0.85},
+            agent_name="action_planner",
+            step_type="agent_loop",
+            model=settings.gemini_default_model,
+        ) as planner_audit:
+            plan, planner_mode = await action_planner.plan_actions(
+                analysis=analysis,
+                template=template,
+                customer=customer,
+                transcript_text=transcript.text,
+            )
+            planner_audit.payload = {"mode": planner_mode, "count": len(plan)}
+    except action_planner.ActionPlannerError as exc:
+        logger.warning("action_planner failed for call %s: %s", call.id, exc)
+        async with audit_step(
+            call_id=call.id,
+            session_id=call.session_id,
+            agent_name="action_planner",
+            step_type="agent_loop",
+            status="error",
+            payload={"reason": str(exc)},
         ):
             pass
-
-    # 6a) Agentic action planning — Gemini ADK with the template's auto-mode
-    # action_types exposed as tools. The tools only *record* requested
-    # actions; the deterministic executor is the single place where they
-    # actually run. ``plan_actions`` degrades to the analyzer's hints when
-    # no GOOGLE_API_KEY is set or the ADK runner raises.
-    async with audit_step(
-        call_id=call.id,
-        session_id=call.session_id,
-        agent_name="action_planner",
-        step_type="agent_loop",
-        model=settings.gemini_default_model,
-    ) as planner_audit:
-        plan, planner_mode = await action_planner.plan_actions(
-            analysis=analysis,
-            template=template,
-            customer=customer,
-            transcript_text=transcript.text,
-        )
-        planner_audit.payload = {"mode": planner_mode, "count": len(plan)}
+        call.status = "failed"
+        call.error = f"action_planner: {exc}"
+        call.completed_at = datetime.now(tz=timezone.utc)
+        await session.commit()
+        return
 
     # 6b) Deterministic action executor — the only place where MOCK_REGISTRY
     # is invoked. Hallucination rejection + execution_mode read from the
@@ -263,6 +322,9 @@ async def run_pipeline(session: AsyncSession, call_id: uuid.UUID) -> None:
             "language": analysis.language,
             "urgency": analysis.urgency,
         },
+        pii_redactions_applied=sorted(
+            {r.pii_class for r in sanitized.audit_pii_actions if r.pii_class != "none"}
+        ),
     )
 
     call.status = "completed"
@@ -292,39 +354,62 @@ def _pre_classify(transcript_text: str) -> bool:
     return True
 
 
-def _flag_low_confidence_sensitive(
-    extractions: list[call_analyzer.FieldExtraction],
-    fields_schema: list[dict[str, Any]],
-    *,
-    threshold: float = 0.85,
-) -> list[str]:
-    """Return the keys of sensitive fields whose confidence is below ``threshold``."""
-    sensitive_keys = {f["key"] for f in fields_schema if f.get("sensitive")}
-    if not sensitive_keys:
-        return []
-    return [
-        item.key
-        for item in extractions
-        if item.key in sensitive_keys and item.confidence < threshold
-    ]
-
-
 def _coerce_extractions(
     extractions: list[call_analyzer.FieldExtraction],
     fields_schema: list[dict[str, Any]],
-) -> tuple[dict[str, Any], dict[str, float], dict[str, str]]:
-    """Turn the LLM's typed list into three keyed dicts and cast values."""
+) -> tuple[dict[str, Any], dict[str, Any], dict[str, str]]:
+    """Turn the LLM's typed list into three keyed dicts, cast values, and
+    flag fields whose `depends_on` chain is not satisfied.
+
+    A field is marked `manual_review` when any of its `depends_on` keys is
+    either missing from the extractions or below the dependency's
+    confidence threshold. The flag lives inside `confidence_dict` as a
+    sentinel value `{"value": <float>, "status": "manual_review", "reason": ...}`
+    so the UI can render a warning without losing the LLM's confidence.
+    """
+    from app.agents.pii_policy import threshold_for
+
     type_by_key = {f["key"]: f.get("type", "string") for f in fields_schema}
+    field_def_by_key = {f["key"]: f for f in fields_schema}
 
     fields: dict[str, Any] = {}
-    confidence: dict[str, float] = {}
+    confidence: dict[str, Any] = {}
     evidence: dict[str, str] = {}
+
+    extracted_by_key = {item.key: item for item in extractions}
 
     for item in extractions:
         ftype = type_by_key.get(item.key, "string")
         fields[item.key] = _cast_value(item.value, ftype)
         confidence[item.key] = item.confidence
         evidence[item.key] = item.evidence
+
+    # Second pass: enforce depends_on.
+    for item in extractions:
+        field_def = field_def_by_key.get(item.key) or {}
+        deps: list[str] = field_def.get("depends_on") or []
+        if not deps:
+            continue
+        unmet: list[str] = []
+        for dep_key in deps:
+            dep_item = extracted_by_key.get(dep_key)
+            if dep_item is None:
+                unmet.append(f"{dep_key}:missing")
+                continue
+            dep_def = field_def_by_key.get(dep_key) or {}
+            dep_threshold = threshold_for(
+                dep_def.get("pii_class") or "none",
+                dep_def.get("confidence_threshold"),
+            )
+            if dep_item.confidence < dep_threshold:
+                unmet.append(f"{dep_key}:low_confidence")
+        if unmet:
+            confidence[item.key] = {
+                "value": item.confidence,
+                "status": "manual_review",
+                "reason": "depends_on_unmet",
+                "unmet": unmet,
+            }
 
     return fields, confidence, evidence
 
@@ -448,6 +533,7 @@ async def _persist_memory(
     collection_id: Optional[str],
     briefing: str,
     classification: dict[str, Any],
+    pii_redactions_applied: Optional[list[str]] = None,
 ) -> None:
     """Save the next-call briefing on Postgres + push a chunk to Vector Store.
 
@@ -485,13 +571,39 @@ async def _persist_memory(
     # indexed content (Vultr embeds `content`; `description` is metadata).
     call_date = (call.completed_at or call.started_at or datetime.now(tz=timezone.utc)).date()
     display_label = customer.display_name or customer.phone_e164
+    detected_language = (classification.get("language") or "en").lower()
+
+    # Bilingual chunk: if the call was not already in English, ask Gemini for
+    # a short EN summary so the vector index is searchable cross-language.
+    # Fail-fast: any error logs an audit row but still pushes the native chunk.
+    briefing_en: Optional[str] = None
+    if detected_language and detected_language != "en":
+        async with audit_step(
+            call_id=call.id,
+            session_id=call.session_id,
+            agent_name="memory_summarizer_bilingual",
+            step_type="llm_call",
+            model=settings.gemini_default_model,
+        ) as bilingual_audit:
+            try:
+                briefing_en = await _summarize_to_english(briefing)
+                bilingual_audit.payload = {"chars": len(briefing_en or "")}
+            except Exception as exc:  # noqa: BLE001
+                logger.warning(
+                    "memory_summarizer_bilingual: failed (%s) — native-only chunk",
+                    exc,
+                )
+                bilingual_audit.status = "degraded"
+                bilingual_audit.payload = {"reason": str(exc)}
+
+    bilingual_tail = f"\n\n[EN] {briefing_en}" if briefing_en else ""
     chunk_content = (
         f"Customer {display_label} ({customer.phone_e164}) called "
         f"the {template.domain_hint} on {call_date.isoformat()}. "
         f"Intent: {classification.get('intent', 'unknown')}. "
         f"Sentiment: {classification.get('sentiment', 'unknown')}. "
         f"Urgency: {classification.get('urgency', 'unknown')}. "
-        f"Briefing: {briefing}"
+        f"Briefing: {briefing}{bilingual_tail}"
     )
 
     item_id: Optional[str] = None
@@ -523,12 +635,52 @@ async def _persist_memory(
                 call_id=call.id,
                 vultr_collection_id=collection_id,
                 vultr_item_id=item_id,
-                summary=briefing,
+                summary=briefing + (f"\n\n[EN] {briefing_en}" if briefing_en else ""),
                 chunk_metadata={
                     **classification,
                     "phone_e164": customer.phone_e164,
                     "customer_id": str(customer.id),
+                    "language": detected_language,
+                    "briefing_en": briefing_en,
+                    "pii_redactions_applied": pii_redactions_applied or [],
                 },
                 session_id=call.session_id,
             )
         )
+
+
+async def _summarize_to_english(briefing: str) -> str:
+    """Translate / summarize the briefing to a one-sentence English line.
+
+    Used to populate the bilingual chunk for the Vultr Vector Store: native
+    + EN, so semantic retrieval works across the operator's spoken language
+    and the embedding language. Capped at ~80 tokens by the system instruction;
+    Gemini does this for free on the Flash tier.
+
+    Raises on missing key / SDK error / empty response. The caller catches
+    and degrades to native-only chunk.
+    """
+    if not settings.google_api_key:
+        raise RuntimeError("GOOGLE_API_KEY not set")
+
+    from google import genai
+    from google.genai import types as genai_types
+
+    client = genai.Client(api_key=settings.google_api_key)
+    resp = await client.aio.models.generate_content(
+        model=settings.gemini_default_model,
+        contents=briefing,
+        config=genai_types.GenerateContentConfig(
+            system_instruction=(
+                "Translate the following next-call briefing into one short "
+                "English sentence (max 30 words). Preserve any [redacted: …] "
+                "placeholders verbatim. Output the sentence only, no prefix."
+            ),
+            temperature=0.1,
+            max_output_tokens=120,
+        ),
+    )
+    out = (resp.text or "").strip()
+    if not out:
+        raise RuntimeError("empty response")
+    return out

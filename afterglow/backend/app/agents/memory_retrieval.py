@@ -94,6 +94,45 @@ async def retrieve_structured_history(
     return "\n\n".join(pieces), "sql"
 
 
+async def retrieve_structured_facts(
+    session: AsyncSession,
+    customer: Customer,
+    *,
+    limit: int = 10,
+    confidence_threshold: float = 0.7,
+) -> dict[str, str]:
+    """Return the latest known value (above ``confidence_threshold``) for each
+    field key the customer has ever produced.
+
+    Used by the orchestrator to evaluate ``prompt_hints`` rules (``when``
+    expressions like ``field.urgency == 'emergency'``) BEFORE building the
+    analyzer prompt. Limits to ``limit`` calls so the dict stays small and
+    only the most-recent value per key wins.
+    """
+    stmt = (
+        select(Call, ExtractedFields)
+        .join(ExtractedFields, ExtractedFields.call_id == Call.id, isouter=True)
+        .where(Call.customer_id == customer.id)
+        .order_by(Call.created_at.desc())
+        .limit(limit)
+    )
+    rows = (await session.execute(stmt)).all()
+
+    out: dict[str, str] = {}
+    for _call, extracted in rows:
+        if extracted is None or not extracted.fields:
+            continue
+        confidences = extracted.confidence or {}
+        for key, value in extracted.fields.items():
+            if key in out:
+                continue  # most-recent wins (rows are DESC by created_at)
+            conf = float(confidences.get(key, 0.0) or 0.0)
+            if conf < confidence_threshold:
+                continue
+            out[key] = str(value) if value is not None else ""
+    return out
+
+
 def _top_fields(extracted: Optional[ExtractedFields], *, threshold: float = 0.7, max_items: int = 5) -> str:
     """Pick the top extracted fields by confidence and render them compactly."""
     if extracted is None or not extracted.fields:

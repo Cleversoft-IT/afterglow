@@ -6,8 +6,13 @@ import type {
   CallDetailView,
   CallListItem,
   CallSubmittedResponse,
+  CreateTemplateRequest,
   CustomerCard,
   TemplateView,
+  TemplateWizardRequest,
+  TemplateWizardResponse,
+  UpdateTemplateRequest,
+  ValidationReport,
 } from './types';
 
 const BASE = (process.env.EXPO_PUBLIC_API_BASE ?? 'http://localhost:8000').replace(/\/$/, '');
@@ -160,10 +165,31 @@ export class ApiError extends Error {
 export const api = {
   listTemplates: () => request<TemplateView[]>('/api/v1/templates'),
   getActiveTemplate: () => request<TemplateView>('/api/v1/templates/active'),
+  getTemplate: (id: string) => request<TemplateView>(`/api/v1/templates/${id}`),
   setActiveTemplate: (template_id: string) =>
     request<TemplateView>('/api/v1/templates/active', {
       method: 'PUT',
       body: JSON.stringify({ template_id }),
+    }),
+  runWizard: (payload: TemplateWizardRequest) =>
+    request<TemplateWizardResponse>('/api/v1/templates/wizard', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+  validateDraft: (template: TemplateWizardResponse) =>
+    request<ValidationReport>('/api/v1/templates/validate', {
+      method: 'POST',
+      body: JSON.stringify({ template }),
+    }),
+  createTemplate: (payload: CreateTemplateRequest) =>
+    request<TemplateView>('/api/v1/templates', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+  updateTemplate: (id: string, payload: UpdateTemplateRequest) =>
+    request<TemplateView>(`/api/v1/templates/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(payload),
     }),
 
   listCalls: (params?: { customer_id?: string; limit?: number }) => {

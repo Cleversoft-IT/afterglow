@@ -3,22 +3,24 @@
 Gemini Call Analyzer produces structured extractions and a list of planned
 actions (single-shot, structured output). The Action Planner re-reads that
 analysis as an *agent* whose available tools are the template's auto-mode
-action_types: each tool, when invoked, registers a "requested action" in the
-ADK session state. No execution happens here — that stays in
-``executors.action_executor.execute_planned_actions`` so:
+``action_types``: each tool, when invoked, registers a "requested action" in
+the ADK session state. No execution happens here — that stays in
+``executors.action_executor.execute_planned_actions``.
 
-  - the safety net (action_type validation, execution_mode read from the
-    template) is enforced exactly once;
-  - MOCK_REGISTRY is never invoked twice.
+Templates v2 changes:
+- Each tool now exposes a typed Pydantic payload built from
+  ``ActionDefinition.payload_schema`` (JSONSchema). Gemini emits a
+  structured object that matches the schema; the executor revalidates with
+  ``jsonschema.validate`` before MOCK_REGISTRY is reached.
+- ``preconditions`` and ``confidence_threshold`` are stitched into the
+  agent instruction so Gemini knows when to skip a tool call.
+- ``evidence_required`` and ``mutates`` are also surfaced in the prompt.
 
-Default-on with two-tier fallback:
-  1. If ``settings.google_api_key`` is empty, return the analyzer's
-     ``planned_actions`` directly (deterministic fallback).
-  2. If the ADK runner raises for any reason at runtime, log a warning and
-     return the same deterministic fallback.
-
-The audit row recorded by the orchestrator gets ``payload.mode = "agentic"``
-on the happy path and ``"fallback"`` when degraded.
+Fail-fast: per ``project_afterglow_decisions.md`` 1.ter (2026-05-16) there
+is no deterministic fallback. A missing GOOGLE_API_KEY or an ADK runner
+error raises ``ActionPlannerError``; the orchestrator catches it, marks
+the call as failed, and surfaces the reason to the UI. The ``mode`` field
+in the audit row is always ``"agentic"``.
 """
 from __future__ import annotations
 
@@ -30,9 +32,17 @@ from app.agents import call_analyzer
 from app.config import get_settings
 from app.db.models import Customer, Template
 from app.integrations.gemini_adk import AdkAgentSpec, create_runner, run_agent
+from app.integrations.jsonschema_to_pydantic import (
+    JsonSchemaConversionError,
+    jsonschema_to_pydantic,
+)
 
 logger = logging.getLogger("afterglow")
 settings = get_settings()
+
+
+class ActionPlannerError(RuntimeError):
+    """Raised when the planner cannot produce a plan (missing key, ADK error)."""
 
 
 _PLANNER_INSTRUCTION = """You are the Afterglow Action Planner.
@@ -41,63 +51,146 @@ You have already received a structured analysis of a post-call: extracted fields
 
 Rules:
 - One tool call = one requested action. The tool will queue the request; the deterministic executor will run it afterwards.
-- Only invoke tools whose preconditions are grounded in the analysis. Cite the supporting evidence in the ``evidence`` argument.
-- Use the extracted field values to populate ``payload_json``. ``payload_json`` MUST be a valid JSON object literal as a string (e.g. ``{"party_size": 4, "booking_time": "20:30"}``).
+- Each tool's docstring documents the action's preconditions (fields that MUST be present and above their confidence threshold), confidence_threshold (the floor on your own confidence in invoking this tool), evidence_required (whether you must cite at least one transcript span), and mutates (whether the action is irreversible).
+- Only invoke a tool whose preconditions are grounded in the analysis. Cite the supporting evidence in the `evidence` argument.
+- Populate `payload` as a JSON object whose keys match the tool's typed payload schema. Use the extracted field values; do not invent.
 - Confidence must reflect how strongly the transcript supports invoking this tool, NOT the field-extraction confidence.
 - Do not invent tools that are not listed. Do not invoke the same tool twice unless explicitly justified.
-- After all useful tools have been called, stop.
+- After all warranted tools have been called, stop.
 """
 
 
-def _make_tool(action_def: dict[str, Any]):
-    """Build a tool callable for one action_type entry from the template.
+def _format_action_docstring(action_def: dict[str, Any]) -> str:
+    """Render an ActionDefinition into the tool's __doc__ — the docstring is
+    what ADK serializes into the FunctionDeclaration.description for Gemini.
+    """
+    lines = [action_def.get("description") or action_def.get("label") or action_def["key"]]
+    preconditions = action_def.get("preconditions") or []
+    if preconditions:
+        lines.append(f"Preconditions (required fields): {', '.join(preconditions)}.")
+    threshold = action_def.get("confidence_threshold")
+    if threshold is not None:
+        lines.append(f"Minimum confidence to invoke: {threshold}.")
+    if action_def.get("evidence_required", True):
+        lines.append("Evidence is REQUIRED — provide at least one verbatim transcript span.")
+    if action_def.get("mutates"):
+        lines.append("This action mutates external state and CANNOT be auto-retried.")
+    return "\n".join(lines)
 
-    The tool's only side-effect is to append a record to
-    ``tool_context.state["requested_actions"]["items"]``. The dict-of-list
-    shape is intentional: ``gemini_adk.run_agent`` returns the raw state
-    value when it is a dict, so reading back ``result["items"]`` is a clean
-    one-liner on the consumer side.
+
+def _make_tool(action_def: dict[str, Any]):
+    """Build the ADK tool callable for one action_type entry.
+
+    Strategy:
+    - If `payload_schema` is present, build a Pydantic v2 model dynamically and
+      use it as the `payload` annotation. ADK introspects this and emits a
+      FunctionDeclaration with typed parameters; Gemini produces a structured
+      object that matches the schema.
+    - Otherwise, fall back to `payload: dict` (still validated downstream by
+      the action_executor's `jsonschema.validate` when a schema appears later).
     """
     key: str = action_def["key"]
     label: str = action_def.get("label") or key
-    description: str = action_def.get("description") or label
+    docstring = _format_action_docstring(action_def)
+    payload_schema = action_def.get("payload_schema")
 
-    def tool(
-        title: str = "",
-        summary: str = "",
-        payload_json: str = "{}",
-        confidence: float = 0.9,
-        evidence: Optional[list[str]] = None,
-        tool_context: Any = None,
-    ) -> dict[str, Any]:
-        """Queue an action for downstream execution."""
+    payload_model = None
+    if isinstance(payload_schema, dict) and payload_schema.get("type") == "object":
         try:
-            payload = json.loads(payload_json or "{}")
+            payload_model = jsonschema_to_pydantic(payload_schema, name=key)
+        except JsonSchemaConversionError as exc:
+            logger.warning(
+                "action_planner: payload_schema for %s could not be typed (%s); "
+                "falling back to dict annotation.",
+                key, exc,
+            )
+            payload_model = None
+
+    if payload_model is not None:
+        def tool(payload, confidence=0.9, evidence=None, tool_context=None):
+            return _record_tool_call(
+                key=key,
+                label=label,
+                payload=payload.model_dump() if hasattr(payload, "model_dump") else dict(payload),
+                confidence=confidence,
+                evidence=evidence,
+                tool_context=tool_context,
+                mutates=bool(action_def.get("mutates", False)),
+            )
+
+        # `from __future__ import annotations` would stringify the runtime
+        # annotation and ADK's introspection would fail to resolve the
+        # dynamic Pydantic class — set __annotations__ explicitly so ADK
+        # sees the class object directly.
+        tool.__annotations__ = {
+            "payload": payload_model,
+            "confidence": float,
+            "evidence": list,
+            "tool_context": Any,
+            "return": dict,
+        }
+    else:
+        def tool(payload=None, confidence=0.9, evidence=None, tool_context=None):
+            if payload is None:
+                payload = {}
+            # `payload` may arrive as a JSON string when Gemini regresses on
+            # a tool without a typed schema; coerce defensively.
+            if isinstance(payload, str):
+                try:
+                    payload = json.loads(payload or "{}")
+                except json.JSONDecodeError:
+                    payload = {}
             if not isinstance(payload, dict):
                 payload = {"value": payload}
-        except json.JSONDecodeError:
-            payload = {}
+            return _record_tool_call(
+                key=key,
+                label=label,
+                payload=payload,
+                confidence=confidence,
+                evidence=evidence,
+                tool_context=tool_context,
+                mutates=bool(action_def.get("mutates", False)),
+            )
 
-        bucket = None
-        if tool_context is not None and hasattr(tool_context, "state"):
-            bucket = tool_context.state.setdefault(
-                "requested_actions", {"items": []}
-            )
-            bucket["items"].append(
-                {
-                    "action_type": key,
-                    "title": title or label,
-                    "summary": summary,
-                    "payload": payload,
-                    "confidence": float(confidence),
-                    "evidence": evidence or [],
-                }
-            )
-        return {"queued": key}
+        tool.__annotations__ = {
+            "payload": dict,
+            "confidence": float,
+            "evidence": list,
+            "tool_context": Any,
+            "return": dict,
+        }
 
     tool.__name__ = key.replace(".", "_").replace("-", "_")
-    tool.__doc__ = description
+    tool.__doc__ = docstring
     return tool
+
+
+def _record_tool_call(
+    *,
+    key: str,
+    label: str,
+    payload: dict[str, Any],
+    confidence: float,
+    evidence: Optional[list[str]],
+    tool_context: Any,
+    mutates: bool,
+) -> dict[str, Any]:
+    if tool_context is not None and hasattr(tool_context, "state"):
+        bucket = tool_context.state.setdefault(
+            "requested_actions", {"items": []}
+        )
+        bucket["items"].append(
+            {
+                "action_type": key,
+                "title": label,
+                "summary": "",
+                "payload": payload,
+                "confidence": float(confidence),
+                "evidence": evidence or [],
+                "mutates": mutates,
+            }
+        )
+    return {"queued": key}
 
 
 def _agent_prompt(
@@ -112,7 +205,7 @@ def _agent_prompt(
         for f in analysis.fields
     ]
     candidate_lines = [
-        f"- {p.action_type}: {p.title} (confidence={p.confidence:.2f}) payload={p.payload_json}"
+        f"- {p.action_type}: {p.title} (confidence={p.confidence:.2f}) payload={p.payload}"
         for p in analysis.planned_actions
     ]
     return (
@@ -131,24 +224,6 @@ def _agent_prompt(
     )
 
 
-def _fallback_planner(analysis: call_analyzer.CallAnalysis) -> list[dict[str, Any]]:
-    """Deterministic fallback: replicate the orchestrator's pre-agentic plan.
-
-    Reused both when ``GOOGLE_API_KEY`` is empty (offline / local dev) and
-    when the ADK runner raises a runtime error.
-    """
-    plan: list[dict[str, Any]] = []
-    for a in analysis.planned_actions:
-        entry = a.model_dump()
-        try:
-            entry["payload"] = json.loads(entry.pop("payload_json") or "{}")
-        except json.JSONDecodeError:
-            entry["payload"] = {}
-            entry.pop("payload_json", None)
-        plan.append(entry)
-    return plan
-
-
 async def plan_actions(
     *,
     analysis: call_analyzer.CallAnalysis,
@@ -156,17 +231,20 @@ async def plan_actions(
     customer: Customer,
     transcript_text: str,
 ) -> tuple[list[dict[str, Any]], str]:
-    """Return ``(plan, mode)`` where ``mode`` is one of ``agentic`` or ``fallback``.
+    """Return ``(plan, mode)`` where ``mode`` is always ``"agentic"``.
 
-    The orchestrator surfaces ``mode`` in the audit row so the trail tells the
-    truth about which path produced the executed plan.
+    Fail-fast: raises ``ActionPlannerError`` when the runner cannot produce
+    a plan (no key, ADK exception). The orchestrator turns this into a
+    failed Call. The legacy ``"fallback"`` mode has been removed.
     """
     if not settings.google_api_key:
-        return _fallback_planner(analysis), "fallback"
+        raise ActionPlannerError("GOOGLE_API_KEY is not set")
 
     auto_actions = [a for a in template.action_types if a.get("execution_mode") == "auto"]
     if not auto_actions:
-        return _fallback_planner(analysis), "fallback"
+        # Empty action surface is a legitimate template configuration —
+        # nothing to plan, no failure.
+        return [], "agentic"
 
     tools = [_make_tool(a) for a in auto_actions]
 
@@ -189,24 +267,7 @@ async def plan_actions(
             runner, prompt_text=prompt, state_key="requested_actions"
         )
     except Exception as exc:  # noqa: BLE001
-        logger.warning(
-            "action_planner: ADK runner failed (%s) — using deterministic fallback.",
-            exc,
-        )
-        return _fallback_planner(analysis), "fallback"
+        raise ActionPlannerError(f"ADK runner failed: {exc}") from exc
 
     items = result.get("items") if isinstance(result, dict) else None
-    if not items:
-        # The agent produced no tool calls. Decide between two valid readings:
-        # (a) it concluded no action was warranted — honour that and return [];
-        # (b) the run failed silently — fall back to the analyzer hints.
-        # Heuristic: if the analyzer suggested at least one action, prefer the
-        # fallback so the demo never looks "dead".
-        if analysis.planned_actions:
-            logger.info(
-                "action_planner: empty agent output — falling back to analyzer hints."
-            )
-            return _fallback_planner(analysis), "fallback"
-        return [], "agentic"
-
-    return list(items), "agentic"
+    return list(items or []), "agentic"

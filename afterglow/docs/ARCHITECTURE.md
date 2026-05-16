@@ -17,26 +17,41 @@ FastAPI background task ─► Speechmatics batch (diarization + lang detect + c
        │       (skipped when the call carries a demo session_id — see below)
        │
        ├─► Gemini structured-output call  (call_analyzer.py — single Gemini pass)
-       │       prompt: transcript + template fields_schema + action_types + prompt_hints + prior_facts
+       │       prompt: transcript + template fields_schema (incl. pii_class /
+       │               confidence_threshold / extractor_hint / depends_on) +
+       │               action_types (incl. preconditions / confidence_threshold /
+       │               mutates / evidence_required / payload_schema) +
+       │               applicable prompt_hints rules (when evaluated against
+       │               prior_structured) + prior_facts
        │       response_schema = CallAnalysis (Pydantic):
        │         - fields[]  (key, value, confidence, evidence)
        │         - intent, sentiment, language, urgency
-       │         - planned_actions[]  (subset of template auto-actions)
+       │         - planned_actions[]  (subset of template auto-actions, typed payload)
        │         - next_call_briefing  (NL paragraph, detected language)
+       │       Fail-fast: missing key / error / schema mismatch → Call.failed.
+       │
+       ├─► PII sanitizer (pii_sanitizer.py — pure Python, no LLM)
+       │       applies the per-pii_class redaction policy to next_call_briefing
+       │       and planned_action evidence; audit step `pii_policy_applied`
+       │       records exactly what was redacted, with which threshold.
+       │       Raw `fields` survive untouched for UI + executor.
        │
        ├─► Action Planner (action_planner.py — Google ADK agentic loop)
-       │       reads the analysis, exposes the template's auto-mode action_types
-       │       as ADK tools, lets Gemini choose which to call with which payload.
-       │       payload.mode = "agentic" if the loop produced tool calls,
-       │       "fallback" if it errored and the orchestrator reused
-       │       analysis.planned_actions verbatim. Both paths logged.
+       │       reads the SANITIZED analysis, exposes the template's auto-mode
+       │       action_types as ADK tools with TYPED payload parameters
+       │       (Pydantic models built from payload_schema). Gemini emits a
+       │       structured object that matches the schema; the executor revalidates.
+       │       Fail-fast: ADK runner error → Call.failed (no fallback).
        │
-       ├─► Action Executor (deterministic Python) ─► mock registry + Postgres + audit_log
+       ├─► Action Executor (deterministic Python) ─► jsonschema.validate(payload),
+       │       evidence_required gate, mutates flag → mock registry + Postgres +
+       │       audit_log
        │
        └─► Memory write-back ─► customer.memory_summary (Postgres, operator-visible)
-                                + extracted_fields.briefing_snapshot (per-call frozen copy)
-                                + new chunk pushed to Vultr Vector Store
-                                  (skipped when the call carries a demo session_id)
+                                + extracted_fields.briefing_snapshot (sanitized per-call copy)
+                                + bilingual chunk pushed to Vultr Vector Store
+                                  (native briefing + EN summary; skipped when the
+                                   call carries a demo session_id)
 ```
 
 The pipeline runs **entirely after the call ends**. The human-facing latency
@@ -127,4 +142,49 @@ is not touched because we never wrote to it for demo sessions.
 | `audit_log`              | yes                   | Same; lets judges read their own audit trail           |
 | `executed_actions`       | yes                   | Same                                                   |
 | `customer_memory_chunks` | yes (always NULL today) | Demo mode skips the write; column exists for future   |
-| `extracted_fields`       | no                    | Cascades via `calls`. Carries `briefing_snapshot` (mig `0005`): a frozen copy of the briefing emitted for this specific call, kept even after `customer.memory_summary` is later overwritten by a newer call. |
+| `extracted_fields`       | no                    | Cascades via `calls`. Carries `briefing_snapshot` (mig `0005`): a frozen copy of the SANITIZED briefing emitted for this specific call, kept even after `customer.memory_summary` is later overwritten by a newer call. |
+
+## PII handling
+
+Every `FieldDefinition` carries a `pii_class` (`none|contact|health|
+financial|identity`) and an optional per-field `confidence_threshold`
+that overrides the class default. The defaults are encoded in
+`backend/app/agents/pii_policy.py`:
+
+| Class      | Default threshold | Redaction strategy (briefing / vector chunk / audit evidence) |
+|------------|-------------------|---------------------------------------------------------------|
+| `none`     | 0.0               | passthrough                                                   |
+| `contact`  | 0.80              | `[redacted: contact]`                                         |
+| `identity` | 0.85              | first2 + asterisks + last2 (e.g. `AB***CD`)                  |
+| `financial`| 0.90              | `[hash:<sha256[:8]>]` deterministic per value                |
+| `health`   | 0.90              | `[redacted: health]` — never inline                          |
+
+The sanitizer (`backend/app/agents/pii_sanitizer.py`) runs **immediately
+after** the call_analyzer and produces a `SanitizedAnalysis` that:
+
+1. Redacts every occurrence of a PII field's raw value from
+   `next_call_briefing` and from each `planned_action.evidence` span.
+2. Leaves `analysis.fields` untouched — the operator UI and the action
+   executor still need the original value (booking the right table, sending
+   the right WhatsApp to the right customer).
+3. Emits a `pii_policy_applied` audit row enumerating which fields
+   triggered the policy, the class, the threshold, and the action taken
+   (`flag` when confidence is below threshold, `redact` otherwise). The
+   raw values never appear in the audit payload — only the field key.
+
+The chunk that lands in the Vultr Vector Store metadata records
+`pii_redactions_applied: list[pii_class]` so an auditor can answer "did
+we leak any health data into the embedding?" without re-reading the
+chunk text.
+
+## Bilingual briefing
+
+When `transcript.language != "en"` (and we are not in demo mode), the
+orchestrator's `_persist_memory` makes one extra small Gemini call
+(`_summarize_to_english`, ≤120 output tokens) to produce an English
+restatement of the (already sanitized) briefing. Both copies are pushed
+to the Vultr Vector Store chunk so semantic retrieval works across the
+operator's spoken language and the embedding model's bias toward
+English. Failure of the bilingual call lands as
+`audit.memory_summarizer_bilingual.status=degraded` and the chunk falls
+back to native-only — the briefing on Postgres is unaffected.

@@ -20,3 +20,4 @@ speechmatics-batch>=0.4.8
 # Utilities
 PyYAML>=6.0
 tenacity>=8.2.0
+jsonschema>=4.22

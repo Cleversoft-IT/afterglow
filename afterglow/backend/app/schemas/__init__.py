@@ -9,10 +9,17 @@ from app.schemas.calls import (
 from app.schemas.customers import CustomerCard, CustomerProfileView
 from app.schemas.templates import (
     ActionDefinition,
+    CreateTemplateRequest,
     FieldDefinition,
+    ProposedMock,
+    PromptHintRule,
     TemplateView,
     TemplateWizardRequest,
     TemplateWizardResponse,
+    UpdateTemplateRequest,
+    ValidateDraftRequest,
+    ValidationIssue,
+    ValidationReport,
 )
 
 __all__ = [
@@ -25,8 +32,15 @@ __all__ = [
     'CustomerCard',
     'CustomerProfileView',
     'ActionDefinition',
+    'CreateTemplateRequest',
     'FieldDefinition',
+    'ProposedMock',
+    'PromptHintRule',
     'TemplateView',
     'TemplateWizardRequest',
     'TemplateWizardResponse',
+    'UpdateTemplateRequest',
+    'ValidateDraftRequest',
+    'ValidationIssue',
+    'ValidationReport',
 ]

@@ -1,177 +1,126 @@
-# Templates roadmap — future-facing notes
+# Templates roadmap — v2 shipped
 
-> **Status (2026-05-16):** every item below is still **deferred** — none has
-> landed in code. Audited against `backend/app/schemas/templates.py`,
-> `agents/template_builder.py`, `agents/action_planner.py` and
-> `api/templates.py` on 2026-05-16; the runtime still uses free-form
-> `payload_json` strings and free-text `prompt_hints`, and the wizard is
-> still single-shot (`api/templates.py:215` "today only generates, does not
-> persist"). Treat this file as a design pad, not a TODO list.
+> **Status (2026-05-16): all items below have landed in code (migration
+> `0006_templates_v2.py` + companion code/tests/docs).** Three previously
+> "open" questions (`parent_id` lineage, `is_active` tri-state, wizard
+> learning loop) were intentionally **rolled out of scope** for the
+> hackathon and now live in [`future-ideas.md`](./future-ideas.md) as
+> pitch material.
 
-Afterglow's `Template` is the conceptual hinge between the human-curated
-business knowledge and the agentic post-call pipeline. Today it carries five
-useful primitives:
+Afterglow's `Template` is the hinge between the human-curated business
+knowledge and the agentic post-call pipeline. After v2 it carries the
+following primitives:
 
-- `fields_schema` — the data the operator wants extracted.
-- `action_types` — the actions Gemini/ADK can plan (subset: `execution_mode=auto`).
+- `fields_schema` — fields the operator wants extracted, each with
+  `pii_class`, optional `confidence_threshold`, `extractor_hint`, and
+  `depends_on`.
+- `action_types` — actions the planner can invoke, each with
+  `preconditions`, `confidence_threshold`, `mutates`, `evidence_required`,
+  and a JSONSchema `payload_schema` that drives both the typed ADK
+  FunctionDeclaration and the executor-side validation.
 - `custom_dictionary` — domain terms fed to Speechmatics.
-- `prompt_hints` — narrative instructions for the analyzer.
+- `prompt_hints` — a JSONB array of `{when, then}` rules evaluated
+  against the caller's prior structured fields before the analyzer prompt
+  is built. Grammar: `always | field.<key> == '<value>' | field.<key> is
+  [not] null`.
 - `domain_hint` — semantic bucket used by Speechmatics + RAG.
 
-This document collects the additive (non-breaking) evolutions that would make
-the pipeline more agentic and unlock the prompt-to-template flow. **Nothing
-here is implemented** — open it before designing the next iteration.
+The unique constraint on `(name, version)` is now expressed as two partial
+unique indexes — one for prod (`session_id IS NULL`) and one for demo
+sessions — to avoid the Postgres "NULL distinct" trap when multiple demo
+visitors save a template with the same name.
 
 ---
 
-## Deferred from the May-19 milestone (intentional)
+## What shipped
 
-The following items were scoped out of the rev-2 plan to keep the demo
-surface small. They are still worthwhile and should be the first targets of
-the post-hackathon iteration.
+### Bilingual briefing for the vector store ✅
 
-### Bilingual briefing for the vector store
+`orchestrator._persist_memory` now generates a one-sentence English
+summary via a small Gemini call when the detected language is not
+English, and pushes both into the Vultr Vector Store chunk
+(`backend/app/agents/orchestrator.py:_summarize_to_english`). The chunk's
+`chunk_metadata` includes the detected `language`, the `briefing_en`
+text, and the list of PII redaction classes applied. Audit step
+`memory_summarizer_bilingual` records `status=ok|degraded|skipped`. Demo
+mode keeps skipping the vector push entirely (single-tenant invariant
+preserved); production = the public hackathon URL, see
+[`feedback_production_equals_hackathon`](../../.claude/memory/feedback_production_equals_hackathon.md).
 
-Today `_persist_memory` builds the Vultr Vector Store chunk in English with
-the native-language briefing embedded inside. That hurts cross-lingual
-retrieval once the customer accrues > 10 calls (which is when the semantic
-RAG path actually triggers).
+### Per-`pii_class` PII gating ✅
 
-Plan: a small Gemini call (≤ 60 tokens, `temperature=0.1`) summarises the
-native briefing into one English sentence; both go into the chunk. Adds one
-LLM call per pipeline run — measure first.
+`backend/app/agents/pii_policy.py` declares per-class thresholds
+(`contact=0.80, identity=0.85, financial=0.90, health=0.90`) and class-
+specific redaction strategies (passthrough / `[redacted: …]` / SHA-256
+hash / first2+stars+last2). `backend/app/agents/pii_sanitizer.py` runs
+**immediately after** the analyzer and produces a `SanitizedAnalysis`
+whose briefing and planned-action evidence are scrubbed; the raw
+`fields` survive untouched so the operator UI and the action executor
+still see the original values. Audit step `pii_policy_applied` records
+exactly what was redacted, with which threshold, and at what confidence.
 
-### Sophisticated PII gating
+### `FieldDefinition` v2 ✅
 
-The current gate flags sensitive fields with confidence below 0.85 in the
-audit log and instructs Gemini to redact the value from the briefing. A
-richer model:
+`backend/app/schemas/templates.py:FieldDefinition` now carries
+`pii_class`, `confidence_threshold`, `extractor_hint`, `depends_on`. The
+orchestrator's `_coerce_extractions` enforces `depends_on`: a field whose
+dependency is missing or below the dependency's threshold lands in the
+persisted `confidence` blob as
+`{"value": …, "status": "manual_review", "reason": "depends_on_unmet", "unmet": […]}`.
 
-- `pii_class` enum on each `FieldDefinition` (additive JSONB):
-  `none | contact | health | financial | identity`.
-- Per-class redaction strategy: e.g. hash `financial` values before audit log
-  storage, never inline-cite `health` values in the briefing, etc.
-- Per-class confidence thresholds (health stricter than contact).
+### `ActionDefinition` v2 ✅
 
----
+Same file. Each action now declares `preconditions`,
+`confidence_threshold`, `mutates`, `evidence_required`, and an optional
+JSONSchema `payload_schema`. The Action Planner
+(`backend/app/agents/action_planner.py:_make_tool`) builds a Pydantic
+model dynamically from the schema (`backend/app/integrations/
+jsonschema_to_pydantic.py`) and uses it as the tool's `payload`
+annotation, so Gemini ADK emits a FunctionDeclaration with typed
+parameters. The Action Executor revalidates with
+`jsonschema.validate` before MOCK_REGISTRY; refusals land as
+`status="validation_failed"`. `evidence_required=True` + empty evidence
+also refuses. `mutates=True` is flagged in audit + `ExecutedAction.result`
+for the never-auto-retry UI.
 
-## Template conceptual upgrade
+### Structured `prompt_hints` ✅
 
-Extensions are all additive — old templates keep working, new templates get
-finer-grained control. The shape proposals below are pseudocode; the actual
-Pydantic schema changes go in `backend/app/schemas/templates.py`.
+`prompt_hints` migrated from `Text` to `JSONB` (migration 0006). Each
+rule is a `{when, then}` pair. `backend/app/agents/prompt_hint_eval.py`
+evaluates the `when` grammar deterministically against the caller's
+prior structured fields (returned by
+`memory_retrieval.retrieve_structured_facts`) and only the matching
+`then` strings are prepended to the analyzer's system instruction.
 
-### `FieldDefinition` extensions
+### Prompt-to-template, iterative (Generate → Validate → Refine → Persist) ✅
 
-```jsonc
-{
-  "key": "allergies",
-  "type": "string_list",
-  "label": "Allergies",
-  "sensitive": true,
-  "options": [],
-  "description": "Comma-separated allergens mentioned by the caller.",
+The wizard is now a four-step loop:
 
-  // --- proposed additions ---
-  "confidence_threshold": 0.8,        // below: downstream goes to manual_review
-  "pii_class": "health",              // see PII gating section
-  "extractor_hint": "freeform",       // regex | freeform | enum | llm_only
-  "depends_on": ["customer_name"]     // these fields must be present too
-}
-```
-
-The Action Planner reads `confidence_threshold` and `depends_on` when
-deciding whether a tool's preconditions are satisfied.
-
-### `ActionDefinition` extensions
-
-```jsonc
-{
-  "key": "booking.create",
-  "label": "Create booking",
-  "execution_mode": "auto",
-  "mock_target": "booking",
-  "description": "Insert a new reservation in the booking system.",
-
-  // --- proposed additions ---
-  "preconditions": ["party_size", "booking_date", "booking_time"],
-  "confidence_threshold": 0.7,
-  "mutates": true,                    // irreversible — never auto-retry
-  "evidence_required": true,
-  "payload_schema": {                 // drives ADK FunctionDeclaration
-    "type": "object",
-    "properties": {
-      "party_size": { "type": "integer", "minimum": 1 },
-      "booking_date": { "type": "string", "format": "date" },
-      "booking_time": { "type": "string", "format": "time" }
-    },
-    "required": ["party_size", "booking_date", "booking_time"]
-  }
-}
-```
-
-`payload_schema` is the most impactful addition: today the action planner's
-tools accept a free-form `payload_json` string; a proper schema lets the
-ADK runner expose typed parameters and the executor validate before calling
-`MOCK_REGISTRY`. It also unlocks per-action documentation in the UI.
-
-### Structured `prompt_hints`
-
-Free-form text is hard to keep clean across the three seed templates plus
-any wizard-generated additions. Move to an array of `{when, then}` triggers:
-
-```jsonc
-"prompt_hints": [
-  { "when": "field.urgency == 'emergency'",
-    "then": "escalate via callback action" },
-  { "when": "field.license_plate is null",
-    "then": "queue whatsapp.request_photos with reason='missing plate'" }
-]
-```
-
-The orchestrator evaluates these rules before calling Gemini and prepends
-their narrative form to the analyzer's prompt — predictable, reviewable,
-testable.
+1. **Generate** — `POST /api/v1/templates/wizard`
+   (`backend/app/agents/template_builder.py`) emits a
+   `TemplateWizardResponse` via Gemini structured output. Fail-fast: no
+   API key or repeated failures → 502.
+2. **Validate** — same endpoint immediately runs
+   `backend/app/agents/template_validator.py` (deterministic
+   snake_case / depends_on cycles / JSONSchema / mock-registry-missing
+   checks + a Gemini semantic pass for soft issues + proposed
+   mock_targets) and embeds a `validation: ValidationReport` in the
+   response. The refine UI can re-run validation via
+   `POST /api/v1/templates/validate`.
+3. **Refine** — `app/templates/wizard.tsx` (Expo) lets the operator
+   inspect every section + the validation report inline. The detail
+   screen `app/templates/[id].tsx` exposes description / domain_hint /
+   custom_dictionary edits via `PUT /api/v1/templates/{id}`.
+4. **Persist** — `POST /api/v1/templates` writes `is_seed=False`,
+   `session_id=ctx.session_id` (demo) or `NULL` (prod), auto-bumping the
+   `version` per `(name, session_id)`. `set_active=true` switches the
+   caller's active template in the same transaction.
 
 ---
 
-## Prompt-to-template, iterative
+## Future ideas — see [`future-ideas.md`](./future-ideas.md)
 
-`POST /api/v1/templates/wizard` already exists in
-`backend/app/api/templates.py` and is wired to a single-shot Gemini call in
-`backend/app/agents/template_builder.py`. The output is **not persisted**.
-The iterative version turns it into a four-step loop:
-
-1. **Generate** — Gemini drafts a candidate template from the operator's
-   free-text description.
-2. **Validate** — a small validator agent checks:
-   - `fields_schema` keys are snake_case lowercase.
-   - `action_types` keys are either present in `MOCK_REGISTRY` or come with
-     a proposed mock declaration the operator must approve.
-   - `custom_dictionary` terms fit `domain_hint`.
-3. **Refine** — UI screen (proposed: `app/app/templates/edit.tsx`) lets the
-   operator tweak fields, actions, and hints inline. Each change emits an
-   audit row so we can show "before/after" diffs to the judges.
-4. **Persist** — write the template with `is_seed=False`,
-   `session_id=ctx.session_id` for demo or `NULL` for production tenant.
-   The active-template index already supports this through the unique
-   partial index `uq_template_active`.
-
-Bonus: once the template is shaped, the wizard can re-run the loop with
-"learning data" — pull `executed_actions` and `extracted_fields` for the
-past 30 days and ask Gemini *"are there fields the operator keeps editing
-manually that should become extractions? are there actions that always fail
-because preconditions are missing?"*. The wizard becomes a tuning surface,
-not a one-shot generator.
-
----
-
-## Open questions for the next session
-
-- Do we want `Template.parent_id` to track derivations (a custom template
-  cloned from a seed should remember the lineage for the UI)?
-- Should `Template.is_active` become a tri-state (`draft | active | retired`)
-  to support staging new versions?
-- Where does the wizard's "learning data" come from in demo mode, given
-  that each session is isolated? Probably aggregate against seed data with
-  a clear "this is illustrative" banner.
+The three "open questions" from the old roadmap (parent_id lineage,
+`is_active` tri-state, wizard learning loop) intentionally did **not**
+land in v2. They are documented as pitch material — "what we would do
+next if this project continued past the hackathon."
