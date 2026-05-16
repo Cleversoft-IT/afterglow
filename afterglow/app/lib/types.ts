@@ -220,6 +220,7 @@ export type CallListItem = {
   id: string;
   phone_e164: string;
   customer_id?: string | null;
+  customer_display_name?: string | null;
   template_id: string;
   status: string;
   detected_language?: string | null;

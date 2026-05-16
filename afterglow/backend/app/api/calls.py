@@ -291,23 +291,25 @@ async def list_calls(
     session: AsyncSession = Depends(get_session),
 ) -> list[CallListItem]:
     stmt = (
-        select(Call)
+        select(Call, Customer.display_name)
+        .join(Customer, Customer.id == Call.customer_id, isouter=True)
         .where(visibility_filter_seedable(Call.session_id, Call.is_seed, ctx))
         .order_by(Call.created_at.desc())
         .limit(limit)
     )
     if customer_id:
         stmt = stmt.where(Call.customer_id == customer_id)
-    rows = (await session.execute(stmt)).scalars().all()
+    rows = (await session.execute(stmt)).all()
     return [
         CallListItem(
             id=c.id,
             phone_e164=c.phone_e164,
             customer_id=c.customer_id,
+            customer_display_name=display_name,
             template_id=c.template_id,
             status=c.status,
             detected_language=c.detected_language,
             created_at=c.created_at,
         )
-        for c in rows
+        for (c, display_name) in rows
     ]

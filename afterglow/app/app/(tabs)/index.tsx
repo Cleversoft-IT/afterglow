@@ -112,10 +112,15 @@ export default function CallsScreen() {
           }
           renderItem={({ item }) => {
             const inFlight = NON_TERMINAL_STATUSES.has(item.status);
+            const hasName = !!item.customer_display_name;
             return (
               <ListRow
-                title={item.phone_e164}
-                subtitle={item.detected_language ?? '—'}
+                title={item.customer_display_name ?? item.phone_e164}
+                subtitle={
+                  hasName
+                    ? item.phone_e164
+                    : item.detected_language ?? '—'
+                }
                 meta={new Date(item.created_at).toLocaleString()}
                 onPress={() => router.push(`/call/${item.id}`)}
                 right={

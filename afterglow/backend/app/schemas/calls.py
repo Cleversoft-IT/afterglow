@@ -77,6 +77,7 @@ class CallListItem(BaseModel):
     id: UUID
     phone_e164: str
     customer_id: Optional[UUID] = None
+    customer_display_name: Optional[str] = None
     template_id: UUID
     status: str
     detected_language: Optional[str] = None
