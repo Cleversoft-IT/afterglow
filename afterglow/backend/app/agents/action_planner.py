@@ -107,13 +107,13 @@ def _make_tool(action_def: dict[str, Any]):
             payload_model = None
 
     if payload_model is not None:
-        def tool(payload, confidence=0.9, evidence=(), tool_context=None):
+        def tool(payload, confidence=0.9, evidence=[], tool_context=None):
             return _record_tool_call(
                 key=key,
                 label=label,
                 payload=payload.model_dump() if hasattr(payload, "model_dump") else dict(payload),
                 confidence=confidence,
-                evidence=list(evidence) if evidence else [],
+                evidence=list(evidence or []),
                 tool_context=tool_context,
                 mutates=bool(action_def.get("mutates", False)),
             )
@@ -134,7 +134,7 @@ def _make_tool(action_def: dict[str, Any]):
             "return": dict,
         }
     else:
-        def tool(payload=None, confidence=0.9, evidence=(), tool_context=None):
+        def tool(payload=None, confidence=0.9, evidence=[], tool_context=None):
             if payload is None:
                 payload = {}
             # `payload` may arrive as a JSON string when Gemini regresses on
@@ -151,7 +151,7 @@ def _make_tool(action_def: dict[str, Any]):
                 label=label,
                 payload=payload,
                 confidence=confidence,
-                evidence=list(evidence) if evidence else [],
+                evidence=list(evidence or []),
                 tool_context=tool_context,
                 mutates=bool(action_def.get("mutates", False)),
             )
