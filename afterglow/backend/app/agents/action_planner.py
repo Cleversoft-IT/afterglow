@@ -107,13 +107,13 @@ def _make_tool(action_def: dict[str, Any]):
             payload_model = None
 
     if payload_model is not None:
-        def tool(payload, confidence=0.9, evidence=None, tool_context=None):
+        def tool(payload, confidence=0.9, evidence=(), tool_context=None):
             return _record_tool_call(
                 key=key,
                 label=label,
                 payload=payload.model_dump() if hasattr(payload, "model_dump") else dict(payload),
                 confidence=confidence,
-                evidence=evidence,
+                evidence=list(evidence) if evidence else [],
                 tool_context=tool_context,
                 mutates=bool(action_def.get("mutates", False)),
             )
@@ -121,7 +121,11 @@ def _make_tool(action_def: dict[str, Any]):
         # `from __future__ import annotations` would stringify the runtime
         # annotation and ADK's introspection would fail to resolve the
         # dynamic Pydantic class — set __annotations__ explicitly so ADK
-        # sees the class object directly.
+        # sees the class object directly. ADK 1.18 also rejects a `None`
+        # default for a `list`-annotated parameter ("Default value None of
+        # parameter evidence: list = None"), so the default must match the
+        # annotation: empty tuple is hashable and Pythonic, and we copy it
+        # to a fresh list at the call site.
         tool.__annotations__ = {
             "payload": payload_model,
             "confidence": float,
@@ -130,7 +134,7 @@ def _make_tool(action_def: dict[str, Any]):
             "return": dict,
         }
     else:
-        def tool(payload=None, confidence=0.9, evidence=None, tool_context=None):
+        def tool(payload=None, confidence=0.9, evidence=(), tool_context=None):
             if payload is None:
                 payload = {}
             # `payload` may arrive as a JSON string when Gemini regresses on
@@ -147,7 +151,7 @@ def _make_tool(action_def: dict[str, Any]):
                 label=label,
                 payload=payload,
                 confidence=confidence,
-                evidence=evidence,
+                evidence=list(evidence) if evidence else [],
                 tool_context=tool_context,
                 mutates=bool(action_def.get("mutates", False)),
             )
