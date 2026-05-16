@@ -104,7 +104,8 @@ App create così hanno **Auto Deploy ON** by default — il webhook del GitHub A
 
 ## Gotchas che mi sono costati tempo
 
-1. **Validation `is_build_time` su POST envs**: il body non accetta quel campo (validation error). Sembra di doverlo settare per le var di build, ma Coolify lo decide in autonomia in base ad altri segnali (`is_runtime` di default).
+1. **Il campo si chiama `is_buildtime` — parola unica, no underscore**. La GET ritorna `is_buildtime` (oltre a `is_runtime`, `is_shared`, `is_literal`, `is_multiline`, `is_preview`, `is_required`, `is_really_required`, `is_coolify`, `is_nixpacks`, `is_shown_once`). Il body POST/PATCH con `is_build_time` (underscore) viene rifiutato con `Validation failed: This field is not allowed.`. Con `is_buildtime` corretto passa.
+1bis. **PATCH `/envs` è replace-style, non merge**: il body deve contenere TUTTI i campi che vuoi conservare. Se chiami `PATCH /envs -d '{"key":"X","is_buildtime":false}'` senza passare `value`, Coolify mette `value=""` (e `real_value=""`). Backend in produzione resta vivo perché uvicorn ha già le env in memoria dal boot del container; il prossimo Redeploy parte con env vuote → crash. Pattern sicuro: GET subito prima, poi PATCH passando esplicitamente `value` (e tutti gli altri campi che non vuoi perdere).
 2. **Token Sanctum format**: `<id>|<plaintext>`. Il `|` rompe `export VAR=...` non quotato. Usa sempre virgolette.
 3. **`GET /api/v1/sources/github` non esiste**. L'UUID del GitHub App source si recupera solo dalla UI (`/sources` → click sull'app → URL contiene l'UUID).
 4. **App nuove restano `exited:unhealthy` finché il primo deploy non è triggerato**. Il `POST /api/v1/applications/private-github-app` crea il record ma non costruisce; chiama `GET /api/v1/deploy?uuid=…` subito dopo.
