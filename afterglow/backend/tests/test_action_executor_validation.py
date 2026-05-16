@@ -168,7 +168,10 @@ def test_mutates_flag_propagates_to_result(monkeypatch):
     )
     assert len(persisted) == 1
     assert persisted[0].status == "executed"
-    assert persisted[0].result == {"booked": True, "mutates": True}
+    # `mock: True` is added by the executor so the UI can render a "Simulated"
+    # badge on every MOCK_REGISTRY-backed action — see project_afterglow_decisions
+    # 'production = hackathon' (mock registry is the boundary judges see).
+    assert persisted[0].result == {"booked": True, "mutates": True, "mock": True}
 
 
 def test_hallucinated_action_is_rejected(monkeypatch):

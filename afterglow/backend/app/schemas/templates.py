@@ -127,12 +127,35 @@ class ValidationReport(BaseModel):
     proposed_mocks: list[ProposedMock] = Field(default_factory=list)
 
 
+class ActionDefinitionDraft(BaseModel):
+    """Wizard-time shape of an action.
+
+    Identical to `ActionDefinition` minus `payload_schema`: Gemini's
+    structured-output endpoint rejects schemas containing
+    `additionalProperties` (which Pydantic emits for any `dict[str, Any]`
+    field) and there is no way to suppress that flag from a Pydantic
+    model without dropping the field. We let the LLM emit the skeleton
+    and the operator (or a future validator iteration) supplies
+    `payload_schema` post-generation.
+    """
+
+    key: str
+    label: str
+    execution_mode: ExecutionMode = "auto"
+    mock_target: str = "generic"
+    description: Optional[str] = None
+    preconditions: list[str] = Field(default_factory=list)
+    confidence_threshold: float = Field(default=0.7, ge=0.0, le=1.0)
+    mutates: bool = False
+    evidence_required: bool = True
+
+
 class TemplateWizardResponse(BaseModel):
     name: str
     description: str
     domain_hint: str = "generic"
     fields_schema: list[FieldDefinition]
-    action_types: list[ActionDefinition]
+    action_types: list[ActionDefinitionDraft]
     custom_dictionary: list[str]
     prompt_hints: list[PromptHintRule] = Field(default_factory=list)
     # Populated by the wizard endpoint with the deterministic + LLM validation

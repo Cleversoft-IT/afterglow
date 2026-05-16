@@ -147,9 +147,13 @@ def validate_template_deterministic(
                     )
                 )
 
-        if a.payload_schema is not None:
+        # payload_schema is optional and lives on the runtime `ActionDefinition`,
+        # not on the wizard-time `ActionDefinitionDraft`. Use getattr so the
+        # validator works against either shape; missing attribute => no check.
+        payload_schema = getattr(a, "payload_schema", None)
+        if payload_schema is not None:
             try:
-                jsonschema.Draft202012Validator.check_schema(a.payload_schema)
+                jsonschema.Draft202012Validator.check_schema(payload_schema)
             except jsonschema.SchemaError as exc:
                 issues.append(
                     ValidationIssue(

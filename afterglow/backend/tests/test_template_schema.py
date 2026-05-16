@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from app.schemas.templates import (
     ActionDefinition,
+    ActionDefinitionDraft,
     CreateTemplateRequest,
     FieldDefinition,
     PromptHintRule,
@@ -85,7 +86,7 @@ def test_template_wizard_response_with_validation():
         name="X",
         description="d",
         fields_schema=[FieldDefinition(key="a", type="string", label="A")],
-        action_types=[ActionDefinition(key="x.y", label="y")],
+        action_types=[ActionDefinitionDraft(key="x.y", label="y")],
         custom_dictionary=[],
         prompt_hints=[PromptHintRule(then="t")],
         validation=rep,

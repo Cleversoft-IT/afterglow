@@ -13,11 +13,17 @@ from __future__ import annotations
 
 from app.agents.template_validator import validate_template_deterministic
 from app.schemas.templates import (
-    ActionDefinition,
+    ActionDefinitionDraft,
     FieldDefinition,
     PromptHintRule,
     TemplateWizardResponse,
 )
+
+
+# Wizard responses carry the draft shape (no payload_schema). Tests that need
+# to exercise payload_schema validity construct an ActionDefinition (the
+# runtime shape) and call the validator directly.
+ActionDefinition = ActionDefinitionDraft  # noqa: N816 — preserve test ergonomics
 
 
 def _draft(**over) -> TemplateWizardResponse:
@@ -94,16 +100,29 @@ def test_unknown_action_key_warned_not_errored():
 
 
 def test_invalid_payload_schema_flagged():
-    d = _draft(
-        action_types=[
-            ActionDefinition(
-                key="booking.create",
-                label="b",
-                payload_schema={"type": "not_a_real_type"},
-            ),
-        ]
+    """Wizard responses don't carry payload_schema (Gemini structured output
+    can't emit additionalProperties). We feed the validator a runtime
+    `ActionDefinition` via a lightweight stub so we can still exercise the
+    payload_schema branch.
+    """
+    from types import SimpleNamespace
+
+    stub_action = SimpleNamespace(
+        key="booking.create",
+        label="b",
+        execution_mode="auto",
+        mock_target="generic",
+        description=None,
+        preconditions=[],
+        confidence_threshold=0.7,
+        mutates=False,
+        evidence_required=True,
+        payload_schema={"type": "not_a_real_type"},
     )
-    issues = validate_template_deterministic(d)
+    draft = _draft()
+    # Append the stub directly so we bypass Pydantic's draft validation.
+    draft.action_types.append(stub_action)  # type: ignore[arg-type]
+    issues = validate_template_deterministic(draft)
     assert any("invalid JSONSchema" in i.message for i in issues)
 
 
@@ -139,11 +158,6 @@ def test_clean_template_produces_no_errors():
                 key="booking.create",
                 label="Create booking",
                 preconditions=["party_size", "customer_name"],
-                payload_schema={
-                    "type": "object",
-                    "properties": {"party_size": {"type": "integer"}},
-                    "required": ["party_size"],
-                },
             )
         ],
         prompt_hints=[PromptHintRule(when="always", then="be concise")],
