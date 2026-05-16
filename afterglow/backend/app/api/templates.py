@@ -62,24 +62,21 @@ class SetActiveTemplateRequest(BaseModel):
 async def _active_template_id_for_session(
     session: AsyncSession, ctx: SessionContext
 ) -> uuid.UUID | None:
-    """Resolve which template uuid is "active" for the current caller."""
+    """Resolve which template uuid is "active" for the current caller.
+
+    Demo sessions read strictly from `DemoSession.active_template_id`: no
+    fallback to the seed preset marked `is_active=TRUE`, so a fresh /
+    post-reset visitor sees every template as non-active and is steered to
+    the Templates screen to pick one. Production keeps the seed fallback so
+    a brand-new install ships with a working default.
+    """
     if ctx.is_demo:
         demo = (
             await session.execute(
                 select(DemoSession).where(DemoSession.id == ctx.session_id)
             )
         ).scalar_one_or_none()
-        if demo is not None and demo.active_template_id is not None:
-            return demo.active_template_id
-        seed = (
-            await session.execute(
-                select(Template.id).where(
-                    Template.is_active.is_(True),
-                    Template.is_seed.is_(True),
-                )
-            )
-        ).scalar_one_or_none()
-        return seed
+        return demo.active_template_id if demo is not None else None
 
     row = (
         await session.execute(
