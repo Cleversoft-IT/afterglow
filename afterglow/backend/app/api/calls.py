@@ -290,6 +290,31 @@ async def list_calls(
     ctx: SessionContext = Depends(get_session_context),
     session: AsyncSession = Depends(get_session),
 ) -> list[CallListItem]:
+    customer_filter_ids: Optional[list[uuid.UUID]] = None
+    if customer_id:
+        customer_filter_ids = [customer_id]
+        # Demo sandbox: the visitor's Customer is a clone-on-write of a
+        # seed Customer (see `_resolve_customer` in agents/orchestrator.py).
+        # Calls created during the demo reference the clone; the seed
+        # history references the seed row. Expand the filter to include
+        # every Customer that shares the same phone_e164, so the customer
+        # profile screen shows both the seed history and the visitor's
+        # own calls under "Calls (N)".
+        if ctx.is_demo:
+            target = (
+                await session.execute(
+                    select(Customer.phone_e164).where(Customer.id == customer_id)
+                )
+            ).scalar_one_or_none()
+            if target:
+                twin_ids = (
+                    await session.execute(
+                        select(Customer.id).where(Customer.phone_e164 == target)
+                    )
+                ).scalars().all()
+                if twin_ids:
+                    customer_filter_ids = list(twin_ids)
+
     stmt = (
         select(Call, Customer.display_name)
         .join(Customer, Customer.id == Call.customer_id, isouter=True)
@@ -297,8 +322,8 @@ async def list_calls(
         .order_by(Call.created_at.desc())
         .limit(limit)
     )
-    if customer_id:
-        stmt = stmt.where(Call.customer_id == customer_id)
+    if customer_filter_ids is not None:
+        stmt = stmt.where(Call.customer_id.in_(customer_filter_ids))
     rows = (await session.execute(stmt)).all()
     return [
         CallListItem(
