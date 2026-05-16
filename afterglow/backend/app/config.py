@@ -28,12 +28,13 @@ class Settings(BaseSettings):
     database_url: str = "postgresql+asyncpg://afterglow:afterglow@postgres:5432/afterglow"
 
     google_api_key: str = ""
-    # gemini-flash-latest is the alias that always points to the most recent
-    # Flash. We avoid `gemini-2.5-flash` here on purpose: it spends most of
-    # its budget on internal "thinking" tokens and frequently returns empty
-    # text on short prompts, which then drops us to the offline stub.
-    gemini_default_model: str = "gemini-flash-latest"
-    gemini_template_builder_model: str = "gemini-3-flash-preview"
+    # gemini-2.5-flash is the free-tier sweet spot (5-15 RPM, 100-1000 RPD).
+    # gemini-flash-latest used to be the default but today aliases to
+    # gemini-3-flash, which is preview-only on free tier with a 20 req/day
+    # courtesy quota — verified 2026-05-16 when both wizard and call_analyzer
+    # started returning 429 RESOURCE_EXHAUSTED for that exact model.
+    gemini_default_model: str = "gemini-2.5-flash"
+    gemini_template_builder_model: str = "gemini-2.5-flash"
 
     vultr_inference_base_url: str = "https://api.vultrinference.com/v1"
     vultr_inference_api_key: str = ""

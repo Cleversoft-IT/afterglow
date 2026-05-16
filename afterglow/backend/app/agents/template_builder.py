@@ -5,7 +5,7 @@ wizard from the dashboard. Uses Pydantic schema-bound structured output instead
 of function calling, since the contract is deterministic.
 
 Target model: settings.gemini_template_builder_model (default
-gemini-3-flash-preview, free on Google AI Studio). Falls back to
+gemini-2.5-flash, free-tier 5-15 RPM / 100-1000 RPD). Falls back to
 gemini_default_model on failure.
 
 Fail-fast: per ``project_afterglow_decisions.md`` 1.ter (2026-05-16) there is

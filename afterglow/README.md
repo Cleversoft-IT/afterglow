@@ -97,14 +97,17 @@ prefetches the chunk → briefing returns the memory.
 ### Best use of Gemini
 - **Single multi-purpose structured-output call** with Pydantic `response_schema` —
   extracts fields, classifies, plans actions and writes the briefing in one shot
-- Falls back to `gemini-flash-latest` (verified free-tier) as the default model
+- Default model: `gemini-2.5-flash` (free-tier: 5-15 RPM, 100-1000 RPD). We
+  avoid `gemini-flash-latest` because it currently aliases to `gemini-3-flash`,
+  which is preview-only on free tier with a 20 req/day courtesy quota
+  (verified 2026-05-16 when both wizard and analyzer hit
+  `429 RESOURCE_EXHAUSTED` on that model).
 - Multimodal-ready: the analyzer interface accepts an `audio_bytes` argument and
   the `Part.from_bytes` path is wired in `app/integrations/gemini_adk.py` for the
   forthcoming multimodal upgrade
-- Template Wizard wired live on `gemini-3-flash-preview` with structured
-  output (Pydantic `response_schema=TemplateWizardResponse`); falls back to
-  `gemini-flash-latest` and then to a hand-crafted offline template if both
-  fail. Originality bonus is real, not aspirational
+- Template Wizard wired live on the same `gemini-2.5-flash` with structured
+  output (Pydantic `response_schema=TemplateWizardResponse`). Fail-fast: a
+  missing key or a Gemini error bubbles up as HTTP 502 — no offline stub.
 
 ### Speechmatics
 - `speechmatics-batch` SDK wired live (`AsyncClient.transcribe` with
