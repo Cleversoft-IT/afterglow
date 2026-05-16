@@ -19,7 +19,6 @@ def test_db_models_metadata_has_all_tables():
     names = set(Base.metadata.tables.keys())
     expected = {
         "templates",
-        "template_versions",
         "customers",
         "calls",
         "extracted_fields",
@@ -30,6 +29,9 @@ def test_db_models_metadata_has_all_tables():
     assert expected.issubset(names), f"missing: {expected - names}"
     assert "businesses" not in names, (
         "single-tenant invariant broken: 'businesses' table reintroduced"
+    )
+    assert "template_versions" not in names, (
+        "template_versions was dropped in migration 0007; do not reintroduce it"
     )
 
 

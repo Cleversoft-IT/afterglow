@@ -1,7 +1,8 @@
 """Vultr Serverless Inference client.
 
-Wraps the OpenAI-compatible API at api.vultrinference.com/v1 and the dedicated
-RAG endpoint /v1/chat/completions/RAG.
+Two endpoints used by Afterglow: `/v1/chat/completions/RAG` for memory-grounded
+retrieval (`chat_completion_rag`) and `/v1/vector_store/{id}/items` for chunk
+ingestion (`add_vector_item`).
 
 Model: MiniMaxAI/MiniMax-M2.7 — the actual model Vultr serves for /RAG
 (verified 2026-05-15: requests for kimi-k2-instruct are transparently swapped
@@ -40,42 +41,6 @@ def _client() -> httpx.AsyncClient:
     )
 
 
-async def chat_completion(
-    messages: list[dict[str, Any]],
-    *,
-    tools: Optional[list[dict[str, Any]]] = None,
-    model: Optional[str] = None,
-    temperature: float = 0.2,
-) -> dict[str, Any]:
-    """Plain chat completion (OpenAI-compatible)."""
-    if not _is_configured():
-        await asyncio.sleep(0.1)
-        return {
-            "choices": [
-                {
-                    "message": {
-                        "role": "assistant",
-                        "content": "[fake] vultr inference not configured",
-                    }
-                }
-            ]
-        }
-
-    payload: dict[str, Any] = {
-        "model": model or settings.vultr_inference_model,
-        "messages": messages,
-        "temperature": temperature,
-    }
-    if tools:
-        payload["tools"] = tools
-        payload["tool_choice"] = "auto"
-
-    async with _client() as client:
-        resp = await client.post("/chat/completions", json=payload)
-        resp.raise_for_status()
-        return resp.json()
-
-
 async def chat_completion_rag(
     messages: list[dict[str, Any]],
     *,
@@ -107,27 +72,6 @@ async def chat_completion_rag(
         resp = await client.post("/chat/completions/RAG", json=payload)
         resp.raise_for_status()
         return resp.json()
-
-
-async def create_vector_collection(name: str) -> Optional[str]:
-    """Create a vector store collection and return its ID.
-
-    Returns None in stub mode (no API key). Single-tenant Afterglow uses one
-    collection set via VULTR_VECTOR_DEFAULT_COLLECTION; this helper stays around
-    for one-off provisioning scripts.
-
-    Vultr's response shape (verified 2026-05-15):
-        {"collection": {"id": "...", "name": "...", "created": "..."}}
-    """
-    if not _is_configured():
-        return None
-
-    async with _client() as client:
-        resp = await client.post("/vector_store", json={"name": name})
-        resp.raise_for_status()
-        data = resp.json()
-        collection = data.get("collection") or {}
-        return collection.get("id") or data.get("id") or data.get("collection_id")
 
 
 async def add_vector_item(

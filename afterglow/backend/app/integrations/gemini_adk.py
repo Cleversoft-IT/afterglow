@@ -54,8 +54,6 @@ async def run_agent(
     runner,
     *,
     prompt_text: str,
-    audio_bytes: bytes | None = None,
-    audio_mime: str | None = None,
     state_key: str = "result",
 ) -> dict[str, Any]:
     """Execute one agent turn and return the slice of session state at ``state_key``.
@@ -72,12 +70,7 @@ async def run_agent(
         app_name=runner.app_name, user_id=user_id, session_id=session_id
     )
 
-    parts: list[Any] = []
-    if audio_bytes and audio_mime:
-        parts.append(types.Part.from_bytes(data=audio_bytes, mime_type=audio_mime))
-    parts.append(types.Part.from_text(text=prompt_text))
-
-    content = types.Content(role="user", parts=parts)
+    content = types.Content(role="user", parts=[types.Part.from_text(text=prompt_text)])
 
     async for _ in runner.run_async(
         user_id=user_id, session_id=session_id, new_message=content

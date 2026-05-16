@@ -100,21 +100,6 @@ class Template(Base):
     updated_at: Mapped[datetime] = _ts_updated()
 
 
-class TemplateVersion(Base):
-    __tablename__ = "template_versions"
-    __table_args__ = (
-        UniqueConstraint("template_id", "version", name="uq_template_version"),
-    )
-
-    id: Mapped[uuid.UUID] = _uuid_pk()
-    template_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("templates.id", ondelete="CASCADE")
-    )
-    version: Mapped[int] = mapped_column(Integer, nullable=False)
-    snapshot: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
-    created_at: Mapped[datetime] = _ts()
-
-
 class Customer(Base):
     __tablename__ = "customers"
     __table_args__ = (
@@ -170,7 +155,6 @@ class Call(Base):
     )
     phone_e164: Mapped[str] = mapped_column(String(32), nullable=False)
     audio_url: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    audio_duration_sec: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     detected_language: Mapped[Optional[str]] = mapped_column(String(10), nullable=True)
     raw_transcript: Mapped[Optional[dict[str, Any]]] = mapped_column(JSONB, nullable=True)
     status: Mapped[str] = mapped_column(String(30), default="pending")
