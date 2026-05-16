@@ -86,6 +86,18 @@ class PromptHintRule(BaseModel):
     then: str
 
 
+class SimulationConfig(BaseModel):
+    """Per-template demo recording config — drives the Simulator UI."""
+
+    caller_name: Optional[str] = None
+    caller_phone_e164: Optional[str] = None
+    script_turns: list[dict[str, Any]] = Field(default_factory=list)
+    audio_url: Optional[str] = None
+    audio_status: Optional[Literal["pending", "ready", "failed"]] = None
+    audio_generated_at: Optional[str] = None
+    audio_source: Optional[Literal["tts_generated", "user_uploaded", "bundled"]] = None
+
+
 class TemplateView(BaseModel):
     id: UUID
     name: str
@@ -99,6 +111,7 @@ class TemplateView(BaseModel):
     is_active: bool = False
     is_seed: bool = False
     session_id: Optional[UUID] = None
+    simulation_config: Optional[SimulationConfig] = None
     created_at: datetime
 
 
