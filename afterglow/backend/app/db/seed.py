@@ -614,12 +614,16 @@ async def seed():
         await session.flush()
 
         for spec in _seed_call_specs(restaurant_id, mark.id, julia.id):
-            _emit_seeded_call(session, spec)
-            # Flush after EACH spec: audit_log.call_id is SET NULL/nullable
-            # which makes SQLAlchemy treat the FK as soft and batch the
-            # inserts in the wrong order, hitting Postgres with an
-            # audit_log row whose parent Call has not landed yet. Flushing
-            # per spec forces the parent insert before the children.
+            # Two-phase insert: Postgres rejects the audit_log batch with
+            # audit_log_call_id_fkey unless the matching Call has already
+            # landed on disk. audit_log.call_id is ON DELETE SET NULL +
+            # nullable so SQLAlchemy treats the FK as soft and batches
+            # all rows across tables in an order that puts the children
+            # first. Flushing between the parent and the children forces
+            # the right order.
+            _emit_seeded_call_core(session, spec)
+            await session.flush()
+            _emit_seeded_call_audit(session, spec)
             await session.flush()
 
         await session.commit()
@@ -935,10 +939,12 @@ def _seed_call_specs(restaurant_template_id, mark_id, julia_id):
     }
 
 
-def _emit_seeded_call(session, spec) -> None:
-    """Insert one Call + ExtractedFields + ExecutedAction[] + audit_log rows
-    for a seed scenario. Idempotent via fixed UUIDs (re-running seed on an
-    empty DB always produces the same IDs)."""
+def _emit_seeded_call_core(session, spec) -> None:
+    """Insert Call + ExtractedFields + ExecutedAction[] for a seed scenario.
+
+    Idempotent via fixed Call UUIDs. Caller MUST flush before invoking
+    `_emit_seeded_call_audit` so the audit_log rows can resolve the FK.
+    """
     call = Call(
         id=spec["id"],
         customer_id=spec["customer_id"],
@@ -990,7 +996,10 @@ def _emit_seeded_call(session, spec) -> None:
             )
         )
 
-    # Lean audit trail so the Audit tab is not empty on fresh install.
+
+def _emit_seeded_call_audit(session, spec) -> None:
+    """Insert the audit_log rows for a seed scenario. The Call has already
+    been flushed by `_emit_seeded_call_core`, so the FK resolves now."""
     audit_steps = [
         ("speechmatics", "tool_call", "success"),
         ("call_analyzer", "llm_call", "success"),
