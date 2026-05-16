@@ -347,7 +347,7 @@ export default function App() {
 
         {/* ── Team ──────────────────────────────────────── */}
         <section className="py-16 border-t border-border/40">
-          <SectionLabel>05 — Il team</SectionLabel>
+          <SectionLabel>05 — The team</SectionLabel>
           <h2 className="text-3xl md:text-4xl font-extrabold tracking-tight mb-12">
             Team Claudio Opuscoli
           </h2>
