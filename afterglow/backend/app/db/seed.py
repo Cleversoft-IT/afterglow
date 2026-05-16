@@ -615,6 +615,12 @@ async def seed():
 
         for spec in _seed_call_specs(restaurant_id, mark.id, julia.id):
             _emit_seeded_call(session, spec)
+            # Flush after EACH spec: audit_log.call_id is SET NULL/nullable
+            # which makes SQLAlchemy treat the FK as soft and batch the
+            # inserts in the wrong order, hitting Postgres with an
+            # audit_log row whose parent Call has not landed yet. Flushing
+            # per spec forces the parent insert before the children.
+            await session.flush()
 
         await session.commit()
         print(

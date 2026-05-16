@@ -15,6 +15,11 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 COPY app/ ./app/
 COPY alembic/ ./alembic/
 COPY alembic.ini .
+# sample_audio/ ships the three demo MP3s for the seed templates so the
+# Simulator UI can stream them straight back through
+# /api/v1/templates/{id}/simulation/audio without depending on /var/data
+# being pre-populated.
+COPY sample_audio/ ./sample_audio/
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
