@@ -28,13 +28,11 @@ class Settings(BaseSettings):
     database_url: str = "postgresql+asyncpg://afterglow:afterglow@postgres:5432/afterglow"
 
     google_api_key: str = ""
-    # gemini-2.5-flash is the free-tier sweet spot (5-15 RPM, 100-1000 RPD).
-    # gemini-flash-latest used to be the default but today aliases to
-    # gemini-3-flash, which is preview-only on free tier with a 20 req/day
-    # courtesy quota — verified 2026-05-16 when both wizard and call_analyzer
-    # started returning 429 RESOURCE_EXHAUSTED for that exact model.
-    gemini_default_model: str = "gemini-2.5-flash"
-    gemini_template_builder_model: str = "gemini-2.5-flash"
+    # Use the explicit Flash-Lite model instead of moving aliases. Coolify
+    # already pins the backend env to this value; these defaults keep local dev
+    # and future fresh deploys aligned.
+    gemini_default_model: str = "gemini-3.1-flash-lite"
+    gemini_template_builder_model: str = "gemini-3.1-flash-lite"
 
     vultr_inference_base_url: str = "https://api.vultrinference.com/v1"
     vultr_inference_api_key: str = ""

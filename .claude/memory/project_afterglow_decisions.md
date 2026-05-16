@@ -101,7 +101,7 @@ Target: tutte le feature del prompt originale. Strategia: sviluppo a priorità t
 2. Pipeline reale: audio → Speechmatics → Gemini analisi → executed actions ⚠️ (Gemini live, Speechmatics ancora stub)
 3. Caller memory card alla seconda chiamata ✅ (briefing Gemini-generated)
 4. Dashboard web: call log + action history (con revert) + customer profile + privacy settings ✅
-5. Prompt-to-template wizard 4-step (Generate → Validate → Refine → Persist) ✅ — `template_builder` chiama `gemini-3-flash-preview` con structured output, `template_validator` runs deterministic + Gemini semantic, UI `app/templates/wizard.tsx` editora inline e POST `/templates` persiste con session_id corretto + version auto-bump. Vedi sub-decisione 1.cinque.
+5. Prompt-to-template wizard 4-step (Generate → Validate → Refine → Persist) ✅ — `template_builder` chiama `gemini-3.1-flash-lite` con structured output, `template_validator` runs deterministic + Gemini semantic, UI `app/templates/wizard.tsx` editora inline e POST `/templates` persiste con session_id corretto + version auto-bump. Vedi sub-decisione 1.cinque.
 6. Template library con 3 voci ✅ (seed)
 7. Test/simulator template (nice-to-have)
 8. Manual template builder pieno (nice-to-have)
@@ -150,15 +150,16 @@ File `LICENSE` MIT nel repo dal primo commit.
 - HTTPS: Traefik + Let's Encrypt sul dominio `*.95-179-245-107.sslip.io`. Sslip.io risolve `<dashes>.sslip.io` → IP corrispondente senza configurazione DNS aggiuntiva.
 - Coordinate complete in [[reference-devops-pipeline]]. Credenziali fuori dalla repo (Coolify env vars + `~/.config/afterglow/`).
 
-### 8.ter. Gemini default model — `gemini-flash-latest` (verificato 2026-05-15)
-Tutti i modelli **Flash** sono utilizzabili gratis con la key Google AI Studio (Workspace account). I **Pro** rispondono 429 RESOURCE_EXHAUSTED sul free tier. `gemini-3-flash-preview` è gratuito sul free-tier (la voce contraria su molti blog è errata) e resta come `GEMINI_TEMPLATE_BUILDER_MODEL` per l'Originality bonus.
+### 8.ter. Gemini default model — `gemini-3.1-flash-lite` (aggiornato 2026-05-16)
+Default esplicito per backend e wizard: `GEMINI_DEFAULT_MODEL=gemini-3.1-flash-lite` e `GEMINI_TEMPLATE_BUILDER_MODEL=gemini-3.1-flash-lite`. Coolify è già stato aggiornato lato backend; il codice tiene lo stesso default per local dev e deploy freschi. Evitare alias mobili come `gemini-flash-latest` / `gemini-latest-flash` e vecchi pin `gemini-2.5-flash` o `gemini-3-flash`, perché cambiano quota/comportamento o puntano a generazioni non allineate alla demo.
 
-**How to apply:** se serve un modello reasoning Pro, sappi che il free-tier non lo serve. Per la demo restiamo su Flash, dove la qualità di estrazione è già più che sufficiente.
+**How to apply:** se serve un modello reasoning Pro, sappi che il free-tier non lo serve. Per la demo restiamo su Flash-Lite, dove latenza e costo sono più importanti del massimo reasoning.
 
 ### 9. Stato env in produzione (volatile, 2026-05-15)
 Sezione "what's live right now" — da rileggere prima di pushare grossi cambi al backend.
 
 - **`DEMO_MODE`**: ELIMINATA dal codice e dall'env (2026-05-15). I 3 MP3 demo reali (TTS Speechmatics) hanno sostituito i placeholder silenziosi, quindi non serve più il kill-switch. Quando deployi questa revisione: **rimuovere la variabile da Coolify** (Resource → Environment Variables) e fare redeploy del backend; lasciarla orfana è innocuo (Pydantic Settings ha `extra="ignore"`) ma sporca.
+- **`GEMINI_DEFAULT_MODEL=gemini-3.1-flash-lite`** e **`GEMINI_TEMPLATE_BUILDER_MODEL=gemini-3.1-flash-lite`** sul backend (Coolify aggiornato 2026-05-16). Il codice ha lo stesso default in `backend/app/config.py`, quindi local dev e nuovi deploy non ricadono più su `gemini-2.5-flash`, `gemini-3-flash` o alias mobili.
 - **`VULTR_VECTOR_DEFAULT_COLLECTION=afterglowbf073`** sul backend. Riusa la collection già provisionata (`afterglowbf073`); se viene svuotata, l'orchestrator degrada gracefully (skip RAG retrieval + skip write-back, briefing su Postgres comunque salvato).
 - **`CORS_ORIGINS`** (CSV) sul backend: `https://app.95-179-245-107.sslip.io,https://demo.95-179-245-107.sslip.io,https://95-179-245-107.sslip.io`. Sostituisce `AFTERGLOW_CORS_EXTRA_ORIGINS` (eliminata).
 - **`AFTERGLOW_DEFAULT_BUSINESS_ID`**: eliminata su Coolify e dal codice (single-tenant, niente più tabella `businesses`).
