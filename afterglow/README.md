@@ -97,15 +97,14 @@ prefetches the chunk → briefing returns the memory.
 ### Best use of Gemini
 - **Single multi-purpose structured-output call** with Pydantic `response_schema` —
   extracts fields, classifies, plans actions and writes the briefing in one shot
-- Default model: `gemini-2.5-flash` (free-tier: 5-15 RPM, 100-1000 RPD). We
-  avoid `gemini-flash-latest` because it currently aliases to `gemini-3-flash`,
-  which is preview-only on free tier with a 20 req/day courtesy quota
-  (verified 2026-05-16 when both wizard and analyzer hit
-  `429 RESOURCE_EXHAUSTED` on that model).
+- Default model: `gemini-3.1-flash-lite`. We pin the explicit model instead of
+  using moving aliases such as `gemini-flash-latest` / `gemini-latest-flash`,
+  which can shift under us; this is also the value configured in Coolify for
+  the backend.
 - Multimodal-ready: the analyzer interface accepts an `audio_bytes` argument and
   the `Part.from_bytes` path is wired in `app/integrations/gemini_adk.py` for the
   forthcoming multimodal upgrade
-- Template Wizard wired live on the same `gemini-2.5-flash` with structured
+- Template Wizard wired live on the same `gemini-3.1-flash-lite` with structured
   output (Pydantic `response_schema=TemplateWizardResponse`). Fail-fast: a
   missing key or a Gemini error bubbles up as HTTP 502 — no offline stub.
 
@@ -128,7 +127,7 @@ prefetches the chunk → briefing returns the memory.
 | Demo site | Vite 5 · React 18 · TypeScript (static landing that iframes the app) |
 | Backend | Python 3.11 · FastAPI · google-genai · SQLAlchemy 2.0 async · Alembic |
 | Speech | Speechmatics batch SDK |
-| LLM | Gemini Flash (default) · Gemini 3 Flash Preview (template wizard) · MiniMax-M2.7 on Vultr (RAG) |
+| LLM | Gemini 3.1 Flash-Lite (default + template wizard) · MiniMax-M2.7 on Vultr (RAG) |
 | Storage | Vultr Managed Postgres · Vultr Vector Store |
 | Deploy | Podman / Docker Compose · Vultr Cloud Compute HP · Coolify |
 
@@ -282,6 +281,32 @@ outside the repo in `~/.config/afterglow/`.
 Traefik on Coolify auto-issues a Let's Encrypt cert for each app domain.
 [sslip.io](https://sslip.io) resolves `<ip-with-dashes>.sslip.io` to the
 matching IP, so we get an HTTPS-ready domain with zero DNS setup.
+
+### Per-app `watch_paths` (operational contract)
+
+Coolify rebuilds a given application **only if the commit touches files
+inside its `watch_paths`**. The current mapping is:
+
+| App | `watch_paths` |
+|---|---|
+| `afterglow-backend` | `afterglow/backend/**` |
+| `afterglow-app`     | `afterglow/app/**` |
+| `afterglow-demo`    | `afterglow/demo-site/**` |
+
+Consequence: **any new build input that lives outside one of those
+sub-directories must be added explicitly to the `watch_paths` of every
+app that depends on it** (root-level scripts, a future `shared/`
+directory, a CI workflow file that influences the deploy, etc.) — or the
+deploy simply will not fire. Same applies if a top-level directory is
+ever renamed. The values are stored on the Coolify side via the API
+(`PATCH /api/v1/applications/{uuid}`); see the snippet in
+[`.claude/memory/reference_coolify_api.md`](../.claude/memory/reference_coolify_api.md).
+
+The three Dockerfiles also enable a BuildKit cache mount for `pip` and
+`npm` (`# syntax=docker/dockerfile:1.7` + `RUN --mount=type=cache,...`).
+That keeps the package wheel cache across rebuilds of the same image,
+shaving the dominant slice of build time when only application code
+changes but the dependency layer is invalidated.
 
 ## License
 

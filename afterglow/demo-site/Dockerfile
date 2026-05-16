@@ -1,10 +1,13 @@
+# syntax=docker/dockerfile:1.7
+
 # Vite static build + nginx, mirroring the app/ Dockerfile.
 
 FROM node:22-alpine AS builder
 WORKDIR /app
 
-COPY package.json package-lock.json* ./
-RUN npm install --no-audit --no-fund
+COPY package.json package-lock.json ./
+RUN --mount=type=cache,target=/root/.npm \
+    npm ci --no-audit --no-fund --prefer-offline
 
 ARG VITE_APP_URL=https://app.95-179-245-107.sslip.io
 ENV VITE_APP_URL=${VITE_APP_URL}

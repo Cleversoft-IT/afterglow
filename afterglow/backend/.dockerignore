@@ -1,0 +1,23 @@
+# Python build & cache
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# VCS + agent tooling
+.git/
+.gitignore
+.agents/
+.codex/
+
+# Local-only data (runtime usa /var/data/audio)
+data/
+sample_audio/
+sample_templates/
+
+# Test & docs
+tests/
+*.log

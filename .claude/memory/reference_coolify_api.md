@@ -139,4 +139,30 @@ cf -X PATCH -d '{"key":"VULTR_VECTOR_DEFAULT_COLLECTION","value":"afterglowbf073
 
 Nota: `DEMO_MODE` non esiste più (rimossa il 2026-05-15, commit `3a6f038`). Se la trovi orfana su un'app Coolify, eliminala con `DELETE /envs/{env-uuid}`.
 
+## `watch_paths` — limitare il rebuild alla sotto-cartella giusta
+
+Il campo `watch_paths` su un'applicazione è una stringa con righe newline-separated, pattern glob relativi alla root del repo. `null` = ogni push rebuilda (default storico Afterglow fino al 2026-05-16). Tre app distinte sullo stesso monorepo → senza `watch_paths` ogni push triggera tutte e tre, riempiendo la coda Coolify (concurrent builds = 2).
+
+Setting via API (un solo `PATCH`, una sola riga di body — più righe si passano con `\n` letterale nel JSON):
+
+```bash
+set -a; source ~/.config/afterglow/coolify.env; set +a
+patch_paths() {
+  curl -s -X PATCH -H "Authorization: Bearer $COOLIFY_TOKEN" \
+    -H "Content-Type: application/json" \
+    "$COOLIFY_URL/api/v1/applications/$1" \
+    -d "$(jq -n --arg p "$2" '{watch_paths:$p}')"
+}
+patch_paths $BACKEND_UUID 'afterglow/backend/**'
+patch_paths $APP_UUID     'afterglow/app/**'
+patch_paths $DEMO_UUID    'afterglow/demo-site/**'
+
+# Verifica
+for u in $BACKEND_UUID $APP_UUID $DEMO_UUID; do
+  cf $COOLIFY_URL/api/v1/applications/$u | jq '{name, watch_paths}'
+done
+```
+
+Contratto operativo: qualunque nuovo input di build esterno alla sotto-cartella (es. script root, futura `shared/`) **deve essere aggiunto a mano** ai `watch_paths` di ogni app che ne dipende, altrimenti i deploy non partono.
+
 Linkato da [[reference-devops-pipeline]] per il dato infrastrutturale; questo file si concentra su come parlarci.

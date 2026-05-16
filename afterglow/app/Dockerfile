@@ -1,3 +1,5 @@
+# syntax=docker/dockerfile:1.7
+
 # Two-stage build: Node builds the Expo web static bundle, nginx serves it.
 
 FROM node:22-alpine AS builder
@@ -5,7 +7,8 @@ WORKDIR /app
 
 # Install deps from package-lock.json — cached layer when only source changes.
 COPY package.json package-lock.json ./
-RUN npm ci --no-audit --no-fund
+RUN --mount=type=cache,target=/root/.npm \
+    npm ci --no-audit --no-fund --prefer-offline
 
 # Build-time arg → injected into the bundle as process.env.EXPO_PUBLIC_API_BASE.
 ARG EXPO_PUBLIC_API_BASE=https://api.95-179-245-107.sslip.io

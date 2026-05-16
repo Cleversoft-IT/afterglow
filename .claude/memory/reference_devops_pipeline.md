@@ -59,7 +59,13 @@ Le risorse sono in regione FRA per latenza Milano. Free trial $250 (balance `-20
   - `afterglow-demo` (id `yh9o1m3ro8dg96rahedk9haq`) → `https://demo.95-179-245-107.sslip.io` · base `/afterglow/demo-site` (Vite + React, nginx static, iframes the app)
 - Build pack: **Dockerfile** per tutte e tre
 - Source: GitHub App `afterglow-coolify` — UUID e server UUID nella tabella risorse sopra
-- Auto-deploy: webhook GitHub App alla push su `main` ricostruisce tutte e tre le applicazioni in parallelo (Advanced → Deployment → "Auto Deploy" on per ognuna). Build concorrenti: 2 (limite server settings)
+- Auto-deploy: webhook GitHub App alla push su `main`. Build concorrenti: 2 (limite server settings).
+- **`watch_paths` per app** (impostato 2026-05-16): un push triggera **solo** l'app il cui `watch_paths` matcha il diff. Mappa:
+  - `afterglow-backend` → `afterglow/backend/**`
+  - `afterglow-app` → `afterglow/app/**`
+  - `afterglow-demo` → `afterglow/demo-site/**`
+  Contratto operativo: qualunque nuovo input di build esterno alla sotto-cartella (root scripts, futura `shared/`, file CI che influenzano il deploy, rename di top-level) **deve essere aggiunto a mano** ai `watch_paths` di ogni app coinvolta, altrimenti il deploy non parte. Snippet `PATCH` pronto in [[reference-coolify-api]] §"watch_paths".
+- **Cache mount BuildKit per pip / npm** (Dockerfile dal 2026-05-16): i tre Dockerfile hanno `# syntax=docker/dockerfile:1.7` + `RUN --mount=type=cache,target=...` sul layer pacchetti. Riusa wheel pip e tarball npm tra build successive sullo stesso server Coolify, riducendo il `pip install` da ~2 min a ~30 s quando il layer è invalidato (cache layer Docker standard resta invariato per gli hit "puri"). La persistenza della cache BuildKit lato Coolify è da osservare empiricamente: il builder helper container può fare prune.
 
 ### Operazioni Coolify comuni
 
