@@ -1,11 +1,12 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Badge } from '../../components/Badge';
 import { Card } from '../../components/Card';
 import { ListRow } from '../../components/ListRow';
 import { api, ApiError } from '../../lib/api';
-import { colors, spacing } from '../../lib/theme';
+import { useTheme } from '../../lib/ThemeContext';
+import { spacing } from '../../lib/theme';
 import type { CallListItem, CustomerCard } from '../../lib/types';
 
 function callStatusTone(
@@ -19,6 +20,7 @@ function callStatusTone(
 }
 
 export default function CustomerDetailScreen() {
+  const { colors } = useTheme();
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const [customer, setCustomer] = useState<CustomerCard | null>(null);
@@ -46,6 +48,41 @@ export default function CustomerDetailScreen() {
   useEffect(() => {
     load();
   }, [load]);
+
+  const styles = useMemo(
+    () =>
+      StyleSheet.create({
+        scroll: { padding: spacing.lg, gap: spacing.lg, paddingBottom: spacing.xxxl },
+        headerRow: {
+          flexDirection: 'row',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: spacing.md,
+        },
+        heading: { color: colors.text, fontSize: 18, fontWeight: '600', flexShrink: 1 },
+        meta: { color: colors.textMuted, fontSize: 14, marginTop: spacing.xs, lineHeight: 20 },
+        section: { color: colors.text, fontWeight: '600', fontSize: 15, marginBottom: spacing.sm },
+        tagsRow: { flexDirection: 'row', gap: 6, flexWrap: 'wrap' },
+        factRow: {
+          flexDirection: 'row',
+          justifyContent: 'space-between',
+          gap: spacing.md,
+          paddingVertical: 6,
+          borderTopWidth: StyleSheet.hairlineWidth,
+          borderTopColor: colors.border,
+        },
+        factKey: {
+          color: colors.textMuted,
+          fontSize: 12,
+          textTransform: 'capitalize',
+        },
+        factValue: { color: colors.text, fontSize: 13, flex: 1, textAlign: 'right' },
+        memory: { color: colors.text, fontSize: 14, lineHeight: 20 },
+        placeholder: { color: colors.textMuted, fontSize: 13, fontStyle: 'italic' },
+        error: { color: colors.danger, padding: spacing.lg },
+      }),
+    [colors],
+  );
 
   if (loading) {
     return <ActivityIndicator color={colors.brand} style={{ marginTop: 32 }} />;
@@ -130,33 +167,3 @@ export default function CustomerDetailScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  scroll: { padding: spacing.lg, gap: spacing.md },
-  headerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: spacing.md,
-  },
-  heading: { color: colors.text, fontSize: 18, fontWeight: '700', flexShrink: 1 },
-  meta: { color: colors.textMuted, fontSize: 13, marginTop: spacing.xs },
-  section: { color: colors.text, fontWeight: '700', fontSize: 15, marginBottom: spacing.sm },
-  tagsRow: { flexDirection: 'row', gap: 6, flexWrap: 'wrap' },
-  factRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    gap: spacing.md,
-    paddingVertical: 6,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.border,
-  },
-  factKey: {
-    color: colors.textMuted,
-    fontSize: 12,
-    textTransform: 'capitalize',
-  },
-  factValue: { color: colors.text, fontSize: 13, flex: 1, textAlign: 'right' },
-  memory: { color: colors.text, fontSize: 14, lineHeight: 20 },
-  placeholder: { color: colors.textMuted, fontSize: 13, fontStyle: 'italic' },
-  error: { color: colors.danger, padding: spacing.lg },
-});

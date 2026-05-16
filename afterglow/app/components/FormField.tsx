@@ -1,6 +1,7 @@
-import { ReactNode } from 'react';
+import { ReactNode, useMemo } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import { colors, spacing } from '../lib/theme';
+import { useTheme } from '../lib/ThemeContext';
+import { spacing, typography } from '../lib/theme';
 
 export function FormField({
   label,
@@ -13,6 +14,18 @@ export function FormField({
   error?: string | null;
   children: ReactNode;
 }) {
+  const { colors } = useTheme();
+  const styles = useMemo(
+    () =>
+      StyleSheet.create({
+        wrap: { gap: spacing.xs + 2, marginBottom: spacing.lg },
+        label: { ...typography.label, color: colors.text },
+        hint: { ...typography.micro, color: colors.textSubtle },
+        error: { ...typography.micro, color: colors.danger },
+      }),
+    [colors],
+  );
+
   return (
     <View style={styles.wrap}>
       <Text style={styles.label}>{label}</Text>
@@ -21,10 +34,3 @@ export function FormField({
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  wrap: { gap: spacing.xs, marginBottom: spacing.md },
-  label: { color: colors.text, fontSize: 13, fontWeight: '600' },
-  hint: { color: colors.textSubtle, fontSize: 12 },
-  error: { color: colors.danger, fontSize: 12 },
-});

@@ -1,7 +1,29 @@
+import { useMemo } from 'react';
 import { StyleSheet, TextInput, TextInputProps } from 'react-native';
-import { colors, radius, spacing } from '../lib/theme';
+import { useTheme } from '../lib/ThemeContext';
+import { radius, spacing } from '../lib/theme';
 
 export function Textarea({ style, ...rest }: TextInputProps) {
+  const { colors } = useTheme();
+  const styles = useMemo(
+    () =>
+      StyleSheet.create({
+        input: {
+          backgroundColor: colors.surface,
+          borderColor: colors.border,
+          borderWidth: 1,
+          borderRadius: radius.lg,
+          color: colors.text,
+          paddingHorizontal: spacing.lg,
+          paddingVertical: spacing.md + 4,
+          fontSize: 15,
+          lineHeight: 22,
+          minHeight: 120,
+        },
+      }),
+    [colors],
+  );
+
   return (
     <TextInput
       placeholderTextColor={colors.textSubtle}
@@ -12,17 +34,3 @@ export function Textarea({ style, ...rest }: TextInputProps) {
     />
   );
 }
-
-const styles = StyleSheet.create({
-  input: {
-    backgroundColor: colors.surfaceAlt,
-    borderColor: colors.border,
-    borderWidth: 1,
-    borderRadius: radius.md,
-    color: colors.text,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    fontSize: 14,
-    minHeight: 96,
-  },
-});
