@@ -10,19 +10,23 @@
 
 import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { Platform } from 'react-native';
-import { resolveAudioUri, resolveRingtoneUri, type AudioDomain } from './audio';
+import {
+  bundledAudioKey,
+  resolveAudioUri,
+  resolveRingtoneUri,
+  type AudioDomain,
+  type CallerMode,
+} from './audio';
 
 const isWeb = Platform.OS === 'web';
 
-// "domain" here can be one of the bundled domain keys (restaurant / dentist /
-// bodyshop) OR an arbitrary template id — the bundled domains have their
-// MP3 packaged with the app and don't need a network fetch; everything else
-// resolves through `/api/v1/templates/{id}/simulation/audio` and is set on
-// the hook via `prefetchUrl`.
+// Cache keys are flat strings so `playCallAudio` / `prefetchUrl` can stay
+// single-arg. For bundled audio the caller composes `${domain}_${mode}` via
+// `bundledAudioKey`; for custom templates it composes `${template.id}_${mode}`.
 type AudioSourceKey = string;
 
 export type PhoneAudio = {
-  prefetch: (domain: AudioDomain) => Promise<void>;
+  prefetch: (domain: AudioDomain, mode: CallerMode) => Promise<void>;
   prefetchUrl: (key: AudioSourceKey, url: string) => Promise<void>;
   playRingtone: () => void;
   stopRinging: () => void;
@@ -45,12 +49,13 @@ export function usePhoneAudio(): PhoneAudio {
     }
   }, []);
 
-  const prefetch = useCallback(async (domain: AudioDomain) => {
+  const prefetch = useCallback(async (domain: AudioDomain, mode: CallerMode) => {
     if (!isWeb) return;
     await ensureRingtone();
-    if (!callUriByKeyRef.current[domain]) {
-      const uri = await resolveAudioUri(domain);
-      callUriByKeyRef.current[domain] = uri;
+    const key = bundledAudioKey(domain, mode);
+    if (!callUriByKeyRef.current[key]) {
+      const uri = await resolveAudioUri(domain, mode);
+      callUriByKeyRef.current[key] = uri;
       // Warm the blob cache too, so the post-call upload doesn't pay a second
       // network roundtrip after the recording finishes playing.
       try {

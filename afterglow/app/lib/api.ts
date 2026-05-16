@@ -165,9 +165,34 @@ export class ApiError extends Error {
   }
 }
 
+/**
+ * `true` whenever the client is talking to the backend as a per-visitor demo
+ * sandbox. `false` only when the user has flipped into bypass mode via
+ * `?bypass=<token>` (i.e. the live production tenant during a pitch).
+ *
+ * UI bits that only make sense for visitors (e.g. the "Reset demo" button,
+ * the "pick a template" bootstrap redirect) should be guarded behind this.
+ */
+export function isDemoMode(): boolean {
+  return readStoredSession() !== 'bypass';
+}
+
 export const api = {
   listTemplates: () => request<TemplateView[]>('/api/v1/templates'),
-  getActiveTemplate: () => request<TemplateView>('/api/v1/templates/active'),
+  // Returns `null` when the visitor has no active template yet (fresh access
+  // or post-reset): the backend responds 204 which our request() helper maps
+  // to `undefined`; we normalize to `null` here so callers can rely on a
+  // `=== null` check.
+  getActiveTemplate: async (): Promise<TemplateView | null> => {
+    const result = await request<TemplateView | undefined>(
+      '/api/v1/templates/active',
+    );
+    return result ?? null;
+  },
+  resetDemo: () =>
+    request<{ ok: boolean; session_id: string }>('/api/v1/demo/reset', {
+      method: 'POST',
+    }),
   getTemplate: (id: string) => request<TemplateView>(`/api/v1/templates/${id}`),
   setActiveTemplate: (template_id: string) =>
     request<TemplateView>('/api/v1/templates/active', {
@@ -265,6 +290,6 @@ export const api = {
       { method: 'POST', body: fd },
     );
   },
-  simulationAudioUrl: (template_id: string) =>
-    `${BASE}/api/v1/templates/${template_id}/simulation/audio`,
+  simulationAudioUrl: (template_id: string, mode: 'existing' | 'new' = 'existing') =>
+    `${BASE}/api/v1/templates/${template_id}/simulation/audio?mode=${mode}`,
 };

@@ -13,8 +13,9 @@ from __future__ import annotations
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Literal
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, Response, UploadFile
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from sqlalchemy import func, select, update
@@ -167,11 +168,11 @@ async def list_templates(
     return [_project_active(r, active_id) for r in rows]
 
 
-@router.get("/active", response_model=TemplateView)
+@router.get("/active", response_model=None)
 async def get_active_template(
     ctx: SessionContext = Depends(get_session_context),
     session: AsyncSession = Depends(get_session),
-) -> TemplateView:
+) -> Response | TemplateView:
     if ctx.is_demo:
         demo = (
             await session.execute(
@@ -186,16 +187,20 @@ async def get_active_template(
             ).scalar_one_or_none()
             if target is not None:
                 return _project_active(target, target.id)
-        # Fallback: seed template currently marked active.
+        # Demo visitor has not picked a template yet (fresh access or post-
+        # reset). Signal "no active" with 204 so the client can route to the
+        # Templates screen — we do NOT fall back to a seed default here,
+        # because the UX explicitly requires the visitor to choose.
+        return Response(status_code=204)
 
-    fallback_filter = (
-        Template.is_seed.is_(True) if ctx.is_demo else Template.session_id.is_(None)
-    )
+    # Production tenant: keep the fallback to the seed template currently
+    # marked is_active=TRUE, so a brand-new install ships with a working
+    # default until the admin picks one.
     row = (
         await session.execute(
             select(Template).where(
                 Template.is_active.is_(True),
-                fallback_filter,
+                Template.session_id.is_(None),
             )
         )
     ).scalar_one_or_none()
@@ -417,15 +422,27 @@ async def upload_simulation_audio(
 @router.get("/{template_id}/simulation/audio")
 async def get_simulation_audio(
     template_id: uuid.UUID,
+    mode: Literal["existing", "new"] = "existing",
     ctx: SessionContext = Depends(get_session_context),
     session: AsyncSession = Depends(get_session),
 ) -> FileResponse:
-    """Stream back the demo audio so the dialer can play it."""
+    """Stream back the demo audio so the dialer can play it.
+
+    Seeded templates expose `simulation_config.scenarios.<mode>.audio_url`;
+    custom wizard-built templates still use the flat `audio_url` and reuse
+    the same recording for both modes (graceful fallback) until a future
+    PR teaches the wizard to render two recordings.
+    """
     row = await _load_template_for_simulation(session, template_id, ctx)
     config = row.simulation_config or {}
-    audio_url = config.get("audio_url")
+    scenarios = config.get("scenarios") or {}
+    scenario = scenarios.get(mode) or {}
+    audio_url = scenario.get("audio_url") or config.get("audio_url")
     if not audio_url:
-        raise HTTPException(status_code=404, detail="No audio recorded for this template")
+        raise HTTPException(
+            status_code=404,
+            detail=f"No audio recorded for this template (mode={mode})",
+        )
     path = Path(audio_url)
     if not path.exists():
         raise HTTPException(status_code=404, detail="Audio file is missing on disk")

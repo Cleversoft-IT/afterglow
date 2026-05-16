@@ -1,18 +1,26 @@
-"""Generate the three demo MP3s (restaurant / dentist / bodyshop) using
+"""Generate the six demo MP3s (three domains × two caller modes) using
 Speechmatics Text-to-Speech.
 
-The Speechmatics TTS preview currently exposes only English voices (UK and US),
-so the conversations below are EN UK/US. The audio is the *only* thing the
-demo simulator plays back; the rest of the seed data (business names,
-customer phone numbers) stays Italian by design.
+Each domain (restaurant / dentist / bodyshop) ships TWO recordings — one
+for the "existing customer" simulator button (caller already known by phone,
+references shared history, doesn't re-introduce themselves) and one for the
+"new customer" button (first-time caller, full self-introduction). The
+operator voice stays constant per domain so the front-desk identity is
+stable; the caller voice flips between modes so the two recordings sound
+like different people on the line.
+
+The Speechmatics TTS preview currently exposes only English voices (UK and
+US), so the conversations below are EN UK/US. The audio is the *only*
+thing the demo simulator plays back; the rest of the seed data (business
+names, customer phone numbers) stays Italian by design.
 
 Pipeline per file:
   1. Render each speaker line as WAV via POST /generate/<voice>?output_format=wav_16000
   2. Concatenate with 250ms of silence in between using ffmpeg's concat demuxer
   3. Encode to MP3 (96 kbps mono 22.05 kHz) to match the previous placeholders
   4. Write the result to both:
-        afterglow/app/assets/audio/<domain>.mp3      (bundled by Expo)
-        afterglow/backend/sample_audio/<domain>.mp3  (used by backend smoke tests)
+        afterglow/app/assets/audio/<domain>_<mode>.mp3      (bundled by Expo)
+        afterglow/backend/sample_audio/<domain>_<mode>.mp3  (used by backend smoke tests)
 
 Usage:
     python afterglow/scripts/generate_demo_audio.py
@@ -30,8 +38,11 @@ import sys
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Literal
 
 import httpx
+
+CallerMode = Literal["existing", "new"]
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 AFTERGLOW_DIR = REPO_ROOT / "afterglow"
@@ -53,46 +64,91 @@ class Turn:
     text: str
 
 
-# Two distinct voices per scenario so Speechmatics' diarization can split them.
-# Each conversation follows a realistic phone-call shape: operator picks up,
-# the caller states their need, both sides exchange the relevant info, the
-# operator wraps up with a short confirmation, and they say goodbye.
-SCENARIOS: dict[str, list[Turn]] = {
-    "restaurant": [
-        Turn("operator", "sarah", "Good evening, La Trattoria. How may I help you?"),
-        Turn("caller",   "theo",  "Hi, I'd like to book a table for Friday evening."),
-        Turn("operator", "sarah", "Of course. How many people?"),
-        Turn("caller",   "theo",  "Four of us, around eight thirty. My name is Mark."),
-        Turn("operator", "sarah", "Got it, Mark. Any special requests?"),
-        Turn("caller",   "theo",  "Yes — one person is gluten intolerant. Can you handle that?"),
-        Turn("operator", "sarah", "Absolutely, the kitchen has a dedicated gluten free menu."),
-        Turn("caller",   "theo",  "Great. Could you confirm by WhatsApp?"),
-        Turn("operator", "sarah", "Sure, I'll send the confirmation right away. See you Friday!"),
-        Turn("caller",   "theo",  "Thanks, goodbye."),
-    ],
-    "dentist": [
-        Turn("operator", "jack",  "Greenwood Dental, this is the front desk. How can I help you?"),
-        Turn("caller",   "megan", "Hi, I urgently need an appointment. My filling came off and I have severe pain in my lower right molar."),
-        Turn("operator", "jack",  "I'm sorry to hear that. We can fit you in tomorrow morning. What's your name?"),
-        Turn("caller",   "megan", "I'm Laura Bennett, you already have my chart on file."),
-        Turn("operator", "jack",  "Perfect Laura. Do you have insurance coverage?"),
-        Turn("caller",   "megan", "Yes, BlueCross. I'll send the policy number on WhatsApp."),
-        Turn("operator", "jack",  "Great. Does nine fifteen tomorrow work for you?"),
-        Turn("caller",   "megan", "Yes, that's perfect."),
-        Turn("operator", "jack",  "I'll text you the details. Take care, see you tomorrow."),
-        Turn("caller",   "megan", "Thank you, goodbye."),
-    ],
-    "bodyshop": [
-        Turn("operator", "megan", "Greenline Auto Body, good afternoon. How can I help?"),
-        Turn("caller",   "jack",  "Hello, I backed into a pole and need to fix the rear bumper of a 2019 Fiat Panda."),
-        Turn("operator", "megan", "Have you already opened an insurance claim?"),
-        Turn("caller",   "jack",  "No, I'm not filing one. I'm paying out of pocket — I just need a quote."),
-        Turn("operator", "megan", "Got it. When can you come in for the inspection?"),
-        Turn("caller",   "jack",  "I'm free Thursday afternoon. My name is Andrew Green."),
-        Turn("operator", "megan", "Let's say two o'clock Thursday. I'll text you the address."),
-        Turn("caller",   "jack",  "Perfect. Thanks for the help."),
-        Turn("operator", "megan", "You're welcome. See you Thursday."),
-    ],
+# Per-domain, per-mode dialogues. Operator voice is held constant within a
+# domain so it sounds like the same front-desk person; the caller voice
+# flips between existing and new so the two recordings sound like
+# different people on the line. Existing-mode callers do not re-introduce
+# themselves ("It's Mark"), reference shared history, and ask for the
+# usual setup. New-mode callers self-introduce with a full name and let
+# the operator collect every required field from scratch.
+SCENARIOS: dict[str, dict[CallerMode, list[Turn]]] = {
+    "restaurant": {
+        "existing": [
+            Turn("operator", "sarah", "La Trattoria, good evening, this is Sarah."),
+            Turn("caller",   "theo",  "Hi Sarah, it's Mark."),
+            Turn("operator", "sarah", "Hi Mark, lovely to hear you. The usual Friday booking?"),
+            Turn("caller",   "theo",  "Yes please, party of four, around eight thirty."),
+            Turn("operator", "sarah", "Quiet table and gluten free menu, like last time?"),
+            Turn("caller",   "theo",  "Exactly, same setup. Could you confirm on WhatsApp?"),
+            Turn("operator", "sarah", "Of course, I'll send it over in a minute. See you Friday."),
+            Turn("caller",   "theo",  "Thanks Sarah, see you Friday."),
+        ],
+        "new": [
+            Turn("operator", "sarah", "La Trattoria, good evening, this is Sarah. How can I help?"),
+            Turn("caller",   "megan", "Hi, I've never booked with you before. I'd like a table for Saturday evening."),
+            Turn("operator", "sarah", "Of course. Could I have your name please?"),
+            Turn("caller",   "megan", "It's Hannah Clarke."),
+            Turn("operator", "sarah", "Thanks Hannah. How many guests, and what time?"),
+            Turn("caller",   "megan", "Three of us, around seven forty five."),
+            Turn("operator", "sarah", "Noted. Any allergies or special requests we should know about?"),
+            Turn("caller",   "megan", "Yes, one of us is lactose intolerant. Window table if you have one."),
+            Turn("operator", "sarah", "All set. I'll text you the confirmation by SMS. See you Saturday."),
+            Turn("caller",   "megan", "Perfect, thank you. Goodbye."),
+        ],
+    },
+    "dentist": {
+        "existing": [
+            Turn("operator", "jack",  "Greenwood Dental, this is Jack at the front desk."),
+            Turn("caller",   "megan", "Hi Jack, it's Laura."),
+            Turn("operator", "jack",  "Hi Laura, good to hear from you. What can we do today?"),
+            Turn("caller",   "megan", "The crown you fitted last month is feeling a little loose, I'd like it checked."),
+            Turn("operator", "jack",  "I'm sorry to hear that. Same chair as last time, with Dr. Patel?"),
+            Turn("caller",   "megan", "Yes please, if she has space."),
+            Turn("operator", "jack",  "She has a slot tomorrow at ten fifteen. Does that work?"),
+            Turn("caller",   "megan", "Tomorrow at ten fifteen is fine."),
+            Turn("operator", "jack",  "Booked. I'll WhatsApp you the reminder on your usual number. Take care."),
+            Turn("caller",   "megan", "Thanks Jack, see you tomorrow."),
+        ],
+        "new": [
+            Turn("operator", "jack",  "Greenwood Dental, this is Jack. How can I help?"),
+            Turn("caller",   "sarah", "Hi, I'm not a patient here yet. I need an urgent appointment."),
+            Turn("operator", "jack",  "I'm sorry to hear that. May I have your name?"),
+            Turn("caller",   "sarah", "Sophie Turner. I cracked a molar this morning eating a hard candy."),
+            Turn("operator", "jack",  "Painful. We can fit you in this afternoon. Is the tooth bleeding?"),
+            Turn("caller",   "sarah", "No bleeding, but it's very sharp pain on the lower right."),
+            Turn("operator", "jack",  "Understood. Three thirty today with Dr. Patel — does that work?"),
+            Turn("caller",   "sarah", "Yes, three thirty is perfect."),
+            Turn("operator", "jack",  "I'll text you the address and the new patient form. See you later."),
+            Turn("caller",   "sarah", "Thank you so much, goodbye."),
+        ],
+    },
+    "bodyshop": {
+        "existing": [
+            Turn("operator", "megan", "Greenline Auto Body, good afternoon, this is Megan."),
+            Turn("caller",   "jack",  "Hey Megan, it's Andrew."),
+            Turn("operator", "megan", "Hi Andrew. Is it the Fiat Panda again?"),
+            Turn("caller",   "jack",  "Same car, yeah. I clipped a bollard, the front bumper has a dent and a long scratch."),
+            Turn("operator", "megan", "Out of pocket like last time, or going through insurance this round?"),
+            Turn("caller",   "jack",  "Out of pocket, same as before. Just need a quick quote."),
+            Turn("operator", "megan", "Thursday afternoon at two works, same bay?"),
+            Turn("caller",   "jack",  "Thursday at two is good. Thanks Megan."),
+            Turn("operator", "megan", "See you Thursday, Andrew."),
+        ],
+        "new": [
+            Turn("operator", "megan", "Greenline Auto Body, good afternoon, this is Megan. How can I help?"),
+            Turn("caller",   "theo",  "Hi, first time calling you. I had a small fender-bender this morning."),
+            Turn("operator", "megan", "Sorry to hear that. May I have your name and the vehicle?"),
+            Turn("caller",   "theo",  "It's Daniel Reed. Twenty twenty Toyota Corolla, plate Bravo Mike six four Lima Whisky."),
+            Turn("operator", "megan", "Got it. What's the damage, and is the car drivable?"),
+            Turn("caller",   "theo",  "Rear quarter panel is dented, taillight is cracked. It's drivable, lights still work."),
+            Turn("operator", "megan", "Are you opening an insurance claim?"),
+            Turn("caller",   "theo",  "Yes, I've already filed with my insurer."),
+            Turn("operator", "megan", "Understood. Could you come in Friday morning at ten for an inspection?"),
+            Turn("caller",   "theo",  "Friday at ten is fine, thank you."),
+            Turn("operator", "megan", "Great, I'll text you the address. See you Friday."),
+            Turn("caller",   "theo",  "Thanks, goodbye."),
+        ],
+    },
 }
 
 
@@ -206,22 +262,24 @@ def main() -> None:
         silence_path = tmp_dir / "silence.wav"
         _make_silence(ffmpeg, silence_path, INTER_LINE_SILENCE_SEC)
 
-        for domain, turns in SCENARIOS.items():
-            print(f"[tts] {domain}: rendering {len(turns)} turn(s)")
-            wav_paths: list[Path] = []
-            for idx, turn in enumerate(turns):
-                wav = tmp_dir / f"{domain}_{idx:02d}_{turn.voice}.wav"
-                _render_turn(client, turn, wav)
-                wav_paths.append(wav)
+        for domain, modes in SCENARIOS.items():
+            for mode, turns in modes.items():
+                slug = f"{domain}_{mode}"
+                print(f"[tts] {slug}: rendering {len(turns)} turn(s)")
+                wav_paths: list[Path] = []
+                for idx, turn in enumerate(turns):
+                    wav = tmp_dir / f"{slug}_{idx:02d}_{turn.voice}.wav"
+                    _render_turn(client, turn, wav)
+                    wav_paths.append(wav)
 
-            merged = tmp_dir / f"{domain}.wav"
-            _concat_wavs(ffmpeg, wav_paths, silence_path, merged)
+                merged = tmp_dir / f"{slug}.wav"
+                _concat_wavs(ffmpeg, wav_paths, silence_path, merged)
 
-            for target_dir in (APP_AUDIO_DIR, BACKEND_AUDIO_DIR):
-                target = target_dir / f"{domain}.mp3"
-                _wav_to_mp3(ffmpeg, merged, target)
-                size_kb = target.stat().st_size / 1024
-                print(f"[tts] wrote {target.relative_to(REPO_ROOT)}  ({size_kb:.1f} KB)")
+                for target_dir in (APP_AUDIO_DIR, BACKEND_AUDIO_DIR):
+                    target = target_dir / f"{slug}.mp3"
+                    _wav_to_mp3(ffmpeg, merged, target)
+                    size_kb = target.stat().st_size / 1024
+                    print(f"[tts] wrote {target.relative_to(REPO_ROOT)}  ({size_kb:.1f} KB)")
 
 
 if __name__ == "__main__":

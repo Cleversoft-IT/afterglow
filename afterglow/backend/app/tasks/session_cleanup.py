@@ -41,7 +41,17 @@ SESSION_TTL = timedelta(hours=24)
 CLEANUP_INTERVAL_SECONDS = 30 * 60
 
 
-async def _purge_session(session: AsyncSession, demo_id) -> None:
+async def purge_session_data(
+    session: AsyncSession, demo_id, *, drop_session_row: bool = True
+) -> None:
+    """Wipe every row owned by `demo_id`.
+
+    When `drop_session_row=True` (default, used by the cron) the `DemoSession`
+    row itself is removed too. When called from the on-demand reset endpoint we
+    pass `drop_session_row=False` to keep the same session alive — the caller
+    then resets `active_template_id` and bumps `last_seen_at`, so the visitor
+    keeps the same uuid in localStorage with no need for a fresh handshake.
+    """
     # Children that carry a direct session_id.
     await session.execute(
         delete(ExecutedAction).where(ExecutedAction.session_id == demo_id)
@@ -58,7 +68,8 @@ async def _purge_session(session: AsyncSession, demo_id) -> None:
     await session.execute(delete(Call).where(Call.session_id == demo_id))
     await session.execute(delete(Customer).where(Customer.session_id == demo_id))
     await session.execute(delete(Template).where(Template.session_id == demo_id))
-    await session.execute(delete(DemoSession).where(DemoSession.id == demo_id))
+    if drop_session_row:
+        await session.execute(delete(DemoSession).where(DemoSession.id == demo_id))
 
 
 async def cleanup_stale_sessions() -> int:
@@ -72,7 +83,7 @@ async def cleanup_stale_sessions() -> int:
         ).scalars().all()
 
         for demo_id in stale:
-            await _purge_session(session, demo_id)
+            await purge_session_data(session, demo_id, drop_session_row=True)
 
         if stale:
             await session.commit()

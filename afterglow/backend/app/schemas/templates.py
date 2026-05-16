@@ -86,9 +86,40 @@ class PromptHintRule(BaseModel):
     then: str
 
 
-class SimulationConfig(BaseModel):
-    """Per-template demo recording config — drives the Simulator UI."""
+class SimulationScenario(BaseModel):
+    """One demo recording variant — bound to a CallerMode ('existing' or
+    'new'). Seeded templates ship a `scenarios` map with both modes; the
+    wizard-built custom templates still emit the legacy flat shape on
+    `SimulationConfig` until a future PR teaches them to produce two
+    recordings."""
 
+    caller_name: Optional[str] = None
+    caller_phone_e164: Optional[str] = None
+    script_turns: list[dict[str, Any]] = Field(default_factory=list)
+    audio_url: Optional[str] = None
+    audio_status: Optional[Literal["pending", "ready", "failed"]] = None
+    audio_generated_at: Optional[str] = None
+    audio_source: Optional[Literal["tts_generated", "user_uploaded", "bundled"]] = None
+
+
+CallerMode = Literal["existing", "new"]
+
+
+class SimulationConfig(BaseModel):
+    """Per-template demo recording config — drives the Simulator UI.
+
+    Two coexisting shapes are accepted because the wizard still produces
+    the legacy flat one:
+      - Seeded shape (preferred): only `scenarios` is populated.
+      - Legacy / wizard shape: only the flat fields are populated.
+    The Simulator UI and the dialer read `scenarios.<mode>` first and fall
+    back to the flat fields when the scenarios map is missing.
+    """
+
+    # Seeded templates: per-mode recordings.
+    scenarios: dict[CallerMode, SimulationScenario] = Field(default_factory=dict)
+
+    # Legacy / wizard-built single-script fields.
     caller_name: Optional[str] = None
     caller_phone_e164: Optional[str] = None
     script_turns: list[dict[str, Any]] = Field(default_factory=list)

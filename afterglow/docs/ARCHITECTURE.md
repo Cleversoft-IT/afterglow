@@ -132,6 +132,24 @@ idle longer than 24 hours (calls, audit, executed actions, memory chunks,
 wizard-generated templates, cloned customers, the session row itself). Vultr
 is not touched because we never wrote to it for demo sessions.
 
+**On-demand reset.** Visitors can also wipe their sandbox immediately from
+the app's Settings tab. `POST /api/v1/demo/reset` runs the same DELETE
+sweep as the cron (`purge_session_data` in `app/tasks/session_cleanup.py`)
+on the caller's `session_id`, but keeps the `demo_sessions` row alive and
+clears `active_template_id` — so the visitor's localStorage uuid stays
+valid and the next request lands on the cleaned-out sandbox without a fresh
+handshake. The endpoint is 403 in production (`?bypass=<token>` / no demo
+header). The web client follows with a hard reload, and the bootstrap gate
+in `app/_layout.tsx` routes the visitor back to the Templates screen so
+they pick a preset before doing anything else (same as a first-time
+access).
+
+**Active-template signaling.** `GET /api/v1/templates/active` returns 204
+for a demo visitor with no `active_template_id` — *no* fallback to the
+seed preset marked `is_active=TRUE`, because the UX explicitly requires
+the visitor to pick. Production keeps the seed fallback so a fresh install
+ships with a working default until the admin chooses.
+
 ## Key tables
 
 | Table                    | Carries `session_id`? | Purpose                                                |

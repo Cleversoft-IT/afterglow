@@ -74,23 +74,32 @@ export default function IncomingCallScreen() {
   const domain = (template?.domain_hint as AudioDomain) ?? 'restaurant';
   const fallbackCaller = CALLERS[domain] ?? CALLERS.restaurant;
   const sim = template?.simulation_config;
+  // New seeded templates expose `scenarios.{existing,new}`. Wizard-built
+  // templates may still ship the legacy flat shape — read with a fallback
+  // ladder so a custom template that hasn't been regenerated keeps working.
+  const scenario = sim?.scenarios?.[callerMode] ?? null;
+  const audioSource = scenario?.audio_source ?? sim?.audio_source ?? null;
   const useBundledAudio =
-    (!sim || sim.audio_source === 'bundled') &&
+    (!sim || audioSource === 'bundled' || audioSource == null) &&
     (domain === 'restaurant' || domain === 'dentist' || domain === 'bodyshop');
-  const audioKey = useBundledAudio ? domain : (template?.id ?? domain);
+  const audioKey = useBundledAudio
+    ? `${domain}_${callerMode}`
+    : `${template?.id ?? domain}_${callerMode}`;
+  const scenarioPhone = scenario?.caller_phone_e164 ?? sim?.caller_phone_e164 ?? null;
+  const scenarioName = scenario?.caller_name ?? sim?.caller_name ?? null;
   const phoneE164 =
     callerMode === 'new' && newCallerPhone.current
       ? newCallerPhone.current.e164
-      : sim?.caller_phone_e164 ?? PHONE_E164[domain];
+      : scenarioPhone ?? PHONE_E164[domain];
   const fallbackDisplayName =
     callerMode === 'new'
       ? 'Unknown caller'
-      : sim?.caller_name ?? fallbackCaller.name;
+      : scenarioName ?? fallbackCaller.name;
   const fallbackDisplayPhone =
     callerMode === 'new' && newCallerPhone.current
       ? newCallerPhone.current.pretty
-      : sim?.caller_phone_e164
-        ? formatE164ToDisplay(sim.caller_phone_e164)
+      : scenarioPhone
+        ? formatE164ToDisplay(scenarioPhone)
         : fallbackCaller.phone;
   const displayName = customer?.display_name ?? fallbackDisplayName;
 
@@ -101,11 +110,17 @@ export default function IncomingCallScreen() {
       try {
         const t = await api.getActiveTemplate();
         if (cancelled) return;
+        if (!t) {
+          throw new Error('Pick a template first from the Templates tab.');
+        }
         setTemplate(t);
 
         const sim = t.simulation_config;
+        const scenarioForMode = sim?.scenarios?.[callerMode] ?? null;
+        const sourceForMode = scenarioForMode?.audio_source ?? sim?.audio_source ?? null;
+        const statusForMode = scenarioForMode?.audio_status ?? sim?.audio_status ?? null;
         const useBundled =
-          (!sim || sim.audio_source === 'bundled') &&
+          (!sim || sourceForMode === 'bundled' || sourceForMode == null) &&
           (t.domain_hint === 'restaurant' ||
             t.domain_hint === 'dentist' ||
             t.domain_hint === 'bodyshop');
@@ -113,7 +128,8 @@ export default function IncomingCallScreen() {
         const targetPhone =
           callerMode === 'new' && newCallerPhone.current
             ? newCallerPhone.current.e164
-            : sim?.caller_phone_e164 ??
+            : scenarioForMode?.caller_phone_e164 ??
+              sim?.caller_phone_e164 ??
               PHONE_E164[t.domain_hint as AudioDomain] ??
               PHONE_E164.restaurant;
 
@@ -130,9 +146,10 @@ export default function IncomingCallScreen() {
                 .catch(() => null);
 
         if (useBundled) {
-          await audio.prefetch(t.domain_hint as AudioDomain);
-        } else if (sim?.audio_status === 'ready') {
-          await audio.prefetchUrl(t.id, api.simulationAudioUrl(t.id));
+          await audio.prefetch(t.domain_hint as AudioDomain, callerMode);
+        } else if (statusForMode === 'ready') {
+          const customKey = `${t.id}_${callerMode}`;
+          await audio.prefetchUrl(customKey, api.simulationAudioUrl(t.id, callerMode));
         } else {
           throw new Error(
             'This template has no demo audio yet. Generate or upload one in the Simulator screen.',
@@ -219,7 +236,11 @@ export default function IncomingCallScreen() {
     try {
       const blob = audio.getCallBlob();
       if (!blob) throw new Error('Missing call audio blob.');
-      const submitted = await api.submitAudio(blob, phoneE164, `${domain}.mp3`);
+      const submitted = await api.submitAudio(
+        blob,
+        phoneE164,
+        `${domain}_${callerMode}.mp3`,
+      );
       // Park the banner so the Calls tab shows "Analysis in progress" on mount.
       setPipelineToast({
         callId: submitted.call_id,

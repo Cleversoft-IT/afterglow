@@ -40,7 +40,7 @@ export type PromptHintRule = {
   then: string;
 };
 
-export type SimulationConfig = {
+export type SimulationScenario = {
   caller_name?: string | null;
   caller_phone_e164?: string | null;
   script_turns?: { speaker: string; voice: string; text: string }[];
@@ -48,6 +48,18 @@ export type SimulationConfig = {
   audio_status?: 'pending' | 'ready' | 'failed' | null;
   audio_generated_at?: string | null;
   audio_source?: 'tts_generated' | 'user_uploaded' | 'bundled' | null;
+};
+
+// Per-template simulator config. New seeded templates emit a `scenarios`
+// map keyed by CallerMode; custom wizard-built templates still ship the
+// legacy flat fields (caller_name/script_turns/audio_url at the top
+// level) and are served back through the API with the same shape until
+// the wizard is upgraded to render two recordings.
+export type SimulationConfig = SimulationScenario & {
+  scenarios?: {
+    existing?: SimulationScenario | null;
+    new?: SimulationScenario | null;
+  } | null;
 };
 
 export type TemplateView = {

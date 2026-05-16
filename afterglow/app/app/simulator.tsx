@@ -14,7 +14,7 @@ import { Button } from '../components/Button';
 import { Card } from '../components/Card';
 import { api, ApiError } from '../lib/api';
 import { colors, radius, spacing } from '../lib/theme';
-import type { TemplateView } from '../lib/types';
+import type { SimulationConfig, SimulationScenario, TemplateView } from '../lib/types';
 
 type CallerMode = 'existing' | 'new';
 
@@ -124,8 +124,20 @@ export default function SimulatorScreen() {
   }
 
   const sim = template.simulation_config;
-  const audioReady = sim?.audio_status === 'ready' && !!sim?.audio_url;
-  const hasScript = (sim?.script_turns?.length ?? 0) > 0;
+  // Seeded templates ship `scenarios.{existing,new}`; wizard-built templates
+  // still use the flat shape. Treat the simulator as "ready" if either the
+  // legacy flat audio is in place OR both per-mode scenarios are ready.
+  const seededScenariosReady =
+    sim?.scenarios?.existing?.audio_status === 'ready' &&
+    !!sim?.scenarios?.existing?.audio_url &&
+    sim?.scenarios?.new?.audio_status === 'ready' &&
+    !!sim?.scenarios?.new?.audio_url;
+  const legacyReady = sim?.audio_status === 'ready' && !!sim?.audio_url;
+  const audioReady = seededScenariosReady || legacyReady;
+  const hasScript =
+    (sim?.scenarios?.existing?.script_turns?.length ?? 0) > 0 ||
+    (sim?.scenarios?.new?.script_turns?.length ?? 0) > 0 ||
+    (sim?.script_turns?.length ?? 0) > 0;
 
   return (
     <ScrollView contentContainerStyle={styles.scroll}>
@@ -184,18 +196,7 @@ export default function SimulatorScreen() {
             />
           </View>
 
-          {hasScript ? (
-            <View style={styles.scriptBlock}>
-              <Text style={styles.scriptTitle}>
-                Script preview · {sim?.caller_name ?? 'caller'} · {sim?.caller_phone_e164 ?? ''}
-              </Text>
-              {sim?.script_turns?.map((t, i) => (
-                <Text key={i} style={styles.scriptLine}>
-                  <Text style={styles.scriptSpeaker}>{t.speaker}</Text> ({t.voice}): {t.text}
-                </Text>
-              ))}
-            </View>
-          ) : null}
+          {hasScript ? <ScriptPreview sim={sim} /> : null}
         </Card>
       )}
 
@@ -205,6 +206,52 @@ export default function SimulatorScreen() {
         </Card>
       ) : null}
     </ScrollView>
+  );
+}
+
+function ScriptPreview({ sim }: { sim: SimulationConfig | null | undefined }) {
+  if (!sim) return null;
+  const fromScenarios: Array<{ key: CallerMode; label: string; scenario: SimulationScenario }> = [];
+  if (sim.scenarios?.existing?.script_turns?.length) {
+    fromScenarios.push({
+      key: 'existing',
+      label: 'Existing caller',
+      scenario: sim.scenarios.existing,
+    });
+  }
+  if (sim.scenarios?.new?.script_turns?.length) {
+    fromScenarios.push({
+      key: 'new',
+      label: 'New caller',
+      scenario: sim.scenarios.new,
+    });
+  }
+  // Custom wizard-built templates ship the legacy flat shape — render that
+  // single block when no scenarios map is present.
+  if (fromScenarios.length === 0 && sim.script_turns?.length) {
+    fromScenarios.push({
+      key: 'existing',
+      label: 'Script preview',
+      scenario: sim as SimulationScenario,
+    });
+  }
+  if (fromScenarios.length === 0) return null;
+  return (
+    <View style={{ gap: spacing.md }}>
+      {fromScenarios.map(({ key, label, scenario }) => (
+        <View key={key} style={styles.scriptBlock}>
+          <Text style={styles.scriptTitle}>
+            {label} · {scenario.caller_name ?? 'unknown caller'} ·{' '}
+            {scenario.caller_phone_e164 ?? '(random phone)'}
+          </Text>
+          {scenario.script_turns?.map((t, i) => (
+            <Text key={i} style={styles.scriptLine}>
+              <Text style={styles.scriptSpeaker}>{t.speaker}</Text> ({t.voice}): {t.text}
+            </Text>
+          ))}
+        </View>
+      ))}
+    </View>
   );
 }
 
