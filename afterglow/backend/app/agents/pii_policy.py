@@ -1,24 +1,21 @@
-"""PII policy — per-class confidence thresholds and redaction strategies.
+"""PII policy — per-class confidence thresholds.
 
-The Call Analyzer extracts every field in `template.fields_schema`. Some of
-those fields carry PII; the policy below decides:
+Revised 2026-05-16: redaction strategies are no longer applied at runtime
+(the operator needs the verbatim briefing). The thresholds below still drive
+two things:
 
-  1. The minimum confidence required to consider the extraction "trusted".
-     Below that threshold the field is `flagged` for manual review and any
-     mention of its value is stripped from the briefing.
+  1. The minimum confidence at which an extraction is considered "trusted"
+     vs. "manual_review" — surfaced in the operator UI and in the
+     `pii_policy_applied` audit row.
 
-  2. How the value is rendered when it MUST appear in a downstream surface
-     that is not the operator-private `fields` blob:
-       - `next_call_briefing` (visible in customer card + vector chunk)
-       - `audit_log.payload.evidence`
-       - `CustomerMemoryChunk.summary` (vector store embedding)
+  2. The deterministic depends_on chain in `orchestrator._coerce_extractions`,
+     which marks dependent fields as manual_review when their PII dependency
+     misses the threshold.
 
-     The raw value always survives in `ExtractedFields.fields` so the
-     operator can verify it manually and the deterministic action_executor
-     can pass it to the mock target.
-
-A per-field `confidence_threshold` on the FieldDefinition overrides the
-class default. `pii_class="none"` means "no special handling".
+`redact_for_briefing` and `hash_for_audit` are retained as utility helpers
+for callers who still want a redacted projection (none today in the runtime
+pipeline). A per-field `confidence_threshold` on the FieldDefinition
+overrides the class default. `pii_class="none"` means "no special handling".
 """
 from __future__ import annotations
 

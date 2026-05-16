@@ -216,11 +216,12 @@ async def run_pipeline(session: AsyncSession, call_id: uuid.UUID) -> None:
         await session.commit()
         return
 
-    # 4b) PII sanitization. Runs IMMEDIATELY after the analyzer so every
-    # downstream surface (briefing_snapshot, planned_actions evidence,
-    # memory write-back, vector chunk, audit payloads) sees only the
-    # redacted version. `analysis.fields[]` keeps the raw values — the
-    # operator UI + the action executor still need them.
+    # 4b) PII observation pass. Runs immediately after the analyzer. Today
+    # this is observe-only: nothing in the analysis is mutated (the operator
+    # needs verbatim briefings to act on allergies, names, etc.). The audit
+    # row records which PII classes were present at what confidence so the
+    # log can answer "did this briefing carry health-class data?" without
+    # leaking the value.
     sanitized = sanitize_analysis(template.fields_schema, analysis)
     analysis = sanitized.analysis
     if sanitized.audit_pii_actions:
@@ -230,16 +231,20 @@ async def run_pipeline(session: AsyncSession, call_id: uuid.UUID) -> None:
             agent_name="pii_sanitizer",
             step_type="pii_policy_applied",
             payload={
-                "actions": [
+                "mode": "observe_only",
+                "observations": [
                     {
                         "field": r.field,
                         "pii_class": r.pii_class,
-                        "action": r.action,
+                        "status": r.action,
                         "threshold": r.threshold,
                         "confidence": r.confidence,
                     }
                     for r in sanitized.audit_pii_actions
                 ],
+                "pii_classes_present": sorted(
+                    {r.pii_class for r in sanitized.audit_pii_actions}
+                ),
             },
         ):
             pass
@@ -313,6 +318,11 @@ async def run_pipeline(session: AsyncSession, call_id: uuid.UUID) -> None:
             session, call=call, customer=customer, template=template, plan=plan
         )
 
+    # 6c) display_name backfill — if we just learned the caller's name and
+    # the Customer row has none yet, persist it so the next ring of the
+    # dialer shows "Mark Ross" instead of just the phone number.
+    _backfill_display_name(customer, template.fields_schema, analysis)
+
     # 7) Memory write-back. The briefing is the only AI-authored summary the
     # operator will read on the next call's caller card.
     await _persist_memory(
@@ -328,7 +338,7 @@ async def run_pipeline(session: AsyncSession, call_id: uuid.UUID) -> None:
             "language": analysis.language,
             "urgency": analysis.urgency,
         },
-        pii_redactions_applied=sorted(
+        pii_classes_present=sorted(
             {r.pii_class for r in sanitized.audit_pii_actions if r.pii_class != "none"}
         ),
     )
@@ -344,6 +354,46 @@ async def run_pipeline(session: AsyncSession, call_id: uuid.UUID) -> None:
 
 
 _MIN_TRANSCRIPT_WORDS = 8
+
+
+# Field keys we treat as "the caller's name" when backfilling display_name.
+# `contact`-class fields ending in `_name` (customer_name, patient_name,
+# guest_name, ...) are the primary signal; a couple of common aliases cover
+# templates that name the field differently.
+_NAME_FIELD_KEYS = ("full_name", "caller_name")
+
+
+def _is_name_field(key: str, pii_class: Optional[str]) -> bool:
+    if pii_class != "contact":
+        return False
+    if key in _NAME_FIELD_KEYS:
+        return True
+    return key.endswith("_name")
+
+
+def _backfill_display_name(
+    customer: Customer,
+    fields_schema: list[dict[str, Any]],
+    analysis: "call_analyzer.CallAnalysis",
+) -> None:
+    """Set `customer.display_name` when we extract the caller's name and the
+    Customer row does not have one yet.
+
+    Idempotent: if `display_name` is already set, do nothing.
+    """
+    if customer.display_name:
+        return
+
+    field_by_key = {f["key"]: f for f in fields_schema if isinstance(f, dict)}
+    for extraction in analysis.fields:
+        field_def = field_by_key.get(extraction.key) or {}
+        if not _is_name_field(extraction.key, field_def.get("pii_class")):
+            continue
+        value = (extraction.value or "").strip()
+        if not value:
+            continue
+        customer.display_name = value[:200]
+        return
 
 
 def _pre_classify(transcript_text: str) -> bool:
@@ -539,7 +589,7 @@ async def _persist_memory(
     collection_id: Optional[str],
     briefing: str,
     classification: dict[str, Any],
-    pii_redactions_applied: Optional[list[str]] = None,
+    pii_classes_present: Optional[list[str]] = None,
 ) -> None:
     """Save the next-call briefing on Postgres + push a chunk to Vector Store.
 
@@ -560,7 +610,10 @@ async def _persist_memory(
             step_type="tool_call",
             model="vultr-vector-store",
             status="skipped",
-            payload={"reason": "demo_session"},
+            payload={
+                "reason": "demo_sandbox_vector_store_disabled",
+                "human_label": "Demo sandbox: vector store disabled",
+            },
         ):
             pass
         return
@@ -650,7 +703,7 @@ async def _persist_memory(
                     "customer_id": str(customer.id),
                     "language": detected_language,
                     "briefing_en": briefing_en,
-                    "pii_redactions_applied": pii_redactions_applied or [],
+                    "pii_classes_present": pii_classes_present or [],
                 },
                 session_id=call.session_id,
             )

@@ -1,11 +1,11 @@
-"""Unit tests for app.agents.pii_sanitizer.
+"""Unit tests for app.agents.pii_sanitizer (observe-only revision, 2026-05-16).
 
 The sanitizer is invoked between `call_analyzer` and persist; it must:
-- redact PII tokens (health/financial/identity/contact) from the briefing
-- not touch the raw `fields` list (operator UI + executor still need it)
-- scrub matching tokens from each planned_action's evidence
-- emit one audit record per affected field
-- leave non-PII fields alone
+- LEAVE the briefing and planned_action evidence untouched (no redaction)
+- LEAVE the raw `fields` list intact
+- Emit one audit record per non-`none` pii_class field, labelling it as
+  `observed` (confidence >= class threshold) or `observed_low_confidence`.
+- Skip `pii_class=none` fields entirely.
 """
 from __future__ import annotations
 
@@ -34,44 +34,49 @@ def _make_analysis(briefing: str, evidence: list[str] | None = None):
     return CallAnalysis(
         intent="booking_new",
         sentiment="positive",
-        language="it",
+        language="en",
         urgency="low",
         fields=[
-            FieldExtraction(key="party_size", value="4", confidence=0.95, evidence="siamo in quattro"),
-            FieldExtraction(key="customer_name", value="Marco Rossi", confidence=0.91, evidence="Mi chiamo Marco Rossi"),
-            FieldExtraction(key="allergies", value='["glutine"]', confidence=0.95, evidence="sono intollerante al glutine"),
-            FieldExtraction(key="booking_time", value="20:30", confidence=0.93, evidence="verso le otto e mezza"),
+            FieldExtraction(key="party_size", value="4", confidence=0.95, evidence="four of us"),
+            FieldExtraction(key="customer_name", value="Mark Ross", confidence=0.91, evidence="My name is Mark Ross"),
+            FieldExtraction(key="allergies", value='["gluten"]', confidence=0.95, evidence="I am gluten intolerant"),
+            FieldExtraction(key="booking_time", value="20:30", confidence=0.93, evidence="around eight thirty"),
         ],
         planned_actions=[
             PlannedAction(
                 action_type="booking.create",
                 title="Create booking",
                 summary="Book a table",
-                payload={"party_size": 4, "customer_name": "Marco Rossi"},
+                payload={"party_size": 4, "customer_name": "Mark Ross"},
                 confidence=0.9,
-                evidence=evidence or ["Mi chiamo Marco Rossi, siamo in quattro"],
+                evidence=evidence or ["My name is Mark Ross, four of us"],
             ),
         ],
         next_call_briefing=briefing,
     )
 
 
-def test_sanitize_redacts_contact_and_health_in_briefing():
+def test_sanitize_does_not_redact_briefing():
     schema = _restaurant_schema()
-    analysis = _make_analysis(
-        briefing="Marco Rossi prenota per 4 persone alle 20:30; allergico al glutine."
-    )
+    briefing = "Mark Ross prefers a quiet table; he is gluten-intolerant."
+    analysis = _make_analysis(briefing=briefing)
 
     out = sanitize_analysis(schema, analysis)
-    briefing = out.analysis.next_call_briefing
 
-    assert "Marco Rossi" not in briefing
-    assert "[redacted: contact]" in briefing
-    assert "glutine" not in briefing
-    assert "[redacted: health]" in briefing
-    # Non-PII tokens stay intact
-    assert "20:30" in briefing
-    assert "4 persone" in briefing
+    # Briefing is untouched — operators MUST see allergies and names.
+    assert out.analysis.next_call_briefing == briefing
+    assert "Mark Ross" in out.analysis.next_call_briefing
+    assert "gluten" in out.analysis.next_call_briefing
+
+
+def test_sanitize_does_not_scrub_evidence_on_planned_actions():
+    schema = _restaurant_schema()
+    evidence_in = ["My name is Mark Ross, I am gluten intolerant."]
+    analysis = _make_analysis(briefing="...", evidence=evidence_in)
+
+    out = sanitize_analysis(schema, analysis)
+
+    assert out.analysis.planned_actions[0].evidence == evidence_in
 
 
 def test_sanitize_preserves_raw_fields():
@@ -81,27 +86,13 @@ def test_sanitize_preserves_raw_fields():
     out = sanitize_analysis(schema, analysis)
 
     by_key = {f.key: f.value for f in out.analysis.fields}
-    assert by_key["customer_name"] == "Marco Rossi"
-    assert by_key["allergies"] == '["glutine"]'
+    assert by_key["customer_name"] == "Mark Ross"
+    assert by_key["allergies"] == '["gluten"]'
 
 
-def test_sanitize_scrubs_evidence_on_planned_actions():
+def test_sanitize_emits_observed_records_for_pii_fields():
     schema = _restaurant_schema()
-    analysis = _make_analysis(
-        briefing="...",
-        evidence=["Mi chiamo Marco Rossi, sono allergico al glutine."],
-    )
-
-    out = sanitize_analysis(schema, analysis)
-    evidence_after = out.analysis.planned_actions[0].evidence[0]
-
-    assert "Marco Rossi" not in evidence_after
-    assert "glutine" not in evidence_after
-
-
-def test_sanitize_audit_record_per_pii_field():
-    schema = _restaurant_schema()
-    analysis = _make_analysis(briefing="Marco Rossi, glutine.")
+    analysis = _make_analysis(briefing="Mark Ross, gluten.")
 
     out = sanitize_analysis(schema, analysis)
 
@@ -113,34 +104,35 @@ def test_sanitize_audit_record_per_pii_field():
     assert "booking_time" not in by_field
 
     assert by_field["customer_name"].pii_class == "contact"
-    assert by_field["customer_name"].action == "redact"
+    assert by_field["customer_name"].action == "observed"
     assert by_field["allergies"].pii_class == "health"
-    assert by_field["allergies"].action == "redact"
+    assert by_field["allergies"].action == "observed"
 
 
-def test_sanitize_flags_when_confidence_below_threshold():
+def test_sanitize_marks_low_confidence_records():
     schema = _restaurant_schema()
-    # Mention "glutine" in briefing but the extracted allergies confidence is
-    # below the health threshold (0.90) — should be flagged.
+    # Mention "gluten" in briefing but the extracted allergies confidence is
+    # below the health threshold (0.90) — record should be `observed_low_confidence`,
+    # while the briefing stays verbatim.
+    briefing = "Possible allergies: gluten (to verify)."
     analysis = CallAnalysis(
         intent="booking_new",
         sentiment="neutral",
-        language="it",
+        language="en",
         urgency="low",
         fields=[
-            FieldExtraction(key="allergies", value='["glutine"]', confidence=0.70, evidence="forse glutine"),
+            FieldExtraction(key="allergies", value='["gluten"]', confidence=0.70, evidence="maybe gluten"),
         ],
         planned_actions=[],
-        next_call_briefing="Possibili allergie: glutine (da verificare).",
+        next_call_briefing=briefing,
     )
 
     out = sanitize_analysis(schema, analysis)
     record = out.audit_pii_actions[0]
     assert record.field == "allergies"
-    assert record.action == "flag"
-    # Briefing should STILL be redacted — flagged values must not leak either.
-    assert "glutine" not in out.analysis.next_call_briefing
-    assert "[redacted: health]" in out.analysis.next_call_briefing
+    assert record.action == "observed_low_confidence"
+    assert out.analysis.next_call_briefing == briefing
+    assert "gluten" in out.analysis.next_call_briefing
 
 
 def test_sanitize_no_op_when_no_pii_fields():
@@ -148,17 +140,18 @@ def test_sanitize_no_op_when_no_pii_fields():
         {"key": "party_size", "type": "integer", "label": "Guests"},
         {"key": "booking_time", "type": "time", "label": "Time"},
     ]
+    briefing = "Booking for 4 at 20:30."
     analysis = CallAnalysis(
         intent="booking_new",
         sentiment="neutral",
-        language="it",
+        language="en",
         urgency="low",
         fields=[
-            FieldExtraction(key="party_size", value="4", confidence=0.95, evidence="siamo in 4"),
+            FieldExtraction(key="party_size", value="4", confidence=0.95, evidence="four of us"),
         ],
         planned_actions=[],
-        next_call_briefing="Prenotazione per 4 alle 20:30.",
+        next_call_briefing=briefing,
     )
     out = sanitize_analysis(schema, analysis)
     assert out.audit_pii_actions == []
-    assert out.analysis.next_call_briefing == "Prenotazione per 4 alle 20:30."
+    assert out.analysis.next_call_briefing == briefing

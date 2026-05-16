@@ -83,9 +83,11 @@ class CallAnalysis(BaseModel):
     planned_actions: list[PlannedAction]
     next_call_briefing: str = Field(
         description=(
-            "1-3 short sentences for the operator who will handle the NEXT call "
-            "from this phone number. Combine what was just learned with the prior "
-            "facts. Written in the detected_language."
+            "1-2 short sentences, operator-actionable, for whoever picks up the "
+            "NEXT call from this number. Concise insight — what the operator must "
+            "remember about this caller (preferences, allergies, last visit, open "
+            "follow-ups). Combine prior_facts with what was just learned. Written "
+            "in the detected_language. No headers, no bullet points, no greetings."
         )
     )
 
@@ -115,9 +117,12 @@ Your job:
    Populate `payload` as a JSON object whose keys match the action's
    payload_schema (when present). For each planned action include at least one
    `evidence` span when the action's `evidence_required` is true.
-4. Write next_call_briefing: 1-3 sentences for the operator who will pick up
-   the next call from this caller. Combine prior_facts with what was just
-   learned. No headers, no bullet points. Write in the detected language.
+4. Write next_call_briefing: 1-2 short sentences, operator-actionable, that
+   the operator can read in 3 seconds before answering the NEXT call from
+   this caller. Concentrate on what they MUST remember (allergies, seating
+   preference, last booking, open follow-ups), not on summarizing this call.
+   Combine prior_facts with what was just learned. No headers, no bullets,
+   no greetings. Write in the detected language.
 
 Field extraction rules:
 - Each FieldDefinition declares a `pii_class` and may declare a
@@ -135,12 +140,12 @@ Field extraction rules:
   the dependent field if you can but the downstream coercer will move it
   to manual_review.
 
-PII gating (post-process — for your awareness):
-- A separate sanitizer runs after you, redacting `next_call_briefing` for
-  every field whose pii_class is not "none". You do NOT need to write
-  redaction placeholders yourself — write the briefing normally with the
-  raw values. The sanitizer will scrub them based on the same thresholds
-  above.
+PII handling (post-process — for your awareness):
+- A separate inspector runs after you. It does NOT redact anything — it
+  only records which PII classes are present and at what confidence so the
+  audit log can label briefings as "carries health-class data" etc. Write
+  the briefing in natural language with the raw values (e.g. "Mark is
+  gluten-intolerant"); never use placeholders like "[redacted: health]".
 
 Action planning rules:
 - Respect each action's `preconditions`: do not plan an action if any
