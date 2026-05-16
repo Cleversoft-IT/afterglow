@@ -2,6 +2,7 @@
 // Expo's static web build has no BFF, so relative paths would 404.
 
 import type {
+  ActionCatalogEntry,
   AuditLogEntry,
   CallDetailView,
   CallListItem,
@@ -13,6 +14,8 @@ import type {
   TemplateWizardResponse,
   UpdateTemplateRequest,
   ValidationReport,
+  WizardChatRequest,
+  WizardChatResponse,
 } from './types';
 
 const BASE = (process.env.EXPO_PUBLIC_API_BASE ?? 'http://localhost:8000').replace(/\/$/, '');
@@ -176,6 +179,11 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(payload),
     }),
+  runWizardChat: (payload: WizardChatRequest) =>
+    request<WizardChatResponse>('/api/v1/templates/wizard/chat', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
   validateDraft: (template: TemplateWizardResponse) =>
     request<ValidationReport>('/api/v1/templates/validate', {
       method: 'POST',
@@ -229,6 +237,34 @@ export const api = {
     return request<AuditLogEntry[]>(`/api/v1/audit${suffix}`);
   },
 
+  // Back-compat alias for the historical endpoint name; new code should
+  // call undoAction / redoAction instead.
   revertAction: (action_id: string) =>
-    request<void>(`/api/v1/actions/${action_id}/revert`, { method: 'POST' }),
+    request<void>(`/api/v1/actions/${action_id}/undo`, { method: 'POST' }),
+  undoAction: (action_id: string) =>
+    request<void>(`/api/v1/actions/${action_id}/undo`, { method: 'POST' }),
+  redoAction: (action_id: string) =>
+    request<void>(`/api/v1/actions/${action_id}/redo`, { method: 'POST' }),
+  listActionCatalog: () =>
+    request<ActionCatalogEntry[]>(`/api/v1/actions/catalog`),
+
+  generateSimulationScript: (template_id: string) =>
+    request<TemplateView>(`/api/v1/templates/${template_id}/simulation/script`, {
+      method: 'POST',
+    }),
+  generateSimulationAudio: (template_id: string) =>
+    request<TemplateView>(
+      `/api/v1/templates/${template_id}/simulation/generate-audio`,
+      { method: 'POST' },
+    ),
+  uploadSimulationAudio: async (template_id: string, file: Blob, filename = 'audio.wav') => {
+    const fd = new FormData();
+    fd.append('audio', file as unknown as Blob, filename);
+    return request<TemplateView>(
+      `/api/v1/templates/${template_id}/simulation/upload-audio`,
+      { method: 'POST', body: fd },
+    );
+  },
+  simulationAudioUrl: (template_id: string) =>
+    `${BASE}/api/v1/templates/${template_id}/simulation/audio`,
 };

@@ -1,19 +1,21 @@
-import { useLocalSearchParams } from 'expo-router';
-import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Badge } from '../../components/Badge';
 import { Button } from '../../components/Button';
 import { Card } from '../../components/Card';
 import { api, ApiError } from '../../lib/api';
-import { colors, spacing } from '../../lib/theme';
-import type { CallDetailView } from '../../lib/types';
+import { colors, radius, spacing } from '../../lib/theme';
+import type { CallDetailView, FieldDefinitionLite } from '../../lib/types';
 
 export default function CallDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
+  const router = useRouter();
   const [call, setCall] = useState<CallDetailView | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [reverting, setReverting] = useState<string | null>(null);
+  const [busyAction, setBusyAction] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     if (!id) return;
@@ -32,34 +34,72 @@ export default function CallDetailScreen() {
     load();
   }, [load]);
 
-  const revert = async (actionId: string) => {
-    setReverting(actionId);
+  const undo = async (actionId: string) => {
+    setBusyAction(actionId);
     try {
-      await api.revertAction(actionId);
+      await api.undoAction(actionId);
       await load();
     } catch (e) {
       setError(e instanceof ApiError ? e.message : String(e));
     } finally {
-      setReverting(null);
+      setBusyAction(null);
     }
   };
+
+  const redo = async (actionId: string) => {
+    setBusyAction(actionId);
+    try {
+      await api.redoAction(actionId);
+      await load();
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : String(e));
+    } finally {
+      setBusyAction(null);
+    }
+  };
+
+  const labelByKey = useMemo(() => {
+    const out: Record<string, FieldDefinitionLite> = {};
+    for (const def of call?.extracted?.field_definitions ?? []) {
+      out[def.key] = def;
+    }
+    return out;
+  }, [call]);
 
   if (loading) return <ActivityIndicator color={colors.brand} style={{ marginTop: 32 }} />;
   if (error || !call) return <Text style={styles.error}>{error ?? 'Call not found.'}</Text>;
 
   const extracted = call.extracted;
+  const callerDisplay = call.customer?.display_name ?? call.phone_e164;
 
   return (
     <ScrollView contentContainerStyle={styles.scroll}>
       <Card>
         <View style={styles.headerRow}>
-          <Text style={styles.heading}>{call.phone_e164}</Text>
-          <Badge tone={call.status === 'completed' ? 'success' : 'warning'}>{call.status}</Badge>
+          {call.customer_id ? (
+            <Pressable
+              onPress={() => router.push(`/customer/${call.customer_id}` as never)}
+              style={({ pressed }) => [styles.callerLink, pressed && { opacity: 0.7 }]}
+            >
+              <Ionicons name="person-circle-outline" size={20} color={colors.brand} />
+              <Text style={styles.heading}>{callerDisplay}</Text>
+              <Ionicons name="chevron-forward" size={16} color={colors.brand} />
+            </Pressable>
+          ) : (
+            <Text style={styles.heading}>{callerDisplay}</Text>
+          )}
+          <Badge tone={call.status === 'completed' ? 'success' : call.status === 'failed' ? 'danger' : 'warning'}>
+            {call.status}
+          </Badge>
         </View>
+        {call.customer?.display_name ? (
+          <Text style={styles.meta}>{call.phone_e164}</Text>
+        ) : null}
         <Text style={styles.meta}>
           {new Date(call.created_at).toLocaleString()}
           {call.detected_language ? ` · ${call.detected_language}` : ''}
         </Text>
+        {call.error ? <Text style={styles.errorBanner}>{call.error}</Text> : null}
       </Card>
 
       {extracted ? (
@@ -70,12 +110,18 @@ export default function CallDetailScreen() {
             {extracted.sentiment ? <Badge>{`sentiment · ${extracted.sentiment}`}</Badge> : null}
             {extracted.urgency ? <Badge tone="warning">{`urgency · ${extracted.urgency}`}</Badge> : null}
           </View>
-          {Object.entries(extracted.fields).map(([k, v]) => (
-            <View key={k} style={styles.fieldRow}>
-              <Text style={styles.fieldLabel}>{k}</Text>
-              <Text style={styles.fieldValue}>{formatValue(v)}</Text>
-            </View>
-          ))}
+          {Object.entries(extracted.fields).map(([k, v]) => {
+            const def = labelByKey[k];
+            return (
+              <View key={k} style={styles.fieldRow}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.fieldLabel}>{def?.label ?? k}</Text>
+                  <Text style={styles.fieldKey}>{k}</Text>
+                </View>
+                <Text style={styles.fieldValue}>{formatValue(v)}</Text>
+              </View>
+            );
+          })}
         </Card>
       ) : null}
 
@@ -83,28 +129,36 @@ export default function CallDetailScreen() {
         <Card>
           <Text style={styles.section}>Actions ({call.executed_actions.length})</Text>
           {call.executed_actions.map((a) => {
-            const isReverted = a.status === 'reverted';
-            const isMock = a.result?.mock === true;
+            const isUndone = a.status === 'undone' || a.status === 'reverted';
+            const isSimulated = a.is_simulated ?? a.result?.mock === true;
+            const canUndo = a.can_undo ?? false;
             return (
               <View key={a.id} style={styles.actionRow}>
                 <View style={{ flex: 1, gap: 4 }}>
                   <View style={styles.actionHeader}>
                     <Text style={styles.actionTitle}>{a.title}</Text>
-                    {isMock ? <Badge tone="brand">Simulated</Badge> : null}
+                    {isSimulated ? <Badge tone="brand">Simulated</Badge> : null}
                   </View>
                   <Text style={styles.actionMeta}>{a.action_type}</Text>
                   {a.summary ? <Text style={styles.actionSummary}>{a.summary}</Text> : null}
                 </View>
-                {isReverted ? (
-                  <Badge tone="danger">Reverted</Badge>
-                ) : (
+                {isUndone && canUndo ? (
                   <Button
-                    title="Revert"
-                    variant="danger"
-                    onPress={() => revert(a.id)}
-                    loading={reverting === a.id}
+                    title="Redo"
+                    variant="secondary"
+                    onPress={() => redo(a.id)}
+                    loading={busyAction === a.id}
                   />
-                )}
+                ) : isUndone ? (
+                  <Badge tone="danger">Undone</Badge>
+                ) : canUndo ? (
+                  <Button
+                    title="Undo"
+                    variant="danger"
+                    onPress={() => undo(a.id)}
+                    loading={busyAction === a.id}
+                  />
+                ) : null}
               </View>
             );
           })}
@@ -130,13 +184,41 @@ function formatValue(v: unknown): string {
 
 const styles = StyleSheet.create({
   scroll: { padding: spacing.lg, gap: spacing.md },
-  headerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  heading: { color: colors.text, fontSize: 18, fontWeight: '700' },
+  headerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.md },
+  callerLink: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 4,
+    borderRadius: radius.pill,
+    backgroundColor: 'rgba(59, 130, 246, 0.10)',
+    borderWidth: 1,
+    borderColor: 'rgba(59, 130, 246, 0.25)',
+    flexShrink: 1,
+  },
+  heading: { color: colors.text, fontSize: 16, fontWeight: '700' },
   meta: { color: colors.textMuted, fontSize: 13 },
+  errorBanner: {
+    color: colors.danger,
+    fontSize: 12,
+    marginTop: spacing.sm,
+    paddingTop: spacing.sm,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.border,
+  },
   section: { color: colors.text, fontWeight: '700', fontSize: 15, marginBottom: 4 },
-  classifyRow: { flexDirection: 'row', gap: 6, flexWrap: 'wrap' },
-  fieldRow: { flexDirection: 'row', justifyContent: 'space-between', gap: spacing.md },
-  fieldLabel: { color: colors.textMuted, fontSize: 13 },
+  classifyRow: { flexDirection: 'row', gap: 6, flexWrap: 'wrap', marginBottom: spacing.sm },
+  fieldRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: spacing.md,
+    paddingVertical: 6,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.border,
+  },
+  fieldLabel: { color: colors.text, fontSize: 13, fontWeight: '600' },
+  fieldKey: { color: colors.textSubtle, fontSize: 10, fontFamily: 'monospace', marginTop: 1 },
   fieldValue: { color: colors.text, fontSize: 13, flex: 1, textAlign: 'right' },
   actionRow: {
     flexDirection: 'row',

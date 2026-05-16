@@ -1,54 +1,98 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Animated, Easing, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { CallButton } from '../components/CallButton';
 import { api, ApiError } from '../lib/api';
 import type { AudioDomain } from '../lib/audio';
+import { setPipelineToast } from '../lib/pipelineToast';
 import { colors, radius, spacing } from '../lib/theme';
 import type { CallListItem, CustomerCard, TemplateView } from '../lib/types';
 import { usePhoneAudio } from '../lib/usePhoneAudio';
 
 type CallerInfo = { name: string; phone: string };
+type CallerMode = 'existing' | 'new';
 
-// Fallback display when the phone number is unknown to the backend (new caller).
-// When the customer row exists, its display_name wins.
+// Existing-customer numbers map to seeded customer rows (see backend seed.py).
+// Names + voices align with the Speechmatics TTS demo MP3s under
+// app/assets/audio/, so the recording matches the caller card.
 const CALLERS: Record<AudioDomain, CallerInfo> = {
-  restaurant: { name: 'Marco Rossi', phone: '+39 333 111 2233' },
-  dentist: { name: 'Giulia Rossi', phone: '+39 333 999 1122' },
-  bodyshop: { name: 'Luca Verdi', phone: '+39 333 888 3344' },
+  restaurant: { name: 'Mark Ross', phone: '+1 (555) 111-2233' },
+  dentist: { name: 'Laura Bennett', phone: '+1 (555) 999-1122' },
+  bodyshop: { name: 'Andrew Green', phone: '+1 (555) 888-3344' },
 };
 
 const PHONE_E164: Record<AudioDomain, string> = {
-  restaurant: '+393331112233',
-  dentist: '+393339991122',
-  bodyshop: '+393338883344',
+  restaurant: '+15551112233',
+  dentist: '+15559991122',
+  bodyshop: '+15558883344',
 };
 
-const POLL_INTERVAL_MS = 1500;
-const POLL_TIMEOUT_MS = 120_000;
-const POLL_SLOW_MS = 30_000;
+function formatE164ToDisplay(e164: string): string {
+  // Crude US-style pretty print: +15551234567 -> +1 (555) 123-4567.
+  const digits = e164.replace(/^\+/, '');
+  if (digits.length === 11 && digits.startsWith('1')) {
+    return `+1 (${digits.slice(1, 4)}) ${digits.slice(4, 7)}-${digits.slice(7)}`;
+  }
+  return e164;
+}
 
-type Phase = 'loading' | 'ringing' | 'human' | 'talking' | 'analyzing' | 'error';
+function generateNewCallerPhone(): { e164: string; pretty: string } {
+  // Pick a random 7-digit number in the +1 555 0XX XXXX range so it never
+  // collides with the seed numbers above and stays in the reserved test
+  // block. Fresh on every press: every new-caller trigger creates a new
+  // Customer row in the backend.
+  const middle = String(Math.floor(Math.random() * 100)).padStart(2, '0');
+  const tail = String(Math.floor(Math.random() * 10_000)).padStart(4, '0');
+  const e164 = `+15550${middle}${tail}`;
+  return { e164, pretty: formatE164ToDisplay(e164) };
+}
+
+type Phase = 'loading' | 'ringing' | 'human' | 'talking' | 'error';
 
 export default function IncomingCallScreen() {
   const router = useRouter();
   const audio = usePhoneAudio();
+  const params = useLocalSearchParams<{ caller?: string }>();
+  const callerMode: CallerMode = params.caller === 'new' ? 'new' : 'existing';
+
   const [phase, setPhase] = useState<Phase>('loading');
   const [template, setTemplate] = useState<TemplateView | null>(null);
   const [customer, setCustomer] = useState<CustomerCard | null>(null);
   const [recentCalls, setRecentCalls] = useState<CallListItem[]>([]);
   const [elapsed, setElapsed] = useState(0);
-  const [progressLabel, setProgressLabel] = useState<string | null>(null);
-  const [analyzingElapsed, setAnalyzingElapsed] = useState(0);
   const [error, setError] = useState<string | null>(null);
+
+  // The fresh-customer phone is pinned for the lifetime of THIS dialer
+  // session so the ringing screen, the submit and the caller card all
+  // agree on it. A new "Call from new customer" press from the simulator
+  // generates a different one because this component unmounts and remounts.
+  const newCallerPhone = useRef(callerMode === 'new' ? generateNewCallerPhone() : null);
 
   const pulse = useRef(new Animated.Value(1)).current;
 
   const domain = (template?.domain_hint as AudioDomain) ?? 'restaurant';
   const fallbackCaller = CALLERS[domain] ?? CALLERS.restaurant;
-  const phoneE164 = PHONE_E164[domain];
-  const displayName = customer?.display_name ?? fallbackCaller.name;
+  const sim = template?.simulation_config;
+  const useBundledAudio =
+    (!sim || sim.audio_source === 'bundled') &&
+    (domain === 'restaurant' || domain === 'dentist' || domain === 'bodyshop');
+  const audioKey = useBundledAudio ? domain : (template?.id ?? domain);
+  const phoneE164 =
+    callerMode === 'new' && newCallerPhone.current
+      ? newCallerPhone.current.e164
+      : sim?.caller_phone_e164 ?? PHONE_E164[domain];
+  const fallbackDisplayName =
+    callerMode === 'new'
+      ? 'Unknown caller'
+      : sim?.caller_name ?? fallbackCaller.name;
+  const fallbackDisplayPhone =
+    callerMode === 'new' && newCallerPhone.current
+      ? newCallerPhone.current.pretty
+      : sim?.caller_phone_e164
+        ? formatE164ToDisplay(sim.caller_phone_e164)
+        : fallbackCaller.phone;
+  const displayName = customer?.display_name ?? fallbackDisplayName;
 
   // Load template + customer in parallel on mount, then transition to ringing.
   useEffect(() => {
@@ -59,22 +103,45 @@ export default function IncomingCallScreen() {
         if (cancelled) return;
         setTemplate(t);
 
-        // Customer lookup runs in parallel with audio prefetch. /by-phone
-        // returns null (not 404) for unknown numbers — both are valid states.
-        const phone = PHONE_E164[t.domain_hint as AudioDomain] ?? PHONE_E164.restaurant;
-        const customerPromise = api
-          .getCustomerByPhone(phone)
-          .then((c) => (cancelled ? null : c))
-          .catch(() => null);
+        const sim = t.simulation_config;
+        const useBundled =
+          (!sim || sim.audio_source === 'bundled') &&
+          (t.domain_hint === 'restaurant' ||
+            t.domain_hint === 'dentist' ||
+            t.domain_hint === 'bodyshop');
 
-        await audio.prefetch(t.domain_hint as AudioDomain);
+        const targetPhone =
+          callerMode === 'new' && newCallerPhone.current
+            ? newCallerPhone.current.e164
+            : sim?.caller_phone_e164 ??
+              PHONE_E164[t.domain_hint as AudioDomain] ??
+              PHONE_E164.restaurant;
+
+        // For "new caller" mode we deliberately skip the customer lookup —
+        // the whole point of that path is to demonstrate the create-on-call
+        // flow, and a stray match against a recycled seed phone would
+        // poison the demo.
+        const customerPromise =
+          callerMode === 'new'
+            ? Promise.resolve(null)
+            : api
+                .getCustomerByPhone(targetPhone)
+                .then((c) => (cancelled ? null : c))
+                .catch(() => null);
+
+        if (useBundled) {
+          await audio.prefetch(t.domain_hint as AudioDomain);
+        } else if (sim?.audio_status === 'ready') {
+          await audio.prefetchUrl(t.id, api.simulationAudioUrl(t.id));
+        } else {
+          throw new Error(
+            'This template has no demo audio yet. Generate or upload one in the Simulator screen.',
+          );
+        }
         const c = await customerPromise;
         if (cancelled) return;
         setCustomer(c);
 
-        // Only fetch history if the customer exists. Demo seeds have
-        // total_calls > 0 but no Call rows (session-scoped filter); empty
-        // list is the expected state — handle it gracefully in the UI.
         if (c) {
           api
             .listCalls({ customer_id: c.id, limit: 5 })
@@ -99,7 +166,7 @@ export default function IncomingCallScreen() {
     // audio is stable across renders (refs only, no state) — omitting from
     // deps prevents the cleanup loop that swallows the first mount.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [callerMode]);
 
   // Ringtone + pulse animation while ringing.
   useEffect(() => {
@@ -138,15 +205,6 @@ export default function IncomingCallScreen() {
     return () => clearInterval(id);
   }, [phase]);
 
-  // Elapsed counter for analyzing phase — drives the "still working…" message.
-  useEffect(() => {
-    if (phase !== 'analyzing') return;
-    setAnalyzingElapsed(0);
-    const started = Date.now();
-    const id = setInterval(() => setAnalyzingElapsed(Date.now() - started), 500);
-    return () => clearInterval(id);
-  }, [phase]);
-
   const hangUp = () => {
     audio.stopAll();
     router.back();
@@ -157,24 +215,21 @@ export default function IncomingCallScreen() {
     setPhase('human');
   };
 
-  const runPipeline = async () => {
-    setPhase('analyzing');
-    setProgressLabel('Uploading call…');
+  const submitAndClose = async () => {
     try {
       const blob = audio.getCallBlob();
       if (!blob) throw new Error('Missing call audio blob.');
       const submitted = await api.submitAudio(blob, phoneE164, `${domain}.mp3`);
-      const deadline = Date.now() + POLL_TIMEOUT_MS;
-      while (Date.now() < deadline) {
-        const detail = await api.getCall(submitted.call_id);
-        setProgressLabel(`Pipeline ${detail.status}…`);
-        if (detail.status === 'completed' || detail.status === 'failed') {
-          router.replace(`/call/${detail.id}`);
-          return;
-        }
-        await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
-      }
-      throw new Error('Pipeline timed out after 2 minutes.');
+      // Park the banner so the Calls tab shows "Analysis in progress" on mount.
+      setPipelineToast({
+        callId: submitted.call_id,
+        phoneE164,
+        startedAt: Date.now(),
+      });
+      audio.stopAll();
+      // Replace, not back: prevents the user from "going back" into a dialer
+      // that has already shipped the audio.
+      router.replace('/(tabs)' as never);
     } catch (e) {
       setError(e instanceof ApiError ? e.message : String(e));
       setPhase('error');
@@ -186,9 +241,10 @@ export default function IncomingCallScreen() {
     audio.stopRinging();
     setPhase('talking');
     audio.playCallAudio(
-      domain,
+      audioKey,
       () => {
-        runPipeline();
+        // Audio finished playing — fire-and-forget submit, then close.
+        void submitAndClose();
       },
       (err) => {
         setError(err.message);
@@ -207,8 +263,6 @@ export default function IncomingCallScreen() {
         return 'On call with operator';
       case 'talking':
         return 'On call';
-      case 'analyzing':
-        return 'Call ended';
       case 'error':
         return 'Something went wrong';
     }
@@ -228,9 +282,11 @@ export default function IncomingCallScreen() {
         </Animated.View>
 
         <Text style={styles.caller}>{displayName}</Text>
-        <Text style={styles.phone}>{fallbackCaller.phone}</Text>
+        <Text style={styles.phone}>{fallbackDisplayPhone}</Text>
 
-        {phase === 'ringing' && <CallerContext customer={customer} recentCalls={recentCalls} />}
+        {phase === 'ringing' && (
+          <CallerContext customer={customer} recentCalls={recentCalls} callerMode={callerMode} />
+        )}
 
         {(phase === 'human' || phase === 'talking') && (
           <Text style={styles.timer}>{formatTime(elapsed)}</Text>
@@ -240,16 +296,6 @@ export default function IncomingCallScreen() {
           <View style={styles.tag}>
             <Ionicons name="sparkles" size={12} color={colors.brand} />
             <Text style={styles.tagText}>Afterglow listening</Text>
-          </View>
-        )}
-
-        {phase === 'analyzing' && (
-          <View style={styles.analyzing}>
-            <ActivityIndicator color={colors.brand} />
-            <Text style={styles.analyzingText}>{progressLabel ?? 'Analyzing with Afterglow…'}</Text>
-            {analyzingElapsed > POLL_SLOW_MS && (
-              <Text style={styles.analyzingSlow}>Still working… (this can take up to 2 minutes)</Text>
-            )}
           </View>
         )}
 
@@ -288,14 +334,17 @@ export default function IncomingCallScreen() {
 type CallerContextProps = {
   customer: CustomerCard | null;
   recentCalls: CallListItem[];
+  callerMode: CallerMode;
 };
 
-function CallerContext({ customer, recentCalls }: CallerContextProps) {
+function CallerContext({ customer, recentCalls, callerMode }: CallerContextProps) {
   if (!customer) {
     return (
       <View style={styles.newCallerBadge}>
         <Ionicons name="sparkles-outline" size={12} color={colors.brand} />
-        <Text style={styles.newCallerText}>New caller</Text>
+        <Text style={styles.newCallerText}>
+          {callerMode === 'new' ? 'New customer · will be created on submit' : 'New caller'}
+        </Text>
       </View>
     );
   }
@@ -341,7 +390,7 @@ function CallerContext({ customer, recentCalls }: CallerContextProps) {
         <View style={styles.briefingCard}>
           <View style={styles.briefingHeader}>
             <Ionicons name="sparkles" size={14} color={colors.brand} />
-            <Text style={styles.briefingTitle}>Briefing</Text>
+            <Text style={styles.briefingTitle}>Next-call briefing</Text>
           </View>
           <Text style={styles.briefingText}>{customer.memory_summary}</Text>
         </View>
@@ -435,9 +484,6 @@ const styles = StyleSheet.create({
     marginTop: spacing.sm,
   },
   tagText: { color: colors.brand, fontSize: 11, fontWeight: '600', letterSpacing: 0.5 },
-  analyzing: { flexDirection: 'column', alignItems: 'center', gap: spacing.sm, marginTop: spacing.lg },
-  analyzingText: { color: colors.textMuted, fontSize: 14 },
-  analyzingSlow: { color: colors.textSubtle, fontSize: 12, textAlign: 'center', paddingHorizontal: spacing.lg },
   errorText: { color: colors.danger, textAlign: 'center', marginTop: spacing.lg },
   bottomBlock: { alignItems: 'center', gap: spacing.lg, paddingTop: spacing.lg },
   dialerRow: {

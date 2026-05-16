@@ -14,11 +14,19 @@ import { resolveAudioUri, resolveRingtoneUri, type AudioDomain } from './audio';
 
 const isWeb = Platform.OS === 'web';
 
+// "domain" here can be one of the bundled domain keys (restaurant / dentist /
+// bodyshop) OR an arbitrary template id — the bundled domains have their
+// MP3 packaged with the app and don't need a network fetch; everything else
+// resolves through `/api/v1/templates/{id}/simulation/audio` and is set on
+// the hook via `prefetchUrl`.
+type AudioSourceKey = string;
+
 export type PhoneAudio = {
   prefetch: (domain: AudioDomain) => Promise<void>;
+  prefetchUrl: (key: AudioSourceKey, url: string) => Promise<void>;
   playRingtone: () => void;
   stopRinging: () => void;
-  playCallAudio: (domain: AudioDomain, onEnded: () => void, onError: (err: Error) => void) => void;
+  playCallAudio: (key: AudioSourceKey, onEnded: () => void, onError: (err: Error) => void) => void;
   getCallBlob: () => Blob | null;
   stopAll: () => void;
 };
@@ -28,16 +36,21 @@ export function usePhoneAudio(): PhoneAudio {
   const callRef = useRef<HTMLAudioElement | null>(null);
   const callBlobRef = useRef<Blob | null>(null);
   const ringtoneUriRef = useRef<string | null>(null);
-  const callUriByDomainRef = useRef<Partial<Record<AudioDomain, string>>>({});
+  const callUriByKeyRef = useRef<Record<AudioSourceKey, string>>({});
 
-  const prefetch = useCallback(async (domain: AudioDomain) => {
+  const ensureRingtone = useCallback(async () => {
     if (!isWeb) return;
     if (!ringtoneUriRef.current) {
       ringtoneUriRef.current = await resolveRingtoneUri();
     }
-    if (!callUriByDomainRef.current[domain]) {
+  }, []);
+
+  const prefetch = useCallback(async (domain: AudioDomain) => {
+    if (!isWeb) return;
+    await ensureRingtone();
+    if (!callUriByKeyRef.current[domain]) {
       const uri = await resolveAudioUri(domain);
-      callUriByDomainRef.current[domain] = uri;
+      callUriByKeyRef.current[domain] = uri;
       // Warm the blob cache too, so the post-call upload doesn't pay a second
       // network roundtrip after the recording finishes playing.
       try {
@@ -47,7 +60,24 @@ export function usePhoneAudio(): PhoneAudio {
         // Non-fatal: upload path will retry the fetch.
       }
     }
-  }, []);
+  }, [ensureRingtone]);
+
+  const prefetchUrl = useCallback(async (key: AudioSourceKey, url: string) => {
+    if (!isWeb) return;
+    await ensureRingtone();
+    // Always (re)assign the URL even if cached — a refresh of the backend
+    // audio means a new file, and the cached URL stays valid because we
+    // hit the API which streams the latest bytes.
+    callUriByKeyRef.current[key] = url;
+    try {
+      const res = await fetch(url, { credentials: 'include' });
+      if (res.ok) {
+        callBlobRef.current = await res.blob();
+      }
+    } catch {
+      // Non-fatal: upload path will retry the fetch.
+    }
+  }, [ensureRingtone]);
 
   const stopRinging = useCallback(() => {
     const el = ringtoneRef.current;
@@ -73,12 +103,12 @@ export function usePhoneAudio(): PhoneAudio {
   }, [stopRinging]);
 
   const playCallAudio = useCallback(
-    (domain: AudioDomain, onEnded: () => void, onError: (err: Error) => void) => {
+    (key: AudioSourceKey, onEnded: () => void, onError: (err: Error) => void) => {
       if (!isWeb) {
         onEnded();
         return;
       }
-      const uri = callUriByDomainRef.current[domain];
+      const uri = callUriByKeyRef.current[key];
       if (!uri) {
         onError(new Error('Call audio not prefetched'));
         return;
@@ -115,7 +145,7 @@ export function usePhoneAudio(): PhoneAudio {
   // without retriggering on every render. All members are stable useCallback
   // refs anyway.
   return useMemo(
-    () => ({ prefetch, playRingtone, stopRinging, playCallAudio, getCallBlob, stopAll }),
-    [prefetch, playRingtone, stopRinging, playCallAudio, getCallBlob, stopAll],
+    () => ({ prefetch, prefetchUrl, playRingtone, stopRinging, playCallAudio, getCallBlob, stopAll }),
+    [prefetch, prefetchUrl, playRingtone, stopRinging, playCallAudio, getCallBlob, stopAll],
   );
 }

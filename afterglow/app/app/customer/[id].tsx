@@ -83,13 +83,27 @@ export default function CustomerDetailScreen() {
         </Card>
       ) : null}
 
+      {customer.profile_facts && Object.keys(customer.profile_facts).length > 0 ? (
+        <Card>
+          <Text style={styles.section}>Known facts</Text>
+          {Object.entries(customer.profile_facts).map(([k, v]) => (
+            <View key={k} style={styles.factRow}>
+              <Text style={styles.factKey}>{k.replace(/_/g, ' ')}</Text>
+              <Text style={styles.factValue}>
+                {Array.isArray(v) ? v.join(', ') : typeof v === 'object' ? JSON.stringify(v) : String(v)}
+              </Text>
+            </View>
+          ))}
+        </Card>
+      ) : null}
+
       <Card>
-        <Text style={styles.section}>Memory summary</Text>
+        <Text style={styles.section}>Next-call briefing</Text>
         {customer.memory_summary ? (
           <Text style={styles.memory}>{customer.memory_summary}</Text>
         ) : (
           <Text style={styles.placeholder}>
-            No summary yet — AI updates this after each call.
+            No briefing yet — Afterglow writes one after each call.
           </Text>
         )}
       </Card>
@@ -128,6 +142,20 @@ const styles = StyleSheet.create({
   meta: { color: colors.textMuted, fontSize: 13, marginTop: spacing.xs },
   section: { color: colors.text, fontWeight: '700', fontSize: 15, marginBottom: spacing.sm },
   tagsRow: { flexDirection: 'row', gap: 6, flexWrap: 'wrap' },
+  factRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: spacing.md,
+    paddingVertical: 6,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.border,
+  },
+  factKey: {
+    color: colors.textMuted,
+    fontSize: 12,
+    textTransform: 'capitalize',
+  },
+  factValue: { color: colors.text, fontSize: 13, flex: 1, textAlign: 'right' },
   memory: { color: colors.text, fontSize: 14, lineHeight: 20 },
   placeholder: { color: colors.textMuted, fontSize: 13, fontStyle: 'italic' },
   error: { color: colors.danger, padding: spacing.lg },

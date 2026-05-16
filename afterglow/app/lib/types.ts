@@ -40,6 +40,16 @@ export type PromptHintRule = {
   then: string;
 };
 
+export type SimulationConfig = {
+  caller_name?: string | null;
+  caller_phone_e164?: string | null;
+  script_turns?: { speaker: string; voice: string; text: string }[];
+  audio_url?: string | null;
+  audio_status?: 'pending' | 'ready' | 'failed' | null;
+  audio_generated_at?: string | null;
+  audio_source?: 'tts_generated' | 'user_uploaded' | 'bundled' | null;
+};
+
 export type TemplateView = {
   id: string;
   name: string;
@@ -53,6 +63,7 @@ export type TemplateView = {
   is_active: boolean;
   is_seed?: boolean;
   session_id?: string | null;
+  simulation_config?: SimulationConfig | null;
   created_at: string;
 };
 
@@ -78,6 +89,28 @@ export type ValidationReport = {
 export type TemplateWizardRequest = {
   description: string;
   language?: string;
+};
+
+export type WizardChatTurn = {
+  role: 'user' | 'assistant';
+  content: string;
+};
+
+export type WizardChatRequest = {
+  messages: WizardChatTurn[];
+  draft_partial?: TemplateWizardResponse | null;
+  slots_filled?: Record<string, unknown>;
+  language?: string;
+};
+
+export type WizardChatResponse = {
+  assistant_message: string;
+  slots_filled: Record<string, unknown>;
+  confidence: number;
+  ready: boolean;
+  draft_partial?: TemplateWizardResponse | null;
+  validation?: ValidationReport | null;
+  proposed_actions_from_catalog: string[];
 };
 
 export type TemplateWizardResponse = {
@@ -114,6 +147,7 @@ export type CustomerCard = {
   display_name?: string | null;
   preferred_language?: string | null;
   tags: string[];
+  profile_facts?: Record<string, unknown>;
   memory_summary?: string | null;
   total_calls: number;
   last_call_at?: string | null;
@@ -132,6 +166,27 @@ export type CallActionView = {
   status: string;
   reverted_at?: string | null;
   created_at: string;
+  is_simulated?: boolean;
+  can_undo?: boolean;
+};
+
+export type ActionCatalogEntry = {
+  key: string;
+  label: string;
+  description: string;
+  integration_kind: 'mock_external' | 'internal_real';
+  mock_target?: string | null;
+  internal_handler?: string | null;
+  can_undo: boolean;
+  default_payload_schema?: Record<string, unknown> | null;
+  compatible_domains: string[];
+};
+
+export type FieldDefinitionLite = {
+  key: string;
+  label: string;
+  type: string;
+  pii_class: PiiClass | string;
 };
 
 export type CallExtractedView = {
@@ -141,11 +196,13 @@ export type CallExtractedView = {
   intent?: string | null;
   sentiment?: string | null;
   urgency?: string | null;
+  field_definitions?: FieldDefinitionLite[];
 };
 
 export type CallDetailView = {
   id: string;
   customer_id?: string | null;
+  customer?: CustomerCard | null;
   template_id: string;
   phone_e164: string;
   detected_language?: string | null;
@@ -183,6 +240,7 @@ export type AuditLogEntry = {
   input_tokens?: number | null;
   output_tokens?: number | null;
   duration_ms?: number | null;
+  payload?: Record<string, unknown> | null;
   status: string;
   error?: string | null;
   created_at: string;

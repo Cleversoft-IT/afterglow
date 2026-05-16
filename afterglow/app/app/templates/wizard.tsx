@@ -1,7 +1,11 @@
+import { Ionicons } from '@expo/vector-icons';
 import { router, Stack } from 'expo-router';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
+  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -10,54 +14,72 @@ import {
 import { Badge } from '../../components/Badge';
 import { Button } from '../../components/Button';
 import { Card } from '../../components/Card';
-import { FormField } from '../../components/FormField';
-import { Input } from '../../components/Input';
 import { Textarea } from '../../components/Textarea';
 import { api, ApiError } from '../../lib/api';
-import { colors, spacing } from '../../lib/theme';
+import { colors, radius, spacing } from '../../lib/theme';
 import type {
   TemplateWizardResponse,
-  ValidationIssue,
   ValidationReport,
+  WizardChatTurn,
 } from '../../lib/types';
 
-type Step = 'describe' | 'review';
+const INITIAL_GREETING =
+  'Hi! Tell me a bit about your business — what kind of phone calls do you usually take?';
 
 export default function TemplateWizardScreen() {
-  const [step, setStep] = useState<Step>('describe');
-  const [description, setDescription] = useState('');
-  const [language] = useState('en');
-  const [generating, setGenerating] = useState(false);
+  const [messages, setMessages] = useState<WizardChatTurn[]>([
+    { role: 'assistant', content: INITIAL_GREETING },
+  ]);
+  const [input, setInput] = useState('');
+  const [sending, setSending] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [revalidating, setRevalidating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const [slots, setSlots] = useState<Record<string, unknown>>({});
+  const [confidence, setConfidence] = useState(0);
+  const [ready, setReady] = useState(false);
   const [draft, setDraft] = useState<TemplateWizardResponse | null>(null);
+  const [validation, setValidation] = useState<ValidationReport | null>(null);
+  const [proposedKeys, setProposedKeys] = useState<string[]>([]);
 
-  const generate = async () => {
-    setGenerating(true);
+  const scrollRef = useRef<ScrollView | null>(null);
+
+  useEffect(() => {
+    scrollRef.current?.scrollToEnd({ animated: true });
+  }, [messages]);
+
+  const send = async () => {
+    const trimmed = input.trim();
+    if (!trimmed || sending) return;
+    const nextMessages: WizardChatTurn[] = [
+      ...messages,
+      { role: 'user', content: trimmed },
+    ];
+    setMessages(nextMessages);
+    setInput('');
+    setSending(true);
     setError(null);
     try {
-      const out = await api.runWizard({ description, language });
-      setDraft(out);
-      setStep('review');
+      const resp = await api.runWizardChat({
+        messages: nextMessages,
+        draft_partial: draft,
+        slots_filled: slots,
+        language: 'en',
+      });
+      setMessages([
+        ...nextMessages,
+        { role: 'assistant', content: resp.assistant_message },
+      ]);
+      setSlots(resp.slots_filled ?? {});
+      setConfidence(resp.confidence);
+      setReady(resp.ready);
+      setDraft(resp.draft_partial ?? null);
+      setValidation(resp.validation ?? null);
+      setProposedKeys(resp.proposed_actions_from_catalog ?? []);
     } catch (e) {
       setError(e instanceof ApiError ? e.message : String(e));
     } finally {
-      setGenerating(false);
-    }
-  };
-
-  const revalidate = async () => {
-    if (!draft) return;
-    setRevalidating(true);
-    setError(null);
-    try {
-      const report = await api.validateDraft(draft);
-      setDraft({ ...draft, validation: report });
-    } catch (e) {
-      setError(e instanceof ApiError ? e.message : String(e));
-    } finally {
-      setRevalidating(false);
+      setSending(false);
     }
   };
 
@@ -79,126 +101,171 @@ export default function TemplateWizardScreen() {
   };
 
   return (
-    <ScrollView contentContainerStyle={styles.container}>
+    <KeyboardAvoidingView
+      style={{ flex: 1, backgroundColor: colors.bg }}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+    >
       <Stack.Screen options={{ title: 'New template from prompt' }} />
+      <ScrollView
+        ref={scrollRef}
+        contentContainerStyle={styles.scroll}
+        onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: true })}
+      >
+        {messages.map((m, i) => (
+          <ChatBubble key={i} role={m.role}>
+            {m.content}
+          </ChatBubble>
+        ))}
 
-      {step === 'describe' ? (
-        <Card>
-          <FormField
-            label="Describe the business intake"
-            hint="One or two sentences. The wizard turns this into a structured template."
-          >
-            <Textarea
-              value={description}
-              onChangeText={setDescription}
-              placeholder="e.g. Booking intake for a barbershop with kids haircuts and walk-ins."
-              numberOfLines={5}
-            />
-          </FormField>
-          <Button
-            title="Generate template"
-            onPress={generate}
-            loading={generating}
-            disabled={description.trim().length < 20}
-          />
-          {error ? <Text style={styles.error}>{error}</Text> : null}
-        </Card>
-      ) : null}
-
-      {step === 'review' && draft ? (
-        <View style={{ gap: spacing.md }}>
-          <Card>
-            <FormField label="Name">
-              <Input
-                value={draft.name}
-                onChangeText={(text) => setDraft({ ...draft, name: text })}
-              />
-            </FormField>
-            <FormField label="Description">
-              <Textarea
-                value={draft.description}
-                onChangeText={(text) => setDraft({ ...draft, description: text })}
-              />
-            </FormField>
-            <FormField label="Domain hint">
-              <Input
-                value={draft.domain_hint ?? ''}
-                onChangeText={(text) => setDraft({ ...draft, domain_hint: text })}
-              />
-            </FormField>
-          </Card>
-
-          <ValidationCard report={draft.validation ?? null} />
-
-          <FieldsCard fields={draft.fields_schema} />
-          <ActionsCard actions={draft.action_types} />
-          <PromptHintsCard hints={draft.prompt_hints} />
-          <DictionaryCard terms={draft.custom_dictionary} />
-
-          {error ? <Text style={styles.error}>{error}</Text> : null}
-
-          <View style={styles.actionsRow}>
-            <Button
-              title="Re-validate"
-              variant="secondary"
-              onPress={revalidate}
-              loading={revalidating}
-            />
-            <Button
-              title="Save (draft)"
-              variant="secondary"
-              onPress={() => save(false)}
-              loading={saving}
-            />
-            <Button
-              title="Save & activate"
-              onPress={() => save(true)}
-              loading={saving}
-            />
+        {sending ? (
+          <View style={[styles.bubble, styles.assistant, { flexDirection: 'row', gap: spacing.sm }]}>
+            <ActivityIndicator color={colors.brand} size="small" />
+            <Text style={styles.bubbleText}>Thinking…</Text>
           </View>
-        </View>
-      ) : null}
+        ) : null}
 
-      {generating ? (
-        <ActivityIndicator color={colors.brand} style={{ marginTop: spacing.lg }} />
-      ) : null}
-    </ScrollView>
+        <DraftSidebar
+          slots={slots}
+          confidence={confidence}
+          ready={ready}
+          draft={draft}
+          validation={validation}
+          proposedKeys={proposedKeys}
+        />
+
+        {error ? <Text style={styles.error}>{error}</Text> : null}
+      </ScrollView>
+
+      <View style={styles.composer}>
+        <Textarea
+          value={input}
+          onChangeText={setInput}
+          placeholder="Type your reply…"
+          numberOfLines={2}
+          editable={!sending}
+        />
+        <View style={styles.composerRow}>
+          <Pressable
+            onPress={send}
+            disabled={sending || input.trim() === ''}
+            style={({ pressed }) => [
+              styles.send,
+              { opacity: sending || !input.trim() ? 0.5 : pressed ? 0.85 : 1 },
+            ]}
+          >
+            <Ionicons name="send" size={16} color="#fff" />
+            <Text style={styles.sendText}>Send</Text>
+          </Pressable>
+          {ready && draft ? (
+            <>
+              <Button
+                title="Save draft"
+                variant="secondary"
+                onPress={() => save(false)}
+                loading={saving}
+              />
+              <Button
+                title="Save & activate"
+                onPress={() => save(true)}
+                loading={saving}
+              />
+            </>
+          ) : null}
+        </View>
+      </View>
+    </KeyboardAvoidingView>
   );
 }
 
-function ValidationCard({ report }: { report: ValidationReport | null }) {
-  if (!report) return null;
-  const hasIssues = report.issues.length > 0;
-  const hasMocks = report.proposed_mocks.length > 0;
-  if (!hasIssues && !hasMocks) {
-    return (
-      <Card>
-        <Text style={styles.sectionTitle}>Validation</Text>
-        <Badge tone="success">No issues</Badge>
-      </Card>
-    );
-  }
+function ChatBubble({
+  role,
+  children,
+}: {
+  role: 'user' | 'assistant';
+  children: string;
+}) {
+  const isUser = role === 'user';
+  return (
+    <View style={[styles.bubble, isUser ? styles.user : styles.assistant]}>
+      <Text style={styles.bubbleText}>{children}</Text>
+    </View>
+  );
+}
+
+function DraftSidebar({
+  slots,
+  confidence,
+  ready,
+  draft,
+  validation,
+  proposedKeys,
+}: {
+  slots: Record<string, unknown>;
+  confidence: number;
+  ready: boolean;
+  draft: TemplateWizardResponse | null;
+  validation: ValidationReport | null;
+  proposedKeys: string[];
+}) {
+  const hasContent =
+    Object.keys(slots).length > 0 || draft != null || proposedKeys.length > 0;
+  if (!hasContent) return null;
+  const confidencePct = Math.round(confidence * 100);
   return (
     <Card>
-      <Text style={styles.sectionTitle}>Validation</Text>
-      {report.issues.map((issue, i) => (
-        <View key={`${issue.field_path}-${i}`} style={styles.issueRow}>
-          <Badge tone={severityTone(issue.severity)}>{issue.severity}</Badge>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.fieldPath}>{issue.field_path}</Text>
-            <Text style={styles.fieldMsg}>{issue.message}</Text>
-          </View>
+      <View style={styles.draftHeader}>
+        <Text style={styles.draftTitle}>Draft preview</Text>
+        <Badge tone={ready ? 'success' : 'neutral'}>{`${confidencePct}% ready`}</Badge>
+      </View>
+
+      {Object.keys(slots).length > 0 ? (
+        <View style={{ marginTop: spacing.sm, gap: 4 }}>
+          {Object.entries(slots).map(([k, v]) => (
+            <Text key={k} style={styles.slotLine}>
+              <Text style={styles.slotKey}>{k}:</Text> {formatSlot(v)}
+            </Text>
+          ))}
         </View>
-      ))}
-      {hasMocks ? (
-        <View style={{ marginTop: spacing.md, gap: spacing.xs }}>
-          <Text style={styles.sectionSubtitle}>Proposed mock targets</Text>
-          {report.proposed_mocks.map((m) => (
-            <Text key={m.action_key} style={styles.fieldMsg}>
-              <Text style={styles.fieldPath}>{m.action_key}</Text>
-              {' → '}
-              <Text style={{ color: colors.brand }}>{m.suggested_mock_target}</Text>
-              {`. ${m.rationale}`}
+      ) : null}
+
+      {draft ? (
+        <View style={{ marginTop: spacing.md, gap: 4 }}>
+          <Text style={styles.draftSection}>Fields ({draft.fields_schema.length})</Text>
+          {draft.fields_schema.slice(0, 6).map((f) => (
+            <Text key={f.key} style={styles.draftLine}>
+              · {f.label || f.key} <Text style={styles.draftMeta}>({f.type})</Text>
+            </Text>
+          ))}
+          {draft.fields_schema.length > 6 ? (
+            <Text style={styles.draftMeta}>+{draft.fields_schema.length - 6} more</Text>
+          ) : null}
+
+          <Text style={[styles.draftSection, { marginTop: spacing.sm }]}>
+            Actions ({draft.action_types.length})
+          </Text>
+          {draft.action_types.map((a) => (
+            <Text key={a.key} style={styles.draftLine}>
+              · {a.label || a.key} <Text style={styles.draftMeta}>({a.execution_mode})</Text>
+            </Text>
+          ))}
+        </View>
+      ) : null}
+
+      {proposedKeys.length > 0 ? (
+        <View style={{ marginTop: spacing.md }}>
+          <Text style={styles.draftSection}>Dropped — not in catalog</Text>
+          {proposedKeys.map((k) => (
+            <Text key={k} style={styles.draftMeta}>· {k}</Text>
+          ))}
+        </View>
+      ) : null}
+
+      {validation && validation.issues.length > 0 ? (
+        <View style={{ marginTop: spacing.md }}>
+          <Text style={styles.draftSection}>Validation</Text>
+          {validation.issues.map((iss, i) => (
+            <Text key={i} style={styles.draftMeta}>
+              [{iss.severity}] {iss.field_path}: {iss.message}
             </Text>
           ))}
         </View>
@@ -207,101 +274,60 @@ function ValidationCard({ report }: { report: ValidationReport | null }) {
   );
 }
 
-function severityTone(s: ValidationIssue['severity']) {
-  if (s === 'error') return 'danger' as const;
-  if (s === 'warning') return 'warning' as const;
-  return 'neutral' as const;
-}
-
-function FieldsCard({ fields }: { fields: TemplateWizardResponse['fields_schema'] }) {
-  return (
-    <Card>
-      <Text style={styles.sectionTitle}>Fields ({fields.length})</Text>
-      {fields.map((f) => (
-        <View key={f.key} style={styles.itemRow}>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.itemName}>
-              {f.key} <Text style={styles.itemType}>· {f.type}</Text>
-            </Text>
-            <Text style={styles.itemMeta}>
-              pii={f.pii_class ?? 'none'} · hint={f.extractor_hint ?? 'freeform'}
-              {f.confidence_threshold != null ? ` · ≥${f.confidence_threshold}` : ''}
-              {f.depends_on && f.depends_on.length ? ` · depends_on=${f.depends_on.join(',')}` : ''}
-            </Text>
-          </View>
-          {f.required ? <Badge tone="neutral">required</Badge> : null}
-          {f.sensitive ? <Badge tone="warning">sensitive</Badge> : null}
-        </View>
-      ))}
-    </Card>
-  );
-}
-
-function ActionsCard({ actions }: { actions: TemplateWizardResponse['action_types'] }) {
-  return (
-    <Card>
-      <Text style={styles.sectionTitle}>Actions ({actions.length})</Text>
-      {actions.map((a) => (
-        <View key={a.key} style={styles.itemRow}>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.itemName}>{a.key}</Text>
-            <Text style={styles.itemMeta}>
-              {a.execution_mode} · mock={a.mock_target ?? '—'}
-              {a.preconditions && a.preconditions.length ? ` · needs=${a.preconditions.join(',')}` : ''}
-              {a.confidence_threshold != null ? ` · ≥${a.confidence_threshold}` : ''}
-            </Text>
-          </View>
-          {a.mutates ? <Badge tone="warning">mutates</Badge> : null}
-          {a.evidence_required ? <Badge tone="neutral">evidence</Badge> : null}
-        </View>
-      ))}
-    </Card>
-  );
-}
-
-function PromptHintsCard({ hints }: { hints: TemplateWizardResponse['prompt_hints'] }) {
-  if (!hints || hints.length === 0) return null;
-  return (
-    <Card>
-      <Text style={styles.sectionTitle}>Prompt rules ({hints.length})</Text>
-      {hints.map((h, i) => (
-        <View key={i} style={{ gap: 2, marginBottom: spacing.sm }}>
-          <Text style={styles.fieldPath}>when: {h.when}</Text>
-          <Text style={styles.fieldMsg}>{h.then}</Text>
-        </View>
-      ))}
-    </Card>
-  );
-}
-
-function DictionaryCard({ terms }: { terms: string[] }) {
-  return (
-    <Card>
-      <Text style={styles.sectionTitle}>Custom dictionary ({terms.length})</Text>
-      <Text style={styles.fieldMsg}>{terms.join(', ') || '—'}</Text>
-    </Card>
-  );
+function formatSlot(v: unknown): string {
+  if (v == null) return '—';
+  if (Array.isArray(v)) return v.length === 0 ? '[]' : v.map(formatSlot).join(', ');
+  if (typeof v === 'object') return JSON.stringify(v);
+  return String(v);
 }
 
 const styles = StyleSheet.create({
-  container: { padding: spacing.lg, gap: spacing.md },
-  error: { color: colors.danger, marginTop: spacing.sm, fontSize: 13 },
-  actionsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
-  sectionTitle: { color: colors.text, fontWeight: '700', fontSize: 14, marginBottom: spacing.sm },
-  sectionSubtitle: { color: colors.textMuted, fontWeight: '600', fontSize: 12 },
-  issueRow: { flexDirection: 'row', gap: spacing.sm, alignItems: 'flex-start', marginBottom: spacing.sm },
-  fieldPath: { color: colors.text, fontFamily: 'monospace', fontSize: 12 },
-  fieldMsg: { color: colors.textMuted, fontSize: 13 },
-  itemRow: {
-    flexDirection: 'row',
-    gap: spacing.sm,
-    alignItems: 'center',
-    marginBottom: spacing.sm,
-    paddingBottom: spacing.sm,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
+  scroll: { padding: spacing.lg, gap: spacing.sm, paddingBottom: spacing.xxl },
+  bubble: {
+    padding: spacing.md,
+    borderRadius: radius.lg,
+    maxWidth: '90%',
   },
-  itemName: { color: colors.text, fontFamily: 'monospace', fontSize: 13, fontWeight: '600' },
-  itemType: { color: colors.textMuted, fontWeight: '400' },
-  itemMeta: { color: colors.textSubtle, fontSize: 11, marginTop: 2 },
+  user: {
+    alignSelf: 'flex-end',
+    backgroundColor: colors.brand,
+  },
+  assistant: {
+    alignSelf: 'flex-start',
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  bubbleText: { color: colors.text, fontSize: 14, lineHeight: 20 },
+  error: { color: colors.danger, fontSize: 13, marginTop: spacing.sm },
+  composer: {
+    padding: spacing.md,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    backgroundColor: colors.bg,
+    gap: spacing.sm,
+  },
+  composerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    flexWrap: 'wrap',
+  },
+  send: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    backgroundColor: colors.brand,
+    borderRadius: radius.pill,
+  },
+  sendText: { color: '#fff', fontWeight: '700', fontSize: 13 },
+  draftHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  draftTitle: { color: colors.text, fontWeight: '700', fontSize: 14 },
+  draftSection: { color: colors.textMuted, fontWeight: '700', fontSize: 12, marginBottom: 2 },
+  draftLine: { color: colors.text, fontSize: 13 },
+  draftMeta: { color: colors.textSubtle, fontSize: 11 },
+  slotLine: { color: colors.text, fontSize: 12 },
+  slotKey: { color: colors.brand, fontWeight: '700' },
 });
