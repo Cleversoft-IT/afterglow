@@ -12,9 +12,9 @@ Small appointment-driven businesses (restaurants, dental clinics, body shops) st
 
 ## The approach
 
-The human keeps talking. The AI listens (opt-in via the **blue phone button**), transcribes with diarization, and **after** the call runs a single Gemini pass that extracts the fields, classifies the call, plans the follow-up actions and writes a one-paragraph briefing for the next operator. Every executed action lands on the post-call screen with a **Revert** button. Every step is logged in a production-shape audit log.
+The human keeps talking. The AI listens (opt-in via the **blue phone button**), transcribes with diarization, and **after** the call runs a Gemini pass that extracts the fields, classifies the call, plans the follow-up actions and writes a one-or-two-sentence "next-call briefing" for the operator who will pick up the next call. Every executed action lands on the post-call screen with an **Undo / Redo** button (only when the catalog says the action can be safely undone — sent messages do not get one). Every step is logged in a production-shape audit log.
 
-The autonomy is the whole point: the hackathon brief calls for *autonomous decision-making systems*, not copilots. The revert button + audit + confidence/evidence are the trust net that justifies the autonomy.
+The autonomy is the whole point: the hackathon brief calls for *autonomous decision-making systems*, not copilots. The undo + audit + confidence/evidence are the trust net that justifies the autonomy.
 
 ## Architecture
 
@@ -39,9 +39,11 @@ FastAPI background task ─► Speechmatics batch (diarization + lang detect + c
        │         - next_call_briefing  (NL paragraph, detected language)
        │       Fail-fast: missing key / error / schema mismatch → Call.failed.
        │
-       ├─► PII sanitizer (pii_sanitizer.py — pure Python)
-       │       per-class redaction of briefing + evidence; raw fields survive.
-       │       Audit step `pii_policy_applied`.
+       ├─► PII observer (pii_sanitizer.py — pure Python)
+       │       observe-only since 2026-05-16 feedback round 2: briefing + evidence
+       │       stay verbatim so the operator can read allergies/names. Audit step
+       │       `pii_policy_applied` records WHICH classes were present at what
+       │       confidence; redaction is no longer applied to runtime surfaces.
        │
        ├─► Action Planner (agentic ADK loop — see app/agents/action_planner.py)
        │       Each auto-mode action_type is exposed as an ADK tool with a
@@ -50,8 +52,11 @@ FastAPI background task ─► Speechmatics batch (diarization + lang detect + c
        │       Fail-fast: ADK error → Call.failed (no fallback).
        │
        ├─► Action Executor (deterministic Python) ─► jsonschema.validate(payload),
-       │       evidence_required gate, mutates flag → mock registry + Postgres +
-       │       audit_log
+       │       evidence_required gate, mutates flag → action_catalog routes the
+       │       call to either MOCK_REGISTRY (mock_external, e.g. booking.create)
+       │       or INTERNAL_HANDLERS (internal_real, e.g. customer.update_profile
+       │       which actually writes Customer.tags + profile_facts on Postgres).
+       │       Audit_log records the integration_kind on every step.
        │
        └─► Memory write-back ─► customer.memory_summary (Postgres, operator-visible)
                                 + bilingual chunk (native + EN summary) pushed to

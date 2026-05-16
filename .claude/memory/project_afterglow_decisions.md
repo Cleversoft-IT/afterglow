@@ -1,11 +1,11 @@
 ---
 name: project-afterglow-decisions
-description: Decisioni di prodotto/architettura di Afterglow. Pivot da non rinegoziare senza ridiscutere. Aggiornato 2026-05-16 dopo drop `businesses` (mig 0002) e rientro di action_planner agentic (ADK).
+description: Decisioni di prodotto/architettura di Afterglow. Pivot da non rinegoziare senza ridiscutere. Aggiornato 2026-05-16 — feedback round 2 (no PII redaction, action catalog, dialer non bloccante, Undo/Redo flip-only, simulator 2-mode).
 metadata:
   type: project
 ---
 
-Decisioni iniziali del **2026-05-14** + revisioni del **2026-05-15** e **2026-05-16**. Ridiscutere solo con motivazione esplicita.
+Decisioni iniziali del **2026-05-14** + revisioni del **2026-05-15** e **2026-05-16** (incluso il **feedback round 2** del pomeriggio). Ridiscutere solo con motivazione esplicita.
 
 ### 1. Autonomia agent — FULL
 L'AI esegue **autonomamente** anche le azioni esterne (booking, WhatsApp, email, follow-up). Nel dialer le ex "pending actions" diventano **"executed actions con revert manuale"**. Eccezioni: nel backend l'utente può marcare alcune azioni specifiche come "manual-only" (no auto-execute).
@@ -154,6 +154,38 @@ File `LICENSE` MIT nel repo dal primo commit.
 Default esplicito per backend e wizard: `GEMINI_DEFAULT_MODEL=gemini-3.1-flash-lite` e `GEMINI_TEMPLATE_BUILDER_MODEL=gemini-3.1-flash-lite`. Coolify è già stato aggiornato lato backend; il codice tiene lo stesso default per local dev e deploy freschi. Evitare alias mobili come `gemini-flash-latest` / `gemini-latest-flash` e vecchi pin `gemini-2.5-flash` o `gemini-3-flash`, perché cambiano quota/comportamento o puntano a generazioni non allineate alla demo.
 
 **How to apply:** se serve un modello reasoning Pro, sappi che il free-tier non lo serve. Per la demo restiamo su Flash-Lite, dove latenza e costo sono più importanti del massimo reasoning.
+
+### 1.sei. Feedback round 2 — UX & action catalog (2026-05-16 pomeriggio)
+
+Dopo il primo giro di test su installazione fresh (Mark Ross / Julia White) sono emerse 7 famiglie di problemi che alterano la forma del prodotto. Decisioni bloccate qui per non ridiscuterle:
+
+**A. PII redaction sul briefing → disabilitata.** `agents/pii_sanitizer.py` è ora **observe-only**: lascia briefing e evidence verbatim e registra solo `pii_classes_present` nell'audit log come `pii_policy_applied` con `mode="observe_only"`. Motivo: l'operatore deve sapere che il cliente è celiaco; `[redacted: health]` è inutile. La utility `redact_for_briefing` resta in `pii_policy.py` per usi futuri ma non viene chiamata dalla pipeline runtime. Test riscritti in `tests/test_pii_sanitizer.py`.
+
+**B. Dialer fire-and-forget.** `app/app/incoming-call.tsx` non polla più la pipeline: dopo che l'audio finisce, submit + `router.replace('/(tabs)')` + toast pubblicato via `app/lib/pipelineToast.ts`. La tab Calls (`app/app/(tabs)/index.tsx`) ha un banner "Analysis in progress" e auto-refresh ogni 2s finché ci sono call non-terminali. NESSUN auto-redirect a Card Detail quando la call completa: l'utente può cliccare quando vuole. Sostituisce la vecchia logica `phase='analyzing'` con polling bloccante (rimossa).
+
+**C. Simulator a due bottoni.** `app/app/simulator.tsx` espone "Call from existing customer" (phone seedato per il domain) e "Call from new customer" (phone random `+1 555 0XX XXXX` generato lato client). `incoming-call.tsx` legge `?caller=existing|new` e salta il customer lookup quando `new` per dimostrare la creazione del Customer durante la pipeline.
+
+**D. Seed Call rows visibili.** `db/seed.py` ora inserisce ANCHE Call rows fittizie per Mark Ross (2 call: 20 Apr + 7 Mag) e Julia White (1 call: 15 Apr) con transcript EN, ExtractedFields completi, briefing_snapshot, ExecutedAction (booking + whatsapp + customer.update_profile) e audit_log entries. Migration `0008_call_executedaction_is_seed.py` aggiunge il flag `is_seed` su `calls` e `executed_actions`. Le seed sono **visibili anche nella lista globale Calls** (no filter): l'utente ha esplicitamente chiesto di vederle al fresh install per dare contesto.
+
+**E. Action catalog server-side (`integrations/action_catalog.py`).** Single source of truth per ogni action key Afterglow conosce: `integration_kind` (`mock_external` | `internal_real`), `mock_target` o `internal_handler`, `can_undo`, `compatible_domains`. L'`action_executor` consulta il catalog per scegliere il path (MOCK_REGISTRY vs `INTERNAL_HANDLERS`), e `CallActionView.is_simulated` / `can_undo` sono **server-computed dal catalog** (non più derivati da `result.mock` o da euristiche client). Il `template_validator` ora flagga template che citano action keys non nel catalog (sostituisce il vecchio import da `app.integrations.mocks.available_keys`).
+
+**F. `customer.update_profile` è `internal_real`.** Nuovo modulo `integrations/internal/customer_profile.py`: muta davvero `customer.display_name` (solo se vuoto), `customer.tags` (deduped merge), `customer.profile_facts` (JSONB, migration `0009_customer_profile_facts.py`). Cattura `previous_state` nel `result` per abilitare l'undo che ripristina lo stato. Il `result.mock = False` significa "niente badge Simulated" nella UI: questa è un'azione interna REALE.
+
+**G. Undo / Redo flip-only.** Endpoint `POST /actions/{id}/undo` (status `executed → undone`, replay del `previous_state` per internal_real) e `POST /actions/{id}/redo` (flip `undone → executed`, niente nuovo mock call — scelta esplicita). `POST /actions/{id}/revert` resta come alias retro-compat. La UI mostra il bottone Undo solo quando `action.can_undo === true` (sent messages → niente Undo). Niente bottone "Revert" dappertutto come prima.
+
+**H. Endpoint nuovo `GET /api/v1/actions/catalog`.** Restituisce ogni entry per il wizard chat (Fase 8 in arrivo) e per il template editor (Fase 7). Sostituirà l'attuale `Template.action_types[].mock_target` come fonte di verità nel template builder.
+
+**I. UI label.** "Memory summary" → "Next-call briefing" in customer profile + dialer caller card. "Re-validate" → "Check draft" nel wizard. Field UI in Call Detail mostra `FieldDefinition.label` come primario e `key` come stringa monospace piccola sotto (`CallExtractedView.field_definitions` espone label+pii_class server-side). Settings tab non mostra più l'API base.
+
+**J. Prompt analyzer briefing style.** `agents/call_analyzer.py` ora chiede esplicitamente "1-2 short sentences, operator-actionable" invece di "1-3 sentences" generici. Esempio target: *"Mark prefers a quiet table and is gluten-intolerant. Last booked party of 4 on 9 May — confirm the same setup if he calls again."*
+
+**Why:** il primo test reale ha mostrato che la pipeline e l'UI sono corrette ma vivono in mondi separati: l'operatore vedeva `[redacted: health]` e non sapeva cosa cucinare, vedeva il dialer bloccato in `preparing/processing` mentre la pipeline girava, vedeva action senza badge Simulated e senza poter undo, e si trovava in Card Detail teletrasportato senza averlo chiesto. Queste decisioni allineano l'UX al modello mentale dell'operatore.
+
+**How to apply:**
+- Quando aggiungi una nuova action key, **deve** apparire in `action_catalog.CATALOG` con `integration_kind` esplicito. Se è `internal_real`, registra anche un handler in `INTERNAL_HANDLERS` e (se è undoable) un reverter in `INTERNAL_REVERTERS`. Aggiorna `tests/test_action_catalog.py` se serve.
+- NON ri-introdurre la redaction del briefing senza ridiscutere — i test in `test_pii_sanitizer.py` lockano la semantica observe-only.
+- NON toccare il polling bloccante dentro al dialer: la fase `analyzing` locale è morta apposta.
+- Quando aggiungi un campo a `ExecutedAction.result`, valutare se modificarne anche la shape che la UI usa per `is_simulated` / `can_undo` (ora vengono SERVER-side dal catalog, non dal result).
 
 ### 9. Stato env in produzione (volatile, 2026-05-15)
 Sezione "what's live right now" — da rileggere prima di pushare grossi cambi al backend.
