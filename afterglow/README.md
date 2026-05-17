@@ -145,10 +145,11 @@ prefetches the chunk → briefing returns the memory.
 
 The app does NOT use a single 5-tab bar. It is shaped like the Google Phone (Pixel) app:
 
-- **Bottom Tabs (2):** **Home** (Pixel-style Recents — sticky date headers, chip filter row, CallRow with hash-colored avatars) + **Keypad** (4×3 dialpad, Call FAB is UI-only and shows a Snackbar pointing to the Test simulator).
-- **Drawer (hamburger top-left):** Contacts (alphabetical list mixing 20 client-side mock UK/US contacts with the server's `Customer` table — a "Client" chip marks customers), Templates, Audit log, Test simulator, Settings, [Reset demo] (demo mode only).
-- **Stack screens (out of drawer):** Incoming call (Pixel-inspired full-screen), Call detail, Customer detail, Template detail, Template wizard.
-- **Home chip filters:** All / Missed / **Bookings** / Saved / Unsaved. The "Bookings" filter hides the phone number and renders `payload.booking_date · booking_time · party_size` from the executed booking action.
+- **Bottom Tabs (2):** **Home** (Pixel-style Recents — sticky locale-aware date headers, chip filter row, CallRow with real photos or hash-colored fallback avatars, inline `BookingBadge` showing `DD/MM HH:mm · party N`) + **Keypad** (4×3 dialpad, Call FAB is UI-only and shows a Snackbar pointing to the Test simulator).
+- **Drawer (hamburger top-left):** **Calls** (jumps back to Home — always at the top so any drawer screen has a path home), Contacts (chip filter `All / Clients / Personal` over an alphabetical list that mixes 20 client-side mock UK/US contacts with the server's `Customer` table — a "Client" chip marks customers; about half of the mock contacts carry a hand-picked `randomuser.me` portrait), Templates, Audit log, Test simulator, Settings, [Reset demo] (demo mode only, Paper Dialog confirmation).
+- **Stack screens (out of drawer):** Incoming call (Pixel-inspired full-screen), Call detail (status chip + flag emoji + transcript split into `Card` + `List.Accordion`), Customer detail, Template detail, Template wizard.
+- **Home chip filters:** All / Missed / **Bookings** / **Clients** / Saved / Unsaved. **Bookings** sorts upcoming-first (ASC) and shows the slot inline via `BookingBadge`. **Clients** keeps only rows linked to a `Customer`; **Saved** widens to include the local phonebook; **Unsaved** is the complement.
+- **Settings → Format:** binary IT/EN toggle that retunes every date/time format in the app (`DD/MM/YYYY HH:mm` vs `MM/DD/YYYY h:mm a`, `Oggi/Ieri/15 mag` vs `Today/Yesterday/May 15`, etc.). UI strings stay English regardless — this is a date/time localization, not a UI i18n.
 
 ## Local development
 

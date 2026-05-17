@@ -30,6 +30,15 @@ Stack siblings (outside the drawer)
 └─ simulator.tsx                            Test simulator (drawer entry → push)
 ```
 
+The drawer header is the `<Text>` wordmark `<Text>after</Text><Text color=primary>glow</Text>`
+(font weight 800, letter-spacing -0.3, size 22) that mirrors the demo site
+markup. The drawer voice list, top to bottom, is **Calls → Contacts →
+Templates → Audit log → Test simulator → (divider) → Settings → Reset demo**.
+"Calls" is a manual `<DrawerItem>` that routes to the hidden `(tabs)` group
+so the user always has a path back to the Home feed from any other drawer
+entry. Every icon uses `focused ? primary : (color ?? onSurface)` for the
+color so the active highlight stays and dark mode never loses legibility.
+
 **Simulator / incoming-call audio** reads the active template's
 `simulation_config`. Seed templates ship bundled recordings under
 `app/assets/audio/`; wizard-generated templates can generate a call script
@@ -40,20 +49,27 @@ header.
 
 **Home (Recents) layout** mirrors the Pixel call log: an `Appbar` pill
 `Searchbar` with hamburger leading + voice trailing, a horizontal chip filter
-row (**All / Missed / Bookings / Saved / Unsaved**), a `SectionList` with
-sticky azure date headers (Today / Yesterday / `D Mon`), and a `CallRow` per
-call with a hash-colored `Avatar.Text` (11-color Amadz palette, hash on
-phone), first+last initials, a "Booking" `Chip` when the call has an
-executed booking action, and a trailing `phone-outline` `IconButton` that
-opens a `Snackbar` (the trailing icon deliberately does **not** navigate to
-the dialer — would have required touching the `incoming-call` state machine,
-which is locked).
+row (**All / Missed / Bookings / Clients / Saved / Unsaved**), a `SectionList`
+with sticky azure date headers (locale-aware: `Oggi / Ieri / 15 mag` in IT,
+`Today / Yesterday / May 15` in EN), and a `CallRow` per call with a
+hash-colored `Avatar.Text` fallback (11-color Amadz palette, hash on phone) —
+or, when the row resolves to a mock contact carrying `avatar_url`, a real
+photo from `randomuser.me`. A compact inline `BookingBadge` (see below)
+appears to the right of the row when the call has a booking action. There is
+no trailing phone icon — the operator triggers the AI from the Simulator
+drawer entry, not from a row tap.
 
-**Booking chip filter** hides the phone number on each row and renders
-`payload.booking_date · booking_time · party_size · customer_name` from the
-matching `BookingListItem`. The Home screen fetches `listCalls` and
+**Booking chip filter** sorts the calls by the booking slot, not by call
+timestamp: upcoming slots come first (ascending), then past slots
+(descending). The `BookingBadge` shown on each row renders
+`${formatDayMonth} ${time} · party N` — no year — from `payload.booking_date`
+and `payload.booking_time`. The Home screen fetches `listCalls` and
 `listBookings` in parallel and joins them on `call_id` client-side; the
 chip is not powered by a new endpoint.
+
+**Clients chip filter** keeps only rows where `caller.is_customer` is true
+(i.e. the phone matched a row in the `Customer` table). It is a subset of
+"Saved", which also matches the local `MOCK_CONTACTS` phonebook entries.
 
 **Search query** (the Searchbar text) filters across `caller.display_name`,
 `call.phone_e164`, `booking.title`, and `payload.customer_name`. It is
@@ -65,11 +81,18 @@ ANDed with whichever chip is active.
 2. Twenty client-side hardcoded UK/US `PersonalContact` entries from
    `app/lib/mockContacts.ts` — they have no backend representation. Their
    purpose is to make the "system phone replacement" pitch credible: even
-   on a fresh install, the Contacts entry looks populated.
+   on a fresh install, the Contacts entry looks populated. About half of
+   them carry an `avatar_url` pointing at `randomuser.me/api/portraits/
+   {women,men}/N.jpg` — the gender of the photo is hand-picked to match
+   the name, and the URLs are checked in at build time (no client-side
+   randomization).
 The two sources are deduped on phone (customer wins), sorted alphabetically,
-and grouped by first-letter section header. `app/lib/callerResolver.ts`
-provides the sync resolver used by every `CallRow`:
-`customer.display_name > MOCK_CONTACTS[phone] > "Unknown caller"`.
+grouped by first-letter section header, and shown above a chip filter
+(`All / Clients / Personal`) that distinguishes the two sources visually.
+`app/lib/callerResolver.ts` provides the sync resolver used by every
+`CallRow`: `customer.display_name > MOCK_CONTACTS[phone] > "Unknown caller"`
+and propagates `avatar_url` from `MOCK_CONTACTS` so the same portraits
+show up on the Home feed.
 
 **Incoming-call screen** is "Pixel-inspired, not 1:1": three FABs (Decline
 red `#B3261E` / AI primary with `creation` icon / Accept green `#26B31E`)
@@ -94,6 +117,15 @@ tracks lean pinkish off a blue seed, so on top of the generated scheme we:
   `#161922`) so the app reads as a clean Pixel-like dialer in both modes
   instead of inheriting the tinted greys the source-color generator
   produces;
+- override `secondaryContainer` / `tertiaryContainer` and the entire
+  `elevation.level0..5` object with cool-grey neutrals (light = `#E7EEFC`
+  / `#EEF0F4` for the containers and `#F4F6FB → #D8E1EF` for elevation;
+  dark = `#1B2944` / `#1F2330` and `#1A1F2B → #2D344A`). Without this,
+  chips and elevated cards (the booking badge on the Home feed, the
+  Audit log status chip, the simulator's Script Preview accordion, the
+  Templates draft sidebar) inherit a faint lavender tint from the
+  generator and the app reads as "Material You demo" rather than a
+  Pixel-clean dialer;
 - add a semantic **success palette** (`success`, `onSuccess`,
   `successContainer`, `onSuccessContainer`) — green in both light and
   dark — and export an `AppTheme` type that extends `MD3Theme` with
@@ -141,6 +173,66 @@ handler in `app/incoming-call.tsx` also falls back to
 false, so a deep-link / cold-load hangup no longer leaves a black
 screen behind a stale `play()` rejection toast.
 
+**Locale (date/time only).** `app/lib/LocaleContext.tsx` carries a binary
+`it | en` preference (default `it`, persisted in `localStorage` under
+`afterglow.locale`). The Settings screen toggles it via Paper
+`SegmentedButtons`. `app/lib/dateFormat.ts` wraps `Intl.DateTimeFormat`
+(cached per locale × options) and produces the formats every screen
+consumes: full datetime (`DD/MM/YYYY HH:mm` vs `MM/DD/YYYY h:mm a`), day-
+month (`DD/MM` vs `M/D`), relative time (`21 h fa` vs `21h ago`), and the
+"Today / Yesterday / D Mon" relative-day grouper. The toggle reflows the
+entire app on the next render. **This is not UI i18n** — strings stay in
+English per `feedback_code_language`; only dates and times localize.
+
+**Transcript split.** `app/components/TranscriptList.tsx` parses
+`raw_transcript.text` on the `^(Operator|Caller|Operatore|Chiamante):`
+line prefix, then renders the turns inside a `<Card> + <List.Accordion>`
+"View turns" — same Material 3 pattern as the simulator's `ScriptPreview`
+(not the wizard's chat bubbles). Operator labels render in `primary`,
+caller labels in `success`; the body of each turn is `bodyMedium`.
+
+**Call detail polish.** `app/app/call/[id].tsx` hides the
+`integration_kind="mock_external"` "Simulated" badge for actions whose
+side effect lives on the operator's own device — the whitelist is
+`REAL_ON_DEVICE = {booking.create, appointment.create,
+appointment.create_inspection}`. This is a **UI-only** choice; the
+backend catalog and audit log still classify those actions as
+`mock_external`. Status chips are now Capitalize'd with an icon
+(`check-circle-outline` / `alert-circle-outline` / `progress-clock`),
+and the phone subtitle prefixes a country flag emoji from
+`app/lib/flagFromE164.ts` (small table, no external library). The
+machine-key monospace lines under field labels and action types — a
+pleonasm with the operator-facing label — were removed.
+
+**Fresh-session redirect.** When the bootstrap gate in `app/_layout.tsx`
+sees `getActiveTemplate()` return `null` (fresh visit or after Reset
+demo) and redirects to `/(drawer)/templates`, it also calls
+`markFreshSession()` (`app/lib/freshSession.ts`, one-shot flag in
+`sessionStorage`). The Templates screen calls `consumeFreshSession()`
+right after a successful `setActiveTemplate(id)` and, if the flag was
+set, shows a Paper `<Dialog>` asking the visitor whether they want to
+jump to the Calls feed or stay on Templates. The flag is cleared on
+read; subsequent template activations don't re-prompt.
+
+**Reset demo.** Both the Settings entry **and** the Drawer entry use the
+same Paper `<Portal><Dialog>` confirmation pattern. The drawer entry used
+to call `window.confirm`, which raced with the drawer auto-close and left
+the button stuck on "Resetting…" — see [[feedback-drawer-window-confirm]].
+The post-reset hard reload re-enters the bootstrap gate, which sets
+`markFreshSession()` again because the active template was cleared, so
+the visitor is offered the "Go to Calls" dialog after they pick a new
+template.
+
+**Web first-paint sync.** `app/app/_layout.tsx` runs a module-level
+block on `Platform.OS === 'web'` that reads the stored theme preference
+(or the OS `prefers-color-scheme` if `auto`) and stamps
+`document.documentElement.style.colorScheme` and
+`document.body.style.backgroundColor` *before* the first React render.
+This minimizes the flash of browser-default background at cold load,
+but it does not eliminate it — a true pre-paint would need a custom
+Expo web `index.html` template. A `useEffect` re-applies on runtime
+theme changes.
+
 ## Demo site shell
 
 The public demo site is a Vite/React marketing shell that embeds the real
@@ -158,6 +250,14 @@ a single CTA to open the live app full-screen.
 ```
 App (Expo + react-native-web)         ◄── embedded by ── Demo site (Vite)
        │ POST /api/v1/calls (audio + phone, X-Demo-Session header)
+       ▼
+FastAPI                ─► eager Customer lookup by phone (clone-first/seed-fallback
+                          in demo, session-scoped in prod) — sets call.customer_id
+                          BEFORE the commit so the calls list shows the name
+                          immediately instead of "Unknown caller" during the pipeline.
+                          The pipeline's _resolve_customer may rewrite the FK later
+                          if the lookup landed on a seed row.
+       │
        ▼
 FastAPI background task ─► Speechmatics batch (diarization + lang detect + custom dict)
        │
@@ -227,6 +327,37 @@ against Postgres (`internal_real`) through `customer_profile.apply_update`.
 The profile handler can backfill `display_name`, merge `tags`, store
 allergies and other free-form facts in `customers.profile_facts`, and keeps a
 `previous_state` snapshot so undo can replay the prior customer row state.
+
+The Call detail screen further refines the user-facing "Simulated" badge with
+a UI-only whitelist: actions in
+`REAL_ON_DEVICE = {booking.create, appointment.create, appointment.create_inspection}`
+never show the badge even though the catalog classifies them as
+`mock_external`. The rationale is that those actions are conceptually
+"the operator wrote the appointment on their own device", not "a remote
+CRM call". The backend, audit log, and `result.mock` are unchanged.
+
+**Personal phonebook calls in the seed.** `backend/app/db/seed.py` exposes
+`_ensure_personal_calls(session)` that runs every seed pass (it lives
+*outside* the "templates already present, skipping" early-return). It
+idempotently inserts seven `Call` rows with `is_seed=True,
+session_id=None` and fixed UUIDs:
+
+- 3 missed calls (`status="failed"`) against numbers in `MOCK_CONTACTS`
+  (Amelia/Daniel/Isla) — they populate the **Missed** chip filter on the
+  Home feed and demonstrate the phone-app "you got a call" surface;
+- 2 unsaved calls (`status="completed"`) against numbers that exist in
+  neither `customers` nor `MOCK_CONTACTS` — they populate **Unsaved**;
+- 2 human-handled calls (`status="completed"`, `raw_transcript=None`,
+  no `extracted_fields`, no `executed_actions`) against mock contacts —
+  these prove that not every call has to go through the AI pipeline.
+
+The fixtures duplicate phone/name literals from `MOCK_CONTACTS` because
+the backend cannot import client-side code; the list has a comment
+pointing at the matching `pc_xxx` entries and the two must be kept in
+sync. Visibility is guaranteed by `visibility_filter_seedable`, which is
+the filter the `calls` endpoint applies (the table has `is_seed` even
+though most activity tables don't — these rows look like seeds for the
+purposes of demo isolation).
 
 System of record: **Vultr Managed Postgres**. Deploy: **Vultr Cloud Compute +
 Coolify** with auto-deploy via GitHub App webhook on push to `main` (no

@@ -16,6 +16,11 @@ that opens this repo. **Italian for the conversation; English for the code (see
   - [`feedback_code_language.md`](.claude/memory/feedback_code_language.md) — code + seed/demo data in English, conversation in Italian.
   - [`feedback_db_disposable.md`](.claude/memory/feedback_db_disposable.md) — DB records are disposable; no backward-compat for data shape; migrations may DELETE/TRUNCATE freely.
   - [`feedback_production_equals_hackathon.md`](.claude/memory/feedback_production_equals_hackathon.md) — "production" = the hackathon demo URL; post-hackathon work is out of scope (goes in [`afterglow/docs/future-ideas.md`](afterglow/docs/future-ideas.md) only).
+  - [`feedback_drawer_window_confirm.md`](.claude/memory/feedback_drawer_window_confirm.md) — never `window.confirm` from a DrawerItem; use Paper `<Portal><Dialog>` to avoid the auto-close race that hangs the button.
+  - [`feedback_locale_dates_only.md`](.claude/memory/feedback_locale_dates_only.md) — Settings → Format toggle is dates-only; route every date/time through `app/lib/dateFormat.ts` (`Intl.DateTimeFormat`-based), never `.toLocaleString()` raw.
+  - [`feedback_real_on_device_whitelist.md`](.claude/memory/feedback_real_on_device_whitelist.md) — `REAL_ON_DEVICE` in `app/app/call/[id].tsx` is a UI-only badge filter; backend keeps `mock_external`.
+  - [`feedback_mock_avatars_hardcoded.md`](.claude/memory/feedback_mock_avatars_hardcoded.md) — mock contact photos are hand-picked `randomuser.me` URLs; never delegate to seed-RNG generators.
+  - [`feedback_web_first_paint.md`](.claude/memory/feedback_web_first_paint.md) — the module-level theme sync in `_layout.tsx` minimizes the cold-load flash from JS; do not claim "pre-paint" without a custom Expo HTML template.
 - **`.claude/plans/`** — implementation plans (the most recent one is the source of truth on the day-by-day roadmap).
 - **`hackathon-docs/`** — full lablab knowledge base (judging criteria, partner deep-dives, submission rules).
 - **`afterglow/docs/future-ideas.md`** — post-hackathon roadmap (template lineage, status tri-state, wizard learning loop). Pitch-only material.
