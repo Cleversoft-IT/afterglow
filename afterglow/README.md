@@ -248,13 +248,25 @@ as a `Blob` and feeds the audio element an
 ### Prompt-to-template wizard
 
 `POST /api/v1/templates/wizard/chat` (`agents/wizard_chat.py`) drives a
-**stateless multi-turn conversation**. The client owns the message
-history + running draft; each turn the server returns the next assistant
-message, updated `slots_filled`, a candidate `TemplateWizardResponse`
-and a `ValidationReport` (`agents/template_validator.py` runs
-deterministic checks — snake_case keys, depends_on cycles, JSONSchema
-validity, actions missing from the action catalog — plus a small Gemini
-semantic pass).
+**stateless, agentic, draft-first conversation**. The client owns the
+message history + running draft; each turn the server returns the next
+assistant message, an optional running `slots_filled`, a candidate
+`TemplateWizardResponse` and a `ValidationReport`
+(`agents/template_validator.py` runs deterministic checks — snake_case
+keys, depends_on cycles, JSONSchema validity, actions missing from the
+action catalog — plus a small Gemini semantic pass).
+
+**Agentic behaviour.** Gemini decides at every turn whether the available
+context is rich enough to draft, or whether one more focused question
+would materially improve the result. Conversation budget: 2-5 questions
+(hard ceiling 5). The server injects an `AGENT STATE` meta-block into the
+user prompt telling the model how many questions it has already asked,
+and forces a draft once the budget is exhausted. `ready=True` can fire on
+the very first turn if the user's first message already covers business
+type + call flow. The wizard never asks for the template name (inferred
+from context) and never asks about technical internals (schemas, ASR
+dictionaries, payload shape, mock targets, privacy classes, confidence
+thresholds). Hallucinated action keys are stripped post-response.
 
 When `ready=true` the Expo screen `app/templates/wizard.tsx` lets the
 operator refine inline and re-trigger `POST /api/v1/templates/validate`
