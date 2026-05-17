@@ -103,8 +103,26 @@ class _WizardModelOutput(BaseModel):
     )
 
 
-def _system_instruction(language: str, catalog_keys: list[str]) -> str:
-    catalog_block = "\n".join(f"  - {k}" for k in catalog_keys)
+def _format_catalog_entry(entry: action_catalog.ActionCatalogEntry) -> str:
+    """One-line catalog summary the Wizard prompt injects so Gemini can
+    match user intent → action_key with awareness of label, integration
+    kind and which business verticals each action fits."""
+    domains = ",".join(entry.compatible_domains) or "*"
+    kind_short = "LIVE" if entry.integration_kind == "internal_real" else "MOCK"
+    desc = entry.description.strip().replace("\n", " ")
+    return (
+        f"  - {entry.key} [{kind_short}, domains: {domains}] — "
+        f"{entry.label}. {desc}"
+    )
+
+
+def _system_instruction(
+    language: str,
+    catalog_entries: list[action_catalog.ActionCatalogEntry],
+    known_domains: list[str],
+) -> str:
+    catalog_block = "\n".join(_format_catalog_entry(e) for e in catalog_entries)
+    domains_block = ", ".join(known_domains)
     return (
         "You are the Afterglow Template Wizard.\n\n"
         "Afterglow is a human-first phone assistant: a human handles the "
@@ -125,19 +143,33 @@ def _system_instruction(language: str, catalog_keys: list[str]) -> str:
         "- Do NOT ask the user about technical internals: schemas, "
         "payloads, mock targets, privacy classes, ASR dictionaries, "
         "implementation details, or model configuration.\n\n"
+        "Supported business types (set `domain_hint` to one of these — "
+        "use `generic` only when nothing else fits):\n"
+        f"  {domains_block}\n\n"
         "Integration discovery (HARD RULE):\n"
-        "- Before adding any action key that depends on an external "
-        "channel (whatsapp.*, sms.*, email.*, case.open_insurance), you "
-        "MUST verify the user actually uses that channel.\n"
+        "- Actions in the catalog fall into two families. **Operational** "
+        "actions are always available regardless of which channels the "
+        "user uses — they touch internal records or in-house systems: "
+        "booking.*, appointment.*, case.*, crm.*, customer.update_profile, "
+        "patient.update_profile. **Channel-dependent** actions require a "
+        "third-party channel the operator must actually use: whatsapp.*, "
+        "sms.*, email.*, calendar.* (calendar invites / shared agenda), "
+        "payment.* (payment gateway like Stripe), review.* (review "
+        "platforms like Google / TripAdvisor / Yelp).\n"
+        "- Before adding any channel-dependent action, you MUST verify "
+        "the user actually uses that channel.\n"
         "- If the user's first message does NOT explicitly mention which "
-        "channels they use (WhatsApp, SMS, email), your first turn MUST be "
-        "a single focused question, e.g. \"Do you reach customers via "
-        "WhatsApp, SMS, email, or only on the phone?\" Set `ready=False` "
-        "and ask — do not draft channel actions yet.\n"
-        "- Only after the user has confirmed a channel, draft actions on "
-        "that channel. If the budget is exhausted and channels are still "
-        "unclear, draft the template OMITTING every channel-dependent "
-        "action. Never default to WhatsApp / SMS / email.\n\n"
+        "channels / external systems they use (WhatsApp, SMS, email, a "
+        "shared calendar, a payment gateway, review platforms), your "
+        "first turn MUST be a single focused question, e.g. \"Do you "
+        "reach customers via WhatsApp, SMS, email, a shared calendar or "
+        "a payment link?\" Set `ready=False` and ask — do not draft "
+        "channel-dependent actions yet.\n"
+        "- Only after the user has confirmed a channel / system, draft "
+        "actions for that channel. If the budget is exhausted and "
+        "channels are still unclear, draft the template OMITTING every "
+        "channel-dependent action. Never default to WhatsApp / SMS / "
+        "email / calendar / payment / review without explicit confirmation.\n\n"
         "Conversation budget (you are an agent, not a script — judge each "
         "turn):\n"
         f"- Typical sessions need 2-{QUESTION_BUDGET} questions; never more than {QUESTION_BUDGET} (hard ceiling). The user prompt tells you how many questions you've already asked.\n"
@@ -154,8 +186,10 @@ def _system_instruction(language: str, catalog_keys: list[str]) -> str:
         "- Use `depends_on` only when genuinely useful (e.g. time depends "
         "on date).\n"
         "- Create 2-4 follow-up actions using ONLY keys from the Action "
-        "Catalog below. If the user describes an action that has no catalog "
-        "entry, pick the closest match or omit it.\n"
+        "Catalog below. Pick actions whose `domains` list contains the "
+        "domain_hint you chose (entries listing `*` are universal). If "
+        "the user describes an action that has no catalog entry, pick the "
+        "closest match or omit it.\n"
         "- Use `execution_mode=\"auto\"` for safe routine actions and "
         "`execution_mode=\"manual-only\"` for actions that require human "
         "judgement (e.g. cancellations, insurance cases).\n"
@@ -171,7 +205,8 @@ def _system_instruction(language: str, catalog_keys: list[str]) -> str:
         "before saving.\"\n"
         "- When asking: one clear question with 2-3 concrete examples if "
         "it helps the user answer.\n\n"
-        "Action Catalog (use action.key VERBATIM):\n"
+        "Action Catalog (use action.key VERBATIM — entries marked LIVE "
+        "run against real records, MOCK ones simulate the integration):\n"
         f"{catalog_block}\n"
     )
 
@@ -257,7 +292,7 @@ async def run_wizard_chat(payload: WizardChatRequest) -> WizardChatResponse:
     from google import genai
     from google.genai import types as genai_types
 
-    catalog_keys = action_catalog.available_keys()
+    catalog_entries = [action_catalog.CATALOG[k] for k in action_catalog.available_keys()]
 
     client = genai.Client(api_key=settings.google_api_key)
     try:
@@ -265,7 +300,11 @@ async def run_wizard_chat(payload: WizardChatRequest) -> WizardChatResponse:
             model=settings.gemini_template_builder_model or settings.gemini_default_model,
             contents=_user_prompt(payload),
             config=genai_types.GenerateContentConfig(
-                system_instruction=_system_instruction(payload.language, catalog_keys),
+                system_instruction=_system_instruction(
+                    payload.language,
+                    catalog_entries,
+                    action_catalog.KNOWN_DOMAINS,
+                ),
                 response_mime_type="application/json",
                 response_schema=_WizardModelOutput,
                 temperature=0.4,

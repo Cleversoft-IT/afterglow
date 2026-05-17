@@ -9,7 +9,16 @@ from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import actions, audit, bookings, calls, customers, demo, templates
+from app.api import (
+    actions,
+    audit,
+    bookings,
+    calls,
+    customers,
+    demo,
+    integrations,
+    templates,
+)
 from app.api.session_context import DEMO_SESSION_HEADER
 from app.config import get_settings
 from app.tasks.orphan_recovery import recover_orphans
@@ -87,3 +96,4 @@ app.include_router(actions.router)
 app.include_router(bookings.router)
 app.include_router(audit.router)
 app.include_router(demo.router)
+app.include_router(integrations.router)

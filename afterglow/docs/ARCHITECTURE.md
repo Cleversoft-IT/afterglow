@@ -360,6 +360,18 @@ The profile handler can backfill `display_name`, merge `tags`, store
 allergies and other free-form facts in `customers.profile_facts`, and keeps a
 `previous_state` snapshot so undo can replay the prior customer row state.
 
+As of 2026-05-18 the catalog ships **25 actions** spread across **8 mock
+buckets** (`booking`, `whatsapp`, `sms`, `email`, `crm`, `calendar`,
+`payment`, `review`) plus **1 internal_real bucket** (`customer_profile`).
+The `sms.*` actions now dispatch to their own dedicated mock handler
+(previously they piggybacked on the `whatsapp` mock — a semantic bug fixed
+in the same change). `action_catalog.aggregate_integrations()` is a pure
+function that groups the catalog by bucket and powers `GET /api/v1/integrations`
++ the read-only "Integrations" drawer screen on the app. The same file
+exports `KNOWN_DOMAINS` — 11 verticals the wizard can assign as
+`domain_hint` (restaurant, dentist, bodyshop, hotel, salon, clinic, legal,
+realestate, gym, events, generic).
+
 The Call detail screen further refines the user-facing "Simulated" badge with
 a UI-only whitelist: actions in
 `REAL_ON_DEVICE = {booking.create, appointment.create, appointment.create_inspection}`

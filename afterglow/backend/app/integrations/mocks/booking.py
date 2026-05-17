@@ -18,3 +18,13 @@ def cancel_booking_mock(payload: dict[str, Any]) -> dict[str, Any]:
         "status": "cancelled",
         "cancelled_at": datetime.now(tz=timezone.utc).isoformat(),
     }
+
+
+def reschedule_booking_mock(payload: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "booking_id": payload.get("booking_id", f"BK-{uuid.uuid4().hex[:8].upper()}"),
+        "status": "rescheduled",
+        "new_booking_date": payload.get("new_booking_date"),
+        "new_booking_time": payload.get("new_booking_time"),
+        "rescheduled_at": datetime.now(tz=timezone.utc).isoformat(),
+    }

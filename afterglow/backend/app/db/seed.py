@@ -239,6 +239,30 @@ RESTAURANT_TEMPLATE = {
             "preconditions": ["booking_date"],
             "evidence_required": True,
         },
+        {
+            "key": "booking.reschedule",
+            "label": "Reschedule booking",
+            "execution_mode": "auto",
+            "preconditions": ["customer_name", "booking_date", "booking_time"],
+            "confidence_threshold": 0.75,
+            "evidence_required": True,
+        },
+        {
+            "key": "review.request_feedback",
+            "label": "Request review feedback",
+            "execution_mode": "auto",
+            "preconditions": ["customer_name"],
+            "confidence_threshold": 0.70,
+            "evidence_required": False,
+        },
+        {
+            "key": "payment.request_deposit",
+            "label": "Request deposit",
+            "execution_mode": "auto",
+            "preconditions": ["customer_name", "party_size"],
+            "confidence_threshold": 0.75,
+            "evidence_required": True,
+        },
     ],
     "prompt_hints": [
         {
@@ -349,6 +373,30 @@ DENTIST_TEMPLATE = {
                 "additionalProperties": False,
             },
         },
+        {
+            "key": "calendar.send_invite",
+            "label": "Send calendar invite",
+            "execution_mode": "auto",
+            "preconditions": ["patient_name", "preferred_date"],
+            "confidence_threshold": 0.70,
+            "evidence_required": False,
+        },
+        {
+            "key": "calendar.block_slot",
+            "label": "Block calendar slot",
+            "execution_mode": "auto",
+            "preconditions": ["preferred_date", "urgency"],
+            "confidence_threshold": 0.75,
+            "evidence_required": True,
+        },
+        {
+            "key": "email.send",
+            "label": "Send email",
+            "execution_mode": "auto",
+            "preconditions": ["patient_name"],
+            "confidence_threshold": 0.65,
+            "evidence_required": False,
+        },
     ],
     "prompt_hints": [
         {
@@ -452,6 +500,22 @@ BODYSHOP_TEMPLATE = {
             "preconditions": ["customer_name", "license_plate", "damage_type"],
             "evidence_required": True,
         },
+        {
+            "key": "payment.request_deposit",
+            "label": "Request parts deposit",
+            "execution_mode": "auto",
+            "preconditions": ["customer_name", "damage_type"],
+            "confidence_threshold": 0.75,
+            "evidence_required": True,
+        },
+        {
+            "key": "payment.send_invoice",
+            "label": "Send quote invoice",
+            "execution_mode": "auto",
+            "preconditions": ["customer_name", "damage_type"],
+            "confidence_threshold": 0.70,
+            "evidence_required": True,
+        },
     ],
     "prompt_hints": [
         {
@@ -476,6 +540,18 @@ def _bundled_simulation_configs() -> dict[str, dict]:
     Texts mirror what `scripts/generate_demo_audio.py` encodes into the six
     bundled MP3s, so the script_turns shown in the Simulator UI match what
     the operator will actually hear in each mode.
+
+    Quality bar (every script must clear before regenerating the audio):
+    - Each scenario surfaces 2-3 actions of the seed template naturally —
+      it is not a soliloquy of the caller, it is a conversation that lands
+      observable post-call actions. See `feedback_demo_scripts_quality.md`.
+    - Each domain has a distinctive voice: restaurant = warm hospitality,
+      dentist = clinical-empathetic, bodyshop = pragmatic-technical.
+    - Each caller has a small arc and at least one specific detail (a
+      memory for `existing`, a fresh complication for `new`) so the script
+      sounds like a person, not a form.
+    - Short turns, natural hesitations ("hmm", "let me think"), no
+      placeholder strings or "test test test" filler.
     """
     return {
         "restaurant": _bundled_simulation_config(
@@ -486,27 +562,38 @@ def _bundled_simulation_configs() -> dict[str, dict]:
             operator_voice="sarah",
             caller_voice_existing="theo",
             caller_voice_new="megan",
+            # Surfaces: booking.reschedule + review.request_feedback
+            # Mark is a regular — he references the previous booking date,
+            # asks to move it, accepts a post-dinner review request.
             existing_lines=[
                 ("operator", "La Trattoria, good evening, this is Sarah."),
-                ("caller", "Hi Sarah, it's Mark."),
-                ("operator", "Hi Mark, lovely to hear you. The usual Friday booking?"),
-                ("caller", "Yes please, party of four, around eight thirty."),
-                ("operator", "Quiet table and gluten free menu, like last time?"),
-                ("caller", "Exactly, same setup. Could you confirm on WhatsApp?"),
-                ("operator", "Of course, I'll send it over in a minute. See you Friday."),
-                ("caller", "Thanks Sarah, see you Friday."),
+                ("caller", "Hi Sarah, it's Mark Ross. The Friday eight thirty for four — any chance we move it?"),
+                ("operator", "Hi Mark, of course. Same week or a different one?"),
+                ("caller", "Same week. Saturday at eight would be better. My in-laws are flying in late."),
+                ("operator", "Saturday at eight, party of four, gluten free menu and the quiet table by the window — like last time?"),
+                ("caller", "You remembered. Yes, identical setup."),
+                ("operator", "Done. After dinner I'll send a short note asking for a Google review — only if you enjoyed it."),
+                ("caller", "Happy to leave one if the tiramisù is on form."),
+                ("operator", "I'll have a word with the kitchen. See you Saturday, Mark."),
+                ("caller", "Thanks Sarah, see you then."),
             ],
+            # Surfaces: booking.create + whatsapp.send_confirmation
+            #           + payment.request_deposit
+            # Hannah is a first-timer with a special occasion + large party
+            # — the deposit ask is the realistic outcome.
             new_lines=[
                 ("operator", "La Trattoria, good evening, this is Sarah. How can I help?"),
-                ("caller", "Hi, I've never booked with you before. I'd like a table for Saturday evening."),
-                ("operator", "Of course. Could I have your name please?"),
-                ("caller", "It's Hannah Clarke."),
-                ("operator", "Thanks Hannah. How many guests, and what time?"),
-                ("caller", "Three of us, around seven forty five."),
-                ("operator", "Noted. Any allergies or special requests we should know about?"),
-                ("caller", "Yes, one of us is lactose intolerant. Window table if you have one."),
-                ("operator", "All set. I'll text you the confirmation by SMS. See you Saturday."),
-                ("caller", "Perfect, thank you. Goodbye."),
+                ("caller", "Hi, first time calling. I'd like to book Saturday evening — it's my mother's seventieth."),
+                ("operator", "Lovely. Could I have your name and how many guests?"),
+                ("caller", "Hannah Clarke. Seven of us, around eight."),
+                ("operator", "Seven for a celebration on Saturday at eight. Any allergies or dietary needs in the group?"),
+                ("caller", "My sister is lactose intolerant, and Mum wants the chef's tasting menu if you do it."),
+                ("operator", "We do, it's a fixed five courses. For parties of six or more we ask for a small deposit by card — fifty euro per guest, refundable up to forty-eight hours before."),
+                ("caller", "That's fair, go ahead."),
+                ("operator", "I'll send the deposit link by WhatsApp along with the booking confirmation. Anything else, Hannah?"),
+                ("caller", "A little something on the table for her would be magical. No singing though."),
+                ("operator", "Discreet candle, no singing — noted. See you Saturday."),
+                ("caller", "Thank you so much. Goodbye."),
             ],
         ),
         "dentist": _bundled_simulation_config(
@@ -517,29 +604,37 @@ def _bundled_simulation_configs() -> dict[str, dict]:
             operator_voice="jack",
             caller_voice_existing="megan",
             caller_voice_new="sarah",
+            # Surfaces: appointment.create + sms.send_reminder (now on the
+            # dedicated sms bucket, not whatsapp) + calendar.send_invite.
+            # Laura is a known patient with a follow-up on her recent crown.
             existing_lines=[
                 ("operator", "Greenwood Dental, this is Jack at the front desk."),
-                ("caller", "Hi Jack, it's Laura."),
-                ("operator", "Hi Laura, good to hear from you. What can we do today?"),
-                ("caller", "The crown you fitted last month is feeling a little loose, I'd like it checked."),
-                ("operator", "I'm sorry to hear that. Same chair as last time, with Dr. Patel?"),
-                ("caller", "Yes please, if she has space."),
-                ("operator", "She has a slot tomorrow at ten fifteen. Does that work?"),
+                ("caller", "Hi Jack, it's Laura Bennett. The crown Dr. Patel fitted last month is feeling a touch loose when I bite on the left."),
+                ("operator", "I'm sorry, Laura. No pain, just movement?"),
+                ("caller", "No pain. More like the surface shifted half a millimetre."),
+                ("operator", "Let's not wait. Dr. Patel has tomorrow at ten fifteen — does that work?"),
                 ("caller", "Tomorrow at ten fifteen is fine."),
-                ("operator", "Booked. I'll WhatsApp you the reminder on your usual number. Take care."),
-                ("caller", "Thanks Jack, see you tomorrow."),
+                ("operator", "I'll text the SMS reminder the morning of, and I'll drop the appointment on your Google calendar as an invite — same e-mail as last time?"),
+                ("caller", "Same one, yes. Thanks for syncing it, I keep missing the wall calendar at home."),
+                ("operator", "See you tomorrow, Laura."),
+                ("caller", "Thanks Jack."),
             ],
+            # Surfaces: appointment.create (urgent) + calendar.block_slot
+            # + email.send (welcome packet with intake form). Sophie has a
+            # vivid, specific complaint — emergency tone done with restraint.
             new_lines=[
                 ("operator", "Greenwood Dental, this is Jack. How can I help?"),
-                ("caller", "Hi, I'm not a patient here yet. I need an urgent appointment."),
+                ("caller", "Hi, I'm a new patient. I cracked a molar on a hard candy about an hour ago."),
                 ("operator", "I'm sorry to hear that. May I have your name?"),
-                ("caller", "Sophie Turner. I cracked a molar this morning eating a hard candy."),
-                ("operator", "Painful. We can fit you in this afternoon. Is the tooth bleeding?"),
-                ("caller", "No bleeding, but it's very sharp pain on the lower right."),
-                ("operator", "Understood. Three thirty today with Dr. Patel — does that work?"),
-                ("caller", "Yes, three thirty is perfect."),
-                ("operator", "I'll text you the address and the new patient form. See you later."),
-                ("caller", "Thank you so much, goodbye."),
+                ("caller", "Sophie Turner. The pain is sharp, lower right, when air hits it."),
+                ("operator", "Understood. Any bleeding or fever?"),
+                ("caller", "No bleeding, no fever — just the pain."),
+                ("operator", "I'll block the three thirty slot today and hold it for you with Dr. Patel. Could you come in then?"),
+                ("caller", "Yes, three thirty works."),
+                ("operator", "Good. I'll e-mail you a welcome packet — the new patient form, our address, parking instructions. What's the best e-mail?"),
+                ("caller", "sophie dot turner at fast-mail dot com."),
+                ("operator", "Got it. Fill the form before you arrive if you can, it saves us ten minutes."),
+                ("caller", "Will do. Thank you so much. Goodbye."),
             ],
         ),
         "bodyshop": _bundled_simulation_config(
@@ -550,30 +645,41 @@ def _bundled_simulation_configs() -> dict[str, dict]:
             operator_voice="megan",
             caller_voice_existing="jack",
             caller_voice_new="theo",
+            # Surfaces: appointment.create_inspection (existing customer,
+            # known car) + payment.request_deposit (parts deposit for the
+            # bumper). Andrew is a repeat customer, pragmatic and frugal.
             existing_lines=[
                 ("operator", "Greenline Auto Body, good afternoon, this is Megan."),
-                ("caller", "Hey Megan, it's Andrew."),
-                ("operator", "Hi Andrew. Is it the Fiat Panda again?"),
-                ("caller", "Same car, yeah. I clipped a bollard, the front bumper has a dent and a long scratch."),
-                ("operator", "Out of pocket like last time, or going through insurance this round?"),
-                ("caller", "Out of pocket, same as before. Just need a quick quote."),
-                ("operator", "Thursday afternoon at two works, same bay?"),
-                ("caller", "Thursday at two is good. Thanks Megan."),
-                ("operator", "See you Thursday, Andrew."),
+                ("caller", "Hey Megan, it's Andrew Green. The Fiat Panda, plate Bravo Romeo six six four Charlie Yankee — clipped a bollard outside Lidl this morning."),
+                ("operator", "Hi Andrew, ouch. Bumper again?"),
+                ("caller", "Front bumper, dent and a long scratch down the wing. No mechanical issue, still drives clean."),
+                ("operator", "Out of pocket like the last two times?"),
+                ("caller", "Out of pocket. Just need a quick estimate."),
+                ("operator", "Thursday afternoon at two for the inspection, same bay as before — works?"),
+                ("caller", "Thursday at two is good."),
+                ("operator", "If the colour code matches what's already on the shelf we can start straight away. Otherwise we order it in — and for that I'd ask a hundred-and-fifty deposit on the paint by Friday."),
+                ("caller", "Understood. Send me the deposit link if it comes to that."),
+                ("operator", "Will do. See you Thursday, Andrew."),
+                ("caller", "Thanks Megan."),
             ],
+            # Surfaces: appointment.create_inspection + case.open_insurance
+            # (manual-only — operator promises follow-up) + payment.send_invoice
+            # (formal quote by e-mail for the insurer file).
             new_lines=[
                 ("operator", "Greenline Auto Body, good afternoon, this is Megan. How can I help?"),
-                ("caller", "Hi, first time calling you. I had a small fender-bender this morning."),
+                ("caller", "Hi, first time calling you. I was rear-ended at a roundabout this morning — fault is the other driver."),
                 ("operator", "Sorry to hear that. May I have your name and the vehicle?"),
-                ("caller", "It's Daniel Reed. Twenty twenty Toyota Corolla, plate Bravo Mike six four Lima Whisky."),
+                ("caller", "Daniel Reed. Twenty twenty Toyota Corolla, plate Bravo Mike six four Lima Whisky."),
                 ("operator", "Got it. What's the damage, and is the car drivable?"),
-                ("caller", "Rear quarter panel is dented, taillight is cracked. It's drivable, lights still work."),
+                ("caller", "Rear quarter panel is dented, the taillight is cracked. Drivable, lights still work."),
                 ("operator", "Are you opening an insurance claim?"),
-                ("caller", "Yes, I've already filed with my insurer."),
-                ("operator", "Understood. Could you come in Friday morning at ten for an inspection?"),
-                ("caller", "Friday at ten is fine, thank you."),
-                ("operator", "Great, I'll text you the address. See you Friday."),
-                ("caller", "Thanks, goodbye."),
+                ("caller", "Yes — Allianz, claim number TC twelve forty-five oh nine."),
+                ("operator", "Thanks. I'll have my colleague open the file on our side after the call. Could you come in Friday at ten for the inspection?"),
+                ("caller", "Friday at ten is fine."),
+                ("operator", "After the inspection I'll e-mail a formal quote — they'll need it as a PDF invoice for the claim. What's your e-mail?"),
+                ("caller", "Daniel dot reed at proton mail dot com."),
+                ("operator", "Got it. We'll see you Friday."),
+                ("caller", "Thanks. Goodbye."),
             ],
         ),
     }

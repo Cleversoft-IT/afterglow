@@ -19,7 +19,7 @@ import logging
 import wave
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
+from typing import Literal, Optional
 
 import httpx
 
@@ -151,7 +151,21 @@ def script_turns_from_dicts(items: list[dict]) -> list[ScriptTurn]:
     return out
 
 
-def template_audio_path(template_id: str, base_dir: Optional[Path] = None) -> Path:
-    """Compute the on-disk path for a custom template's demo recording."""
+def template_audio_path(
+    template_id: str,
+    mode: Optional[Literal["existing", "new"]] = None,
+    base_dir: Optional[Path] = None,
+) -> Path:
+    """Compute the on-disk path for a custom template's demo recording.
+
+    `mode=None` returns the legacy single-recording path (preserved for
+    back-compat with templates generated before 2026-05-18). `mode="existing"`
+    and `mode="new"` return scenario-specific paths that match the
+    `simulation_config.scenarios.{existing,new}` shape the wizard now emits.
+    """
     base = base_dir or Path(get_settings().audio_storage_dir)
-    return base / "templates" / f"{template_id}.wav"
+    if mode is None:
+        filename = f"{template_id}.wav"
+    else:
+        filename = f"{template_id}_{mode}.wav"
+    return base / "templates" / filename

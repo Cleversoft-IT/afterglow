@@ -66,7 +66,10 @@ were removed from the template surface on 2026-05-17 (see
 `.claude/memory/project_template_simplified_2026_05_17.md`). The template
 now carries only the product-level shape (what to extract, what to do
 after); system-level concerns (`mock_target`, `mutates`, integration
-kind, undo semantics) live in `app/integrations/action_catalog.py`.
+kind, undo semantics) live in `app/integrations/action_catalog.py`. As of
+2026-05-18 the catalog ships **25 actions across 8 simulated buckets +
+1 live bucket** (`customer_profile`), and the marketplace surface is
+read-only browsable via the "Integrations" drawer item on the app.
 
 The pipeline runs **entirely after the call ends** — the human-facing latency is whatever Postgres takes to return `customer.memory_summary`. No AI in the live-call hot path. See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the full diagram and rationale.
 

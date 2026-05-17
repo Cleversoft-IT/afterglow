@@ -44,12 +44,58 @@ from app.schemas.templates import (
 # ---------------------------------------------------------------------------
 
 
+def _all_entries() -> list[action_catalog.ActionCatalogEntry]:
+    return [action_catalog.CATALOG[k] for k in action_catalog.available_keys()]
+
+
 def test_system_instruction_lists_every_catalog_key():
     instruction = _system_instruction(
-        language="en", catalog_keys=action_catalog.available_keys()
+        language="en",
+        catalog_entries=_all_entries(),
+        known_domains=action_catalog.KNOWN_DOMAINS,
     )
     for key in action_catalog.available_keys():
         assert key in instruction, f"system instruction missing catalog key {key}"
+
+
+def test_system_instruction_contains_label_kind_and_domains_per_entry():
+    """Every catalog entry must surface label, integration kind tag (MOCK/LIVE)
+    and its compatible_domains so Gemini can match user intent → action_key
+    with awareness of which actions fit which business verticals.
+    """
+    instruction = _system_instruction(
+        language="en",
+        catalog_entries=_all_entries(),
+        known_domains=action_catalog.KNOWN_DOMAINS,
+    )
+    for entry in _all_entries():
+        assert entry.label in instruction, f"missing label for {entry.key}"
+    assert "[MOCK," in instruction, "missing MOCK marker on mock_external entries"
+    assert "[LIVE," in instruction, "missing LIVE marker on internal_real entries"
+    assert "domains:" in instruction, "missing compatible_domains surface"
+
+
+def test_system_instruction_lists_known_domains():
+    instruction = _system_instruction(
+        language="en",
+        catalog_entries=_all_entries(),
+        known_domains=action_catalog.KNOWN_DOMAINS,
+    )
+    # Every new domain must be advertised so Gemini can assign it as a hint.
+    for domain in ("hotel", "salon", "clinic", "legal", "realestate", "gym", "events"):
+        assert domain in instruction, f"missing domain {domain}"
+
+
+def test_system_instruction_hard_rule_covers_new_buckets():
+    instruction = _system_instruction(
+        language="en",
+        catalog_entries=_all_entries(),
+        known_domains=action_catalog.KNOWN_DOMAINS,
+    )
+    for prefix in ("whatsapp.*", "sms.*", "email.*", "calendar.*", "payment.*", "review.*"):
+        assert prefix in instruction, f"HARD RULE missing prefix {prefix}"
+    assert "channel-dependent" in instruction.lower()
+    assert "operational" in instruction.lower()
 
 
 def test_empty_messages_raises():
@@ -82,7 +128,11 @@ def test_wizard_model_output_schema_has_no_additional_properties():
 
 
 def _instruction() -> str:
-    return _system_instruction(language="en", catalog_keys=action_catalog.available_keys())
+    return _system_instruction(
+        language="en",
+        catalog_entries=_all_entries(),
+        known_domains=action_catalog.KNOWN_DOMAINS,
+    )
 
 
 def test_system_instruction_does_not_ask_for_template_name():
@@ -141,6 +191,50 @@ def test_system_instruction_forces_integration_discovery():
     # user confirmation about the channels in use.
     assert "whatsapp" in instruction.lower()
     assert "Never default to WhatsApp" in instruction
+
+
+def test_mock_dispatch_keeps_new_bucket_action(monkeypatch):
+    """Lock di non-regressione: una action key in un bucket nuovo
+    (`payment.request_deposit` su un template hotel) deve sopravvivere al
+    post-processing del wizard — il catalog la conosce, quindi
+    `proposed_actions_from_catalog` resta vuoto."""
+    hotel_draft = TemplateWizardResponse(
+        name="Hotel reception",
+        description="Phone calls for a small boutique hotel.",
+        domain_hint="hotel",
+        fields_schema=[
+            FieldDefinition(key="guest_name", type="string", label="Guest name", required=True),
+            FieldDefinition(key="check_in_date", type="date", label="Check-in", required=True),
+            FieldDefinition(key="nights", type="integer", label="Nights", required=True),
+            FieldDefinition(key="party_size", type="integer", label="Party size", required=True),
+        ],
+        action_types=[
+            ActionDefinitionDraft(key="booking.create", label="Create booking", execution_mode="auto"),
+            ActionDefinitionDraft(key="payment.request_deposit", label="Request deposit", execution_mode="auto"),
+        ],
+        prompt_hints=[],
+    )
+    parsed = _WizardModelOutput(
+        assistant_message="Drafted a hotel template.",
+        slots_filled={"business_type": "hotel"},
+        confidence=0.85,
+        ready=True,
+        draft_partial=hotel_draft,
+    )
+    _install_fake_gemini(monkeypatch, parsed)
+
+    payload = WizardChatRequest(
+        messages=[
+            WizardChatTurn(
+                role="user",
+                content="I run a boutique hotel, we take reservations on the phone and ask for a deposit.",
+            )
+        ]
+    )
+    resp = asyncio.run(run_wizard_chat(payload))
+    keys = [a.key for a in resp.draft_partial.action_types]
+    assert "payment.request_deposit" in keys
+    assert resp.proposed_actions_from_catalog == []
 
 
 # ---------------------------------------------------------------------------

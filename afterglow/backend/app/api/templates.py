@@ -296,9 +296,7 @@ async def generate_simulation_script(
     except ScriptBuilderError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
-    row.simulation_config = simulation_script.script_response_to_simulation_config(
-        parsed, audio_url=None, audio_status="pending"
-    )
+    row.simulation_config = simulation_script.script_response_to_simulation_config(parsed)
     await session.commit()
     await session.refresh(row)
     active_id = await _active_template_id_for_session(session, ctx)
@@ -311,36 +309,83 @@ async def generate_simulation_audio(
     ctx: SessionContext = Depends(get_session_context),
     session: AsyncSession = Depends(get_session),
 ) -> TemplateView:
-    """Render `simulation_config.script_turns` to an MP3 via Speechmatics TTS.
+    """Render the template's demo scripts to WAV via Speechmatics TTS.
 
-    Requires the script to have been generated first (or supplied via PUT).
+    Iterates `simulation_config.scenarios.{existing,new}` and writes each to
+    its own scenario-specific path. If one mode fails the other still
+    persists — operator can retry. Falls back to the legacy flat
+    `script_turns` shape for templates generated before 2026-05-18.
     """
     row = await _load_template_for_simulation(session, template_id, ctx)
     config = dict(row.simulation_config or {})
-    raw_turns = config.get("script_turns") or []
-    try:
-        turns = speechmatics_tts.script_turns_from_dicts(raw_turns)
-    except TtsError as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    scenarios = config.get("scenarios") or {}
 
-    out_path = speechmatics_tts.template_audio_path(str(template_id))
-    try:
-        await speechmatics_tts.render_script_to_wav(turns, out_path)
-    except TtsError as exc:
-        # Persist a `failed` audio_status so the UI can show the error.
-        config["audio_status"] = "failed"
+    # Back-compat path: legacy flat shape (no `scenarios` map).
+    if not scenarios:
+        raw_turns = config.get("script_turns") or []
+        try:
+            turns = speechmatics_tts.script_turns_from_dicts(raw_turns)
+        except TtsError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        out_path = speechmatics_tts.template_audio_path(str(template_id))
+        try:
+            await speechmatics_tts.render_script_to_wav(turns, out_path)
+        except TtsError as exc:
+            config["audio_status"] = "failed"
+            config["audio_generated_at"] = datetime.now(tz=timezone.utc).isoformat()
+            row.simulation_config = config
+            await session.commit()
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
+        config["audio_url"] = str(out_path)
+        config["audio_status"] = "ready"
         config["audio_generated_at"] = datetime.now(tz=timezone.utc).isoformat()
+        config["audio_source"] = "tts_generated"
         row.simulation_config = config
         await session.commit()
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
+        await session.refresh(row)
+        active_id = await _active_template_id_for_session(session, ctx)
+        return _project_active(row, active_id)
 
-    config["audio_url"] = str(out_path)
-    config["audio_status"] = "ready"
-    config["audio_generated_at"] = datetime.now(tz=timezone.utc).isoformat()
-    config["audio_source"] = "tts_generated"
+    # New scenarios shape: render each mode to its own WAV. Errors on one
+    # mode do not abort the other.
+    now_iso = datetime.now(tz=timezone.utc).isoformat()
+    errors: list[str] = []
+    for mode in ("existing", "new"):
+        scenario = scenarios.get(mode)
+        if not scenario:
+            continue
+        raw_turns = scenario.get("script_turns") or []
+        try:
+            turns = speechmatics_tts.script_turns_from_dicts(raw_turns)
+        except TtsError as exc:
+            scenario["audio_status"] = "failed"
+            scenario["audio_generated_at"] = now_iso
+            errors.append(f"{mode}: {exc}")
+            continue
+        out_path = speechmatics_tts.template_audio_path(str(template_id), mode=mode)
+        try:
+            await speechmatics_tts.render_script_to_wav(turns, out_path)
+        except TtsError as exc:
+            scenario["audio_status"] = "failed"
+            scenario["audio_generated_at"] = now_iso
+            errors.append(f"{mode}: {exc}")
+            continue
+        scenario["audio_url"] = str(out_path)
+        scenario["audio_status"] = "ready"
+        scenario["audio_generated_at"] = now_iso
+        scenario["audio_source"] = "tts_generated"
+
+    config["scenarios"] = scenarios
     row.simulation_config = config
     await session.commit()
     await session.refresh(row)
+
+    if errors and not any(
+        (s or {}).get("audio_status") == "ready" for s in scenarios.values()
+    ):
+        # Every mode failed — surface 502 so the UI knows nothing rendered.
+        raise HTTPException(status_code=502, detail="; ".join(errors))
+
     active_id = await _active_template_id_for_session(session, ctx)
     return _project_active(row, active_id)
 
@@ -400,10 +445,10 @@ async def get_simulation_audio(
 ) -> FileResponse:
     """Stream back the demo audio so the dialer can play it.
 
-    Seeded templates expose `simulation_config.scenarios.<mode>.audio_url`;
-    custom wizard-built templates still use the flat `audio_url` and reuse
-    the same recording for both modes (graceful fallback) until a future
-    PR teaches the wizard to render two recordings.
+    Both seeded and wizard-built templates expose
+    `simulation_config.scenarios.<mode>.audio_url`. The flat `audio_url`
+    fallback is preserved for back-compat with custom templates generated
+    before 2026-05-18 — those keep a single recording reused across modes.
     """
     row = await _load_template_for_simulation(session, template_id, ctx)
     config = row.simulation_config or {}

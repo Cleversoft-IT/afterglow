@@ -52,6 +52,7 @@ function DrawerContent(props: DrawerContentComponentProps) {
   const isOnCalls = activeRouteName === '(tabs)';
   const isOnTemplates = activeRouteName === 'templates';
   const isOnAudit = activeRouteName === 'audit';
+  const isOnIntegrations = activeRouteName === 'integrations';
   const isOnSimulator = activeRouteName === 'simulator';
   const isOnSettings = activeRouteName === 'settings';
 
@@ -94,6 +95,17 @@ function DrawerContent(props: DrawerContentComponentProps) {
         )}
         labelStyle={itemLabelStyle(isOnAudit)}
         onPress={() => router.push('/(drawer)/audit' as never)}
+      />
+      <DrawerItem
+        label="Integrations"
+        focused={isOnIntegrations}
+        activeTintColor={theme.colors.primary}
+        activeBackgroundColor={theme.colors.secondaryContainer}
+        icon={({ color, size }: IconRenderProps) => (
+          <Icon source="puzzle-outline" size={size} color={iconColor(isOnIntegrations, color)} />
+        )}
+        labelStyle={itemLabelStyle(isOnIntegrations)}
+        onPress={() => router.push('/(drawer)/integrations' as never)}
       />
       <Divider style={{ marginVertical: 8 }} />
       <DrawerItem
@@ -169,6 +181,7 @@ export default function DrawerLayout() {
       <Drawer.Screen name="contacts" options={{ title: 'Contacts' }} />
       <Drawer.Screen name="templates" options={{ title: 'Templates' }} />
       <Drawer.Screen name="audit" options={{ title: 'Audit log' }} />
+      <Drawer.Screen name="integrations" options={{ title: 'Integrations' }} />
       {/* Simulator is rendered as a custom DrawerItem above; the Drawer.Screen
           entry registers the route with the navigator so `activeRouteName`
           flips to "simulator" when the user opens it, enabling the active

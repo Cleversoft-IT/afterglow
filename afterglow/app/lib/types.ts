@@ -46,11 +46,12 @@ export type SimulationScenario = {
   audio_source?: 'tts_generated' | 'user_uploaded' | 'bundled' | null;
 };
 
-// Per-template simulator config. New seeded templates emit a `scenarios`
-// map keyed by CallerMode; custom wizard-built templates still ship the
+// Per-template simulator config. Both seeded and wizard-built templates
+// emit a `scenarios` map keyed by CallerMode (as of 2026-05-18). The
 // legacy flat fields (caller_name/script_turns/audio_url at the top
-// level) and are served back through the API with the same shape until
-// the wizard is upgraded to render two recordings.
+// level) are kept as a fallback for custom templates generated before
+// that date — those will be migrated the next time their script is
+// regenerated.
 export type SimulationConfig = SimulationScenario & {
   scenarios?: {
     existing?: SimulationScenario | null;
@@ -124,6 +125,19 @@ export type CreateTemplateRequest = {
   template: TemplateWizardResponse;
   set_active?: boolean;
   parent_seed_id?: string | null;
+};
+
+// --- Integrations marketplace ------------------------------------------------
+
+// One row in the read-only Integrations drawer screen — derived from the
+// backend's CATALOG via `aggregate_integrations`. `kind === 'live'` means
+// the bucket runs against real records (today only `customer_profile`);
+// every other bucket is a simulated external system.
+export type IntegrationSummary = {
+  key: string;
+  label: string;
+  kind: 'simulated' | 'live';
+  action_count: number;
 };
 
 export type UpdateTemplateRequest = {

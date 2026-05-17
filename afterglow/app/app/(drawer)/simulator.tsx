@@ -170,11 +170,10 @@ export default function SimulatorScreen() {
     !!sim?.scenarios?.new?.audio_url;
   const legacyReady = sim?.audio_status === 'ready' && !!sim?.audio_url;
   const audioReady = seededScenariosReady || legacyReady;
-  // Wizard-built templates only have a single flat script (no scenarios), so
-  // the "existing customer" path is meaningless — the generated phone number
-  // doesn't map to any seeded customer and the UI ends up labelling the call
-  // as a new caller anyway. Hide the existing button in that case so the
-  // operator only sees the option that actually works.
+  // Both seed and wizard-built templates now ship `scenarios.{existing,new}`
+  // (since 2026-05-18). The legacy flat shape only survives on custom
+  // templates generated before that date — in that case `hasTwoScenarios`
+  // is false and we fall back to the single-button "new caller" path.
   const hasTwoScenarios = !!(sim?.scenarios?.existing && sim?.scenarios?.new);
   const hasScript =
     (sim?.scenarios?.existing?.script_turns?.length ?? 0) > 0 ||
@@ -209,8 +208,8 @@ export default function SimulatorScreen() {
           <Card.Content>
             <Text variant="bodyMedium" style={{ color: theme.colors.onSurfaceVariant, marginBottom: 12 }}>
               {hasTwoScenarios
-                ? 'Existing customer plays back the seed phone for this template; new customer generates a fresh phone so you can watch Afterglow create the record from scratch.'
-                : 'This template only ships a single demo script, so every call comes in as a new caller — Afterglow will create the customer record from scratch on submit.'}
+                ? 'Existing customer plays back a recording for a caller the system already knows; new customer generates a fresh phone so you can watch Afterglow create the record from scratch.'
+                : 'This is an older custom template with only one demo script. Regenerate the script to get both existing and new caller scenarios.'}
             </Text>
           </Card.Content>
           <Card.Actions style={{ flexDirection: 'column', gap: 8, padding: 16 }}>

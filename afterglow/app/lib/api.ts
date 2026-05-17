@@ -10,6 +10,7 @@ import type {
   CallSubmittedResponse,
   CreateTemplateRequest,
   CustomerCard,
+  IntegrationSummary,
   TemplateView,
   TemplateWizardResponse,
   UpdateTemplateRequest,
@@ -219,6 +220,9 @@ export const api = {
       method: 'PUT',
       body: JSON.stringify(payload),
     }),
+
+  fetchIntegrations: () =>
+    request<IntegrationSummary[]>('/api/v1/integrations'),
 
   listCalls: (params?: { customer_id?: string; limit?: number }) => {
     const qs = new URLSearchParams();

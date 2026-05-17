@@ -85,10 +85,10 @@ class PromptHintRule(BaseModel):
 
 class SimulationScenario(BaseModel):
     """One demo recording variant — bound to a CallerMode ('existing' or
-    'new'). Seeded templates ship a `scenarios` map with both modes; the
-    wizard-built custom templates still emit the legacy flat shape on
-    `SimulationConfig` until a future PR teaches them to produce two
-    recordings."""
+    'new'). Both seed and wizard-built templates emit a `scenarios` map
+    with both modes (as of 2026-05-18). The legacy flat shape on
+    `SimulationConfig` is preserved for back-compat with templates
+    generated before that date."""
 
     caller_name: Optional[str] = None
     caller_phone_e164: Optional[str] = None
@@ -105,18 +105,20 @@ CallerMode = Literal["existing", "new"]
 class SimulationConfig(BaseModel):
     """Per-template demo recording config — drives the Simulator UI.
 
-    Two coexisting shapes are accepted because the wizard still produces
-    the legacy flat one:
-      - Seeded shape (preferred): only `scenarios` is populated.
-      - Legacy / wizard shape: only the flat fields are populated.
-    The Simulator UI and the dialer read `scenarios.<mode>` first and fall
-    back to the flat fields when the scenarios map is missing.
+    Canonical shape (both seeds and wizard-built templates as of
+    2026-05-18): only `scenarios` is populated, with one entry per
+    CallerMode. The flat fields below are kept for back-compat with
+    wizard-built templates generated before that date — they will be
+    cleaned up the next time their owner regenerates the script.
+
+    The Simulator UI and the dialer read `scenarios.<mode>` first and
+    fall back to the flat fields only when the scenarios map is missing.
     """
 
-    # Seeded templates: per-mode recordings.
+    # Canonical: per-mode recordings (both seeds and wizard-built).
     scenarios: dict[CallerMode, SimulationScenario] = Field(default_factory=dict)
 
-    # Legacy / wizard-built single-script fields.
+    # Deprecated flat shape — pre-2026-05-18 wizard-built templates only.
     caller_name: Optional[str] = None
     caller_phone_e164: Optional[str] = None
     script_turns: list[dict[str, Any]] = Field(default_factory=list)

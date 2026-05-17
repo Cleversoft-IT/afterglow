@@ -39,6 +39,43 @@ from typing import Any, Literal, Optional
 IntegrationKind = Literal["mock_external", "internal_real"]
 
 
+# Recognized `domain_hint` values across the system. Single source of truth
+# consumed by the wizard prompt (see `agents/wizard_chat._system_instruction`).
+# The first three are the seed templates shipped in `db/seed.py`; the rest
+# are vertical hints the wizard can assign when inferring `domain_hint` from
+# a user's business description. `generic` is the fallback for anything that
+# doesn't fit one of the verticals.
+KNOWN_DOMAINS: list[str] = [
+    "restaurant",
+    "dentist",
+    "bodyshop",
+    "hotel",
+    "salon",
+    "clinic",
+    "legal",
+    "realestate",
+    "gym",
+    "events",
+    "generic",
+]
+
+
+# Bucket labels surfaced by `aggregate_integrations` for the Integrations
+# drawer screen. Keys must match every `mock_target` in `CATALOG` plus every
+# prefix derived from `internal_handler` (the part before the first `.`).
+_BUCKET_LABELS: dict[str, str] = {
+    "booking": "Booking system",
+    "whatsapp": "WhatsApp",
+    "sms": "SMS gateway",
+    "email": "Email",
+    "crm": "CRM",
+    "calendar": "Calendar",
+    "payment": "Payments",
+    "review": "Reviews",
+    "customer_profile": "Customer database",
+}
+
+
 @dataclass(frozen=True)
 class ActionCatalogEntry:
     key: str
@@ -154,6 +191,142 @@ _BOOKING_CANCEL_PAYLOAD_SCHEMA = {
     "required": ["booking_id"],
 }
 
+_BOOKING_RESCHEDULE_PAYLOAD_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "booking_id": {"type": "string", "description": "Identifier of the booking to move"},
+        "new_booking_date": {"type": "string", "description": "YYYY-MM-DD"},
+        "new_booking_time": {"type": "string", "description": "HH:MM (24h)"},
+        "reason": {"type": "string"},
+    },
+    "required": ["new_booking_date", "new_booking_time"],
+}
+
+_CALENDAR_EVENT_PAYLOAD_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "title": {"type": "string"},
+        "start": {"type": "string", "description": "ISO 8601 datetime"},
+        "end": {"type": "string", "description": "ISO 8601 datetime"},
+        "attendees": {
+            "type": "array",
+            "items": {"type": "string", "description": "Attendee email or phone"},
+        },
+        "notes": {"type": "string"},
+    },
+    "required": ["title", "start"],
+}
+
+_CALENDAR_INVITE_PAYLOAD_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "event_id": {"type": "string"},
+        "to": {"type": "string", "description": "Recipient email"},
+    },
+    "required": ["to"],
+}
+
+_CALENDAR_BLOCK_PAYLOAD_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "start": {"type": "string", "description": "ISO 8601 datetime"},
+        "end": {"type": "string", "description": "ISO 8601 datetime"},
+        "reason": {"type": "string"},
+    },
+    "required": ["start", "end"],
+}
+
+_PAYMENT_LINK_PAYLOAD_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "amount": {"type": "number", "minimum": 0},
+        "currency": {"type": "string", "description": "ISO 4217, defaults to EUR"},
+        "description": {"type": "string"},
+        "phone_e164": {"type": "string"},
+        "email": {"type": "string"},
+    },
+    "required": ["amount"],
+}
+
+_PAYMENT_DEPOSIT_PAYLOAD_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "amount": {"type": "number", "minimum": 0},
+        "currency": {"type": "string"},
+        "booking_reference": {"type": "string"},
+        "phone_e164": {"type": "string"},
+    },
+    "required": ["amount"],
+}
+
+_PAYMENT_INVOICE_PAYLOAD_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "amount": {"type": "number", "minimum": 0},
+        "currency": {"type": "string"},
+        "to": {"type": "string", "description": "Recipient email"},
+        "line_items": {
+            "type": "array",
+            "items": {"type": "string"},
+        },
+    },
+    "required": ["amount", "to"],
+}
+
+_REVIEW_REQUEST_PAYLOAD_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "channel": {"type": "string", "enum": ["whatsapp", "sms", "email"]},
+        "phone_e164": {"type": "string"},
+        "email": {"type": "string"},
+        "platform": {"type": "string", "description": "google, tripadvisor, yelp, ..."},
+    },
+    "required": ["channel"],
+}
+
+_REVIEW_RESPONSE_PAYLOAD_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "review_id": {"type": "string"},
+        "body": {"type": "string"},
+    },
+    "required": ["review_id", "body"],
+}
+
+_LEAD_PAYLOAD_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "name": {"type": "string"},
+        "phone_e164": {"type": "string"},
+        "email": {"type": "string"},
+        "source": {"type": "string", "description": "phone_call, referral, ..."},
+        "notes": {"type": "string"},
+    },
+    "required": ["name"],
+}
+
+_TICKET_PAYLOAD_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "subject": {"type": "string"},
+        "priority": {"type": "string", "enum": ["low", "normal", "high", "urgent"]},
+        "notes": {"type": "string"},
+        "phone_e164": {"type": "string"},
+    },
+    "required": ["subject"],
+}
+
+_EMAIL_QUOTE_PAYLOAD_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "to": {"type": "string"},
+        "subject": {"type": "string"},
+        "body": {"type": "string"},
+        "quote_amount": {"type": "number"},
+    },
+    "required": ["to", "subject"],
+}
+
 
 CATALOG: dict[str, ActionCatalogEntry] = {
     "booking.create": ActionCatalogEntry(
@@ -165,7 +338,7 @@ CATALOG: dict[str, ActionCatalogEntry] = {
         can_undo=True,
         mutates=True,
         default_payload_schema=_BOOKING_PAYLOAD_SCHEMA,
-        compatible_domains=["restaurant", "*"],
+        compatible_domains=["restaurant", "hotel", "salon", "gym", "events", "*"],
     ),
     "booking.cancel": ActionCatalogEntry(
         key="booking.cancel",
@@ -176,7 +349,7 @@ CATALOG: dict[str, ActionCatalogEntry] = {
         can_undo=False,  # cancellation is the undo itself
         mutates=True,
         default_payload_schema=_BOOKING_CANCEL_PAYLOAD_SCHEMA,
-        compatible_domains=["restaurant", "*"],
+        compatible_domains=["restaurant", "hotel", "salon", "gym", "events", "*"],
     ),
     "appointment.create": ActionCatalogEntry(
         key="appointment.create",
@@ -187,7 +360,7 @@ CATALOG: dict[str, ActionCatalogEntry] = {
         can_undo=True,
         mutates=True,
         default_payload_schema=_BOOKING_PAYLOAD_SCHEMA,
-        compatible_domains=["dentist", "*"],
+        compatible_domains=["dentist", "clinic", "salon", "*"],
     ),
     "appointment.create_inspection": ActionCatalogEntry(
         key="appointment.create_inspection",
@@ -224,7 +397,7 @@ CATALOG: dict[str, ActionCatalogEntry] = {
         label="Send SMS reminder",
         description="Send the caller an SMS reminder for the upcoming appointment.",
         integration_kind="mock_external",
-        mock_target="whatsapp",
+        mock_target="sms",
         can_undo=False,
         default_payload_schema=_SMS_PAYLOAD_SCHEMA,
     ),
@@ -275,6 +448,155 @@ CATALOG: dict[str, ActionCatalogEntry] = {
         default_payload_schema=_CASE_PAYLOAD_SCHEMA,
         compatible_domains=["bodyshop", "*"],
     ),
+    # --- New mock buckets (sms / calendar / payment / review) ----------------
+    "sms.send_confirmation": ActionCatalogEntry(
+        key="sms.send_confirmation",
+        label="Send SMS confirmation",
+        description="Send the caller an SMS confirming the booking or appointment.",
+        integration_kind="mock_external",
+        mock_target="sms",
+        can_undo=False,  # sent messages cannot be unsent
+        default_payload_schema=_SMS_PAYLOAD_SCHEMA,
+    ),
+    "sms.send_link": ActionCatalogEntry(
+        key="sms.send_link",
+        label="Send SMS with link",
+        description="Send the caller a short SMS with a tracking / form / payment link.",
+        integration_kind="mock_external",
+        mock_target="sms",
+        can_undo=False,
+        default_payload_schema=_SMS_PAYLOAD_SCHEMA,
+    ),
+    "calendar.add_event": ActionCatalogEntry(
+        key="calendar.add_event",
+        label="Add calendar event",
+        description="Create an event on the operator's calendar (Google / Outlook).",
+        integration_kind="mock_external",
+        mock_target="calendar",
+        can_undo=True,
+        mutates=True,
+        default_payload_schema=_CALENDAR_EVENT_PAYLOAD_SCHEMA,
+        compatible_domains=["hotel", "clinic", "legal", "realestate", "events", "*"],
+    ),
+    "calendar.send_invite": ActionCatalogEntry(
+        key="calendar.send_invite",
+        label="Send calendar invite",
+        description="Send the caller an ICS calendar invite for a meeting or appointment.",
+        integration_kind="mock_external",
+        mock_target="calendar",
+        can_undo=False,  # an invite already delivered can't be unsent
+        default_payload_schema=_CALENDAR_INVITE_PAYLOAD_SCHEMA,
+        compatible_domains=["legal", "events", "realestate", "*"],
+    ),
+    "calendar.block_slot": ActionCatalogEntry(
+        key="calendar.block_slot",
+        label="Block calendar slot",
+        description="Reserve a slot on the operator's calendar (e.g. emergency hold).",
+        integration_kind="mock_external",
+        mock_target="calendar",
+        can_undo=True,
+        mutates=True,
+        default_payload_schema=_CALENDAR_BLOCK_PAYLOAD_SCHEMA,
+        compatible_domains=["clinic", "salon", "dentist", "*"],
+    ),
+    "payment.create_link": ActionCatalogEntry(
+        key="payment.create_link",
+        label="Create payment link",
+        description="Issue a hosted payment link the caller can settle later.",
+        integration_kind="mock_external",
+        mock_target="payment",
+        can_undo=False,  # link is idempotent — operator just doesn't share it
+        mutates=True,
+        default_payload_schema=_PAYMENT_LINK_PAYLOAD_SCHEMA,
+        compatible_domains=["hotel", "gym", "realestate", "events", "*"],
+    ),
+    "payment.request_deposit": ActionCatalogEntry(
+        key="payment.request_deposit",
+        label="Request deposit",
+        description="Request a deposit payment from the caller to secure the booking.",
+        integration_kind="mock_external",
+        mock_target="payment",
+        can_undo=False,
+        mutates=True,
+        default_payload_schema=_PAYMENT_DEPOSIT_PAYLOAD_SCHEMA,
+        compatible_domains=["hotel", "events", "bodyshop", "*"],
+    ),
+    "payment.send_invoice": ActionCatalogEntry(
+        key="payment.send_invoice",
+        label="Send invoice",
+        description="Email the caller a formal invoice for services rendered or quoted.",
+        integration_kind="mock_external",
+        mock_target="payment",
+        can_undo=False,
+        mutates=True,
+        default_payload_schema=_PAYMENT_INVOICE_PAYLOAD_SCHEMA,
+        compatible_domains=["legal", "bodyshop", "*"],
+    ),
+    "review.request_feedback": ActionCatalogEntry(
+        key="review.request_feedback",
+        label="Request review feedback",
+        description="Ask the caller to leave a public review (Google / TripAdvisor / Yelp).",
+        integration_kind="mock_external",
+        mock_target="review",
+        can_undo=False,  # the request has been sent
+        default_payload_schema=_REVIEW_REQUEST_PAYLOAD_SCHEMA,
+        compatible_domains=["restaurant", "hotel", "salon", "*"],
+    ),
+    "review.publish_response": ActionCatalogEntry(
+        key="review.publish_response",
+        label="Publish review response",
+        description="Publish the operator's reply to a customer review.",
+        integration_kind="mock_external",
+        mock_target="review",
+        can_undo=True,
+        mutates=True,
+        default_payload_schema=_REVIEW_RESPONSE_PAYLOAD_SCHEMA,
+        compatible_domains=["restaurant", "hotel", "*"],
+    ),
+    # --- New entries on existing buckets -------------------------------------
+    "booking.reschedule": ActionCatalogEntry(
+        key="booking.reschedule",
+        label="Reschedule booking",
+        description="Move an existing booking to a different date or time.",
+        integration_kind="mock_external",
+        mock_target="booking",
+        can_undo=True,
+        mutates=True,
+        default_payload_schema=_BOOKING_RESCHEDULE_PAYLOAD_SCHEMA,
+        compatible_domains=["restaurant", "hotel", "dentist", "salon", "gym", "*"],
+    ),
+    "crm.create_lead": ActionCatalogEntry(
+        key="crm.create_lead",
+        label="Create CRM lead",
+        description="Add the caller as a new lead in the CRM pipeline.",
+        integration_kind="mock_external",
+        mock_target="crm",
+        can_undo=True,
+        mutates=True,
+        default_payload_schema=_LEAD_PAYLOAD_SCHEMA,
+        compatible_domains=["realestate", "legal", "gym", "*"],
+    ),
+    "crm.create_ticket": ActionCatalogEntry(
+        key="crm.create_ticket",
+        label="Open CRM ticket",
+        description="Open a support / case ticket so the team can follow up after the call.",
+        integration_kind="mock_external",
+        mock_target="crm",
+        can_undo=True,
+        mutates=True,
+        default_payload_schema=_TICKET_PAYLOAD_SCHEMA,
+        compatible_domains=["legal", "bodyshop", "*"],
+    ),
+    "email.send_quote": ActionCatalogEntry(
+        key="email.send_quote",
+        label="Send quote by email",
+        description="Email the caller a written quote or proposal.",
+        integration_kind="mock_external",
+        mock_target="email",
+        can_undo=False,
+        default_payload_schema=_EMAIL_QUOTE_PAYLOAD_SCHEMA,
+        compatible_domains=["legal", "bodyshop", "events", "realestate", "*"],
+    ),
 }
 
 
@@ -319,3 +641,53 @@ def mutates(action_key: str) -> bool:
     if entry is None:
         return False
     return entry.mutates
+
+
+def aggregate_integrations(
+    catalog: Optional[dict[str, ActionCatalogEntry]] = None,
+) -> list[dict[str, Any]]:
+    """Group every catalog entry by its target bucket — the data behind
+    `GET /api/v1/integrations` and the read-only Integrations drawer screen.
+
+    `mock_external` actions are bucketed by `mock_target`; `internal_real`
+    actions are bucketed by the prefix of `internal_handler` before the
+    first `.` (so `customer_profile.apply_update` → bucket `customer_profile`,
+    NOT the full handler path).
+
+    The function is **pure**: takes no I/O, hits no DB, raises nothing for
+    a well-formed catalog. Tests should call it directly instead of booting
+    the FastAPI lifespan.
+
+    Returns a list of dicts shaped like `IntegrationSummary`:
+      `{key, label, kind, action_count}`
+    sorted alphabetically by `key` for stable output.
+    """
+    cat = catalog if catalog is not None else CATALOG
+    buckets: dict[str, dict[str, Any]] = {}
+
+    for entry in cat.values():
+        if entry.integration_kind == "mock_external":
+            if not entry.mock_target:
+                continue
+            bucket_key = entry.mock_target
+            kind = "simulated"
+        else:  # internal_real
+            if not entry.internal_handler:
+                continue
+            bucket_key = entry.internal_handler.split(".", 1)[0]
+            kind = "live"
+
+        existing = buckets.get(bucket_key)
+        if existing is None:
+            buckets[bucket_key] = {
+                "key": bucket_key,
+                "label": _BUCKET_LABELS.get(
+                    bucket_key, bucket_key.replace("_", " ").title()
+                ),
+                "kind": kind,
+                "action_count": 1,
+            }
+        else:
+            existing["action_count"] += 1
+
+    return sorted(buckets.values(), key=lambda b: b["key"])
