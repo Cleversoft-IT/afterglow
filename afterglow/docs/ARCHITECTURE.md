@@ -290,7 +290,7 @@ FastAPI                ─► eager Customer lookup by phone (clone-first/seed-f
                           if the lookup landed on a seed row.
        │
        ▼
-FastAPI background task ─► Speechmatics batch (diarization + lang detect + custom dict)
+FastAPI background task ─► Speechmatics batch (diarization + lang detect)
        │
        ├─► Memory lookup
        │   ├─► structured SQL history (demo, or customers with <=10 prior calls)
@@ -304,6 +304,12 @@ FastAPI background task ─► Speechmatics batch (diarization + lang detect + c
        │               confidence_threshold / evidence_required / payload_schema) +
        │               applicable prompt_hints rules (when evaluated against
        │               prior_structured) + prior_facts
+       │       Grounding rule (enforced in the system instruction):
+       │         prior_facts can only inform next_call_briefing — they MUST NOT
+       │         be used as `evidence` for field extractions and MUST NOT fill
+       │         action `payload` fields unless the current transcript confirms
+       │         them. evidence must always be a verbatim span FROM the
+       │         current transcript.
        │       response_schema = CallAnalysis (Pydantic):
        │         - fields[]  (key, value, confidence, evidence)
        │         - intent, sentiment, language, urgency

@@ -32,6 +32,8 @@ FastAPI background task ─► Speechmatics batch (diarization + language auto-d
        │               extractor_hint / depends_on) + action_types (preconditions /
        │               confidence_threshold / evidence_required / payload_schema) +
        │               applicable prompt_hints rules + prior_facts
+       │       Grounding rule: evidence MUST be a verbatim span from the current
+       │       transcript; prior_facts only inform the briefing.
        │       response_schema = CallAnalysis (Pydantic):
        │         - fields[]  (key, value, confidence, evidence)
        │         - intent, sentiment, language, urgency
