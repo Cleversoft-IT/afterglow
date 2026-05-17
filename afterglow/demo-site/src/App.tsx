@@ -202,11 +202,22 @@ function DemoSection() {
             <h2 className="text-3xl md:text-4xl font-extrabold tracking-tight mb-3">
               Live demo
             </h2>
-            <p className="text-muted-foreground text-sm leading-relaxed">
-              The phone is the real Afterglow app, running against the production
-              backend on Vultr. Activate a template, tap the blue button, and inspect
-              the call.
-            </p>
+            <div className="text-muted-foreground text-sm leading-relaxed space-y-3">
+              <p>
+                <span className="text-foreground font-medium">Not a mockup.</span>{' '}
+                The phone runs the actual Afterglow app — same Expo / React Native
+                build that ships in production — embedded as a live iframe against
+                our backend on Vultr.
+              </p>
+              <p>
+                You'll land on{' '}
+                <span className="text-foreground font-medium">Templates</span> first.
+                Pick one of the three seed presets — restaurant, dentist, body shop —
+                or run the wizard to co-design your own vertical with the AI agent.
+                Selecting a template drops you on Home with seeded call history;
+                from there, hit the blue button.
+              </p>
+            </div>
           </div>
 
           <div className="hidden md:flex flex-wrap items-center gap-3">
