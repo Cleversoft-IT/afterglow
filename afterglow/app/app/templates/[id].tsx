@@ -25,7 +25,6 @@ import type {
   ExecutionMode,
   ExtractorHint,
   FieldDefinition,
-  PiiClass,
   PromptHintRule,
   TemplateView,
 } from '../../lib/types';
@@ -47,14 +46,6 @@ const FIELD_TYPES = [
   { value: 'time', label: 'time' },
   { value: 'enum', label: 'enum' },
   { value: 'string_list', label: 'list' },
-];
-
-const PII_CLASSES: { value: PiiClass; label: string }[] = [
-  { value: 'none', label: 'none' },
-  { value: 'contact', label: 'contact' },
-  { value: 'health', label: 'health' },
-  { value: 'financial', label: 'financial' },
-  { value: 'identity', label: 'identity' },
 ];
 
 const EXTRACTOR_HINTS: { value: ExtractorHint; label: string }[] = [
@@ -87,7 +78,6 @@ export default function TemplateDetailScreen() {
   // Editable working copies; `template` is the persisted truth from the API.
   const [description, setDescription] = useState('');
   const [domainHint, setDomainHint] = useState('');
-  const [dictionary, setDictionary] = useState('');
   const [fields, setFields] = useState<FieldDefinition[]>([]);
   const [actions, setActions] = useState<ActionDefinition[]>([]);
   const [promptHints, setPromptHints] = useState<PromptHintRule[]>([]);
@@ -100,7 +90,6 @@ export default function TemplateDetailScreen() {
       setTemplate(data);
       setDescription(data.description ?? '');
       setDomainHint(data.domain_hint ?? '');
-      setDictionary((data.custom_dictionary ?? []).join(', '));
       setFields((data.fields_schema ?? []).map((f) => ({ ...f })));
       setActions((data.action_types ?? []).map((a) => ({ ...a })));
       setPromptHints((data.prompt_hints ?? []).map((h) => ({ ...h })));
@@ -130,10 +119,6 @@ export default function TemplateDetailScreen() {
       const updated = await api.updateTemplate(template.id, {
         description,
         domain_hint: domainHint,
-        custom_dictionary: dictionary
-          .split(',')
-          .map((t) => t.trim())
-          .filter((t) => t.length > 0),
         fields_schema: fields,
         action_types: actions,
         prompt_hints: promptHints,
@@ -172,7 +157,6 @@ export default function TemplateDetailScreen() {
           domain_hint: template.domain_hint,
           fields_schema: template.fields_schema,
           action_types: template.action_types,
-          custom_dictionary: template.custom_dictionary,
           prompt_hints: template.prompt_hints ?? [],
         },
         set_active: false,
@@ -255,19 +239,6 @@ export default function TemplateDetailScreen() {
               editable={!readOnly}
             />
           </FormField>
-          <FormField
-            label="Custom dictionary"
-            hint="Comma-separated terms the ASR engine should recognize."
-          >
-            <TextInput
-              mode="outlined"
-              value={dictionary}
-              onChangeText={setDictionary}
-              editable={!readOnly}
-              multiline
-              numberOfLines={4}
-            />
-          </FormField>
         </Card.Content>
       </Card>
 
@@ -287,10 +258,8 @@ export default function TemplateDetailScreen() {
                       key: `field_${fields.length + 1}`,
                       label: 'New field',
                       type: 'string',
-                      pii_class: 'none',
                       extractor_hint: 'freeform',
                       required: false,
-                      sensitive: false,
                       options: [],
                       depends_on: [],
                     },
@@ -332,10 +301,8 @@ export default function TemplateDetailScreen() {
                       key: catalog[0]?.key ?? 'booking.create',
                       label: catalog[0]?.label ?? 'New action',
                       execution_mode: 'auto',
-                      mock_target: catalog[0]?.mock_target ?? 'booking',
                       preconditions: [],
                       confidence_threshold: 0.7,
-                      mutates: false,
                       evidence_required: true,
                     },
                   ])
@@ -457,7 +424,7 @@ function FieldEditor({
       <EditorHeader
         expanded={expanded}
         title={field.label || field.key}
-        meta={`${field.key} - ${field.type} - pii=${field.pii_class ?? 'none'}`}
+        meta={`${field.key} - ${field.type}`}
         onPress={() => setExpanded(!expanded)}
         trailing={
           !readOnly ? (
@@ -497,14 +464,6 @@ function FieldEditor({
               onChange={(v) => onChange({ ...field, type: v })}
             />
           </FormField>
-          <FormField label="PII class">
-            <SelectField
-              value={field.pii_class ?? 'none'}
-              options={PII_CLASSES.map((p) => ({ value: p.value, label: p.label }))}
-              disabled={readOnly}
-              onChange={(v) => onChange({ ...field, pii_class: v as PiiClass })}
-            />
-          </FormField>
           <FormField label="Extractor hint">
             <SelectField
               value={field.extractor_hint ?? 'freeform'}
@@ -517,13 +476,6 @@ function FieldEditor({
             label="Required"
             status={field.required ? 'checked' : 'unchecked'}
             onPress={() => onChange({ ...field, required: !field.required })}
-            disabled={readOnly}
-            position="leading"
-          />
-          <Checkbox.Item
-            label="Sensitive (flag in audit)"
-            status={field.sensitive ? 'checked' : 'unchecked'}
-            onPress={() => onChange({ ...field, sensitive: !field.sensitive })}
             disabled={readOnly}
             position="leading"
           />
@@ -617,7 +569,6 @@ function ActionEditor({
         onPress={() => setExpanded(!expanded)}
         badges={
           <View style={styles.badgeRow}>
-            {action.mutates ? <Chip compact>Changes records</Chip> : null}
             {action.evidence_required ? <Chip compact>Needs transcript proof</Chip> : null}
           </View>
         }
@@ -645,7 +596,6 @@ function ActionEditor({
                   ...action,
                   key: v,
                   label: next?.label ?? action.label,
-                  mock_target: next?.mock_target ?? action.mock_target,
                 });
               }}
             />
@@ -710,13 +660,6 @@ function ActionEditor({
               keyboardType="decimal-pad"
             />
           </FormField>
-          <Checkbox.Item
-            label="Changes records (irreversible side effect)"
-            status={action.mutates ? 'checked' : 'unchecked'}
-            onPress={() => onChange({ ...action, mutates: !action.mutates })}
-            disabled={readOnly}
-            position="leading"
-          />
           <Checkbox.Item
             label="Needs transcript proof"
             status={action.evidence_required ? 'checked' : 'unchecked'}

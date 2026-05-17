@@ -13,10 +13,11 @@ Result shape:
     "applied": True,
     "tags_added": [...],
     "facts_changed": {"allergies": ["gluten"], ...},
-    "mock": False,
-    "mutates": False,
     "previous_state": { ... only the keys we changed ... },
   }
+
+`mock` and `mutates` are stamped by `action_executor._run_internal_real`
+from the catalog entry — handlers do not set them.
 
 The `previous_state` block is the snapshot the undo endpoint replays on the
 customer row to restore the prior values. We snapshot ONLY the keys we
@@ -109,8 +110,6 @@ def apply_customer_update(customer: Customer, payload: dict[str, Any]) -> dict[s
         "applied": True,
         "tags_added": tags_added,
         "facts_changed": facts_changed,
-        "mock": False,
-        "mutates": False,
         "previous_state": previous_state,
     }
 

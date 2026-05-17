@@ -30,7 +30,6 @@ from typing import Any, Optional
 
 from pydantic import BaseModel, Field
 
-from app.agents.pii_policy import PII_THRESHOLDS
 from app.agents.prompt_hint_eval import applicable_hints
 from app.config import get_settings
 
@@ -92,12 +91,7 @@ class CallAnalysis(BaseModel):
     )
 
 
-_PII_THRESHOLD_TABLE = ", ".join(
-    f"{cls}={thr:.2f}" for cls, thr in PII_THRESHOLDS.items() if cls != "none"
-)
-
-
-_SYSTEM_INSTRUCTION = f"""You are the post-call analyzer for Afterglow, a human-first AI dialer.
+_SYSTEM_INSTRUCTION = """You are the post-call analyzer for Afterglow, a human-first AI dialer.
 
 A human operator just finished a phone call. You receive:
 - the diarized transcript
@@ -125,11 +119,9 @@ Your job:
    no greetings. Write in the detected language.
 
 Field extraction rules:
-- Each FieldDefinition declares a `pii_class` and may declare a
-  `confidence_threshold`. PII class defaults to: {_PII_THRESHOLD_TABLE}. If a
-  field declares its own threshold, use that instead.
-- Be conservative when an extraction crosses a class threshold; prefer to
-  omit the field rather than guess.
+- A FieldDefinition may declare `confidence_threshold`. When set, do not
+  emit the field unless your confidence clears it — prefer to omit rather
+  than guess.
 - `extractor_hint` is a hint about how the value typically appears in
   conversation: regex (well-defined token e.g. license plate, date),
   freeform (natural language), enum (one of `options`), llm_only (semantic).
@@ -140,21 +132,13 @@ Field extraction rules:
   the dependent field if you can but the downstream coercer will move it
   to manual_review.
 
-PII handling (post-process — for your awareness):
-- A separate inspector runs after you. It does NOT redact anything — it
-  only records which PII classes are present and at what confidence so the
-  audit log can label briefings as "carries health-class data" etc. Write
-  the briefing in natural language with the raw values (e.g. "Mark is
-  gluten-intolerant"); never use placeholders like "[redacted: health]".
-
 Action planning rules:
 - Respect each action's `preconditions`: do not plan an action if any
   precondition field is missing or below its confidence threshold.
 - Respect `confidence_threshold` on the action itself: it is the floor for
   the action's own confidence (your reading of how strongly the call
   supports invoking it), NOT a copy of the field threshold.
-- `mutates: true` means the action is irreversible — never plan it
-  speculatively. `evidence_required: true` means you MUST include evidence."""
+- `evidence_required: true` means you MUST include evidence."""
 
 
 def _user_prompt(

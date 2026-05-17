@@ -15,13 +15,12 @@ class CallSubmittedResponse(BaseModel):
 
 class FieldDefinitionLite(BaseModel):
     """Subset of the template's FieldDefinition used to label extracted fields
-    in the call detail UI (label, type, pii_class). The full definition lives
-    on the Template; we only ship what the renderer needs."""
+    in the call detail UI. The full definition lives on the Template; we only
+    ship what the renderer needs."""
 
     key: str
     label: str
     type: str = "string"
-    pii_class: str = "none"
 
 
 class CallActionView(BaseModel):

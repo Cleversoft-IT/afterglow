@@ -1,6 +1,6 @@
 ---
 name: project-afterglow-decisions
-description: Decisioni di prodotto/architettura di Afterglow. Pivot da non rinegoziare senza ridiscutere. Aggiornato 2026-05-17 (notte) — simulator dei custom template wizard-built: solo bottone "new" + audio cross-origin via blob URL. 2026-05-17 (sera) — round 3 UI audit (drawer "Calls" voice, locale IT/EN via Intl.DateTimeFormat, BookingBadge inline, TranscriptList accordion, REAL_ON_DEVICE whitelist UI-only, randomuser.me portraits hard-coded, web first-paint sync, drawer reset via Paper Dialog, eager customer FK al submit). 2026-05-17 — frontend Material 3 rewrite + UI bug cluster post-rewrite. 2026-05-16 — feedback round 2 (no PII redaction, action catalog, dialer non bloccante, Undo/Redo flip-only, simulator 2-mode con MP3 distinti existing/new e 4 customer seedati).
+description: Decisioni di prodotto/architettura di Afterglow. Pivot da non rinegoziare senza ridiscutere. Aggiornato 2026-05-17 (template simplification) — schema Template ridotto al solo product surface: pii_class/sensitive/mock_target/mutates/custom_dictionary rimossi; pii_sanitizer cancellato; mock_target/mutates spostati nel catalog. 2026-05-17 (notte) — simulator dei custom template wizard-built: solo bottone "new" + audio cross-origin via blob URL. 2026-05-17 (sera) — round 3 UI audit (drawer "Calls" voice, locale IT/EN via Intl.DateTimeFormat, BookingBadge inline, TranscriptList accordion, REAL_ON_DEVICE whitelist UI-only, randomuser.me portraits hard-coded, web first-paint sync, drawer reset via Paper Dialog, eager customer FK al submit). 2026-05-17 — frontend Material 3 rewrite + UI bug cluster post-rewrite. 2026-05-16 — feedback round 2 (action catalog, dialer non bloccante, Undo/Redo flip-only, simulator 2-mode con MP3 distinti existing/new e 4 customer seedati).
 metadata:
   type: project
 ---
@@ -329,6 +329,25 @@ Secondo giro di test su `app.95-179-245-107.sslip.io` post-rewrite ha esposto bu
 - Quando aggiungi un'azione che vive sul device dell'operatore, aggiungila a `REAL_ON_DEVICE` in `app/app/call/[id].tsx` per nascondere il badge Simulated (UI-only, non toccare il backend).
 - Quando aggiungi una guardia di "primo accesso", usa `markFreshSession()`/`consumeFreshSession()` da `app/lib/freshSession.ts` — non re-implementare flag custom.
 - Quando devi un Dialog di conferma da un DrawerItem, usa **sempre** Paper `<Portal><Dialog>`, mai `window.confirm`.
+
+### 1.nove. Template simplification — solo product surface (2026-05-17)
+
+Sfoltimento del `Template` model che mescolava prodotto (`fields_schema` / `action_types` / `prompt_hints`), governance (`pii_class` / `sensitive`), routing (`mock_target`), runtime flags (`mutates`), e detail ASR (`custom_dictionary`). Solo il primo piano è davvero "del business"; il resto è scope sistema o future work. Decisione e dettagli di esecuzione in [[project-template-simplified-2026-05-17]].
+
+**Cosa è cambiato (riferimento veloce — la memory dedicata ha la mappa file completa):**
+
+- `FieldDefinition` non porta più `pii_class` / `sensitive`. Restano `confidence_threshold`, `extractor_hint`, `depends_on`, `options`, `required`.
+- `ActionDefinition` non porta più `mock_target` / `mutates`. Restano `preconditions`, `confidence_threshold`, `evidence_required`, `payload_schema`.
+- `mock_target` (era già nel catalog) e **`mutates`** (campo nuovo di `ActionCatalogEntry`) sono ora source-of-truth in `app/integrations/action_catalog.py`. `action_executor` e `action_planner` fanno lookup-by-key (`action_catalog.mutates(key)`).
+- `pii_sanitizer.py` e `pii_policy.py` **cancellati**. La pipeline non emette più audit step `pii_policy_applied`. La frase 1.ter punto 2 ("`pii_sanitizer.py` osserva pii_class") è obsoleta — la pipeline post-call è ora 4 step: `call_analyzer` → `action_planner` → `action_executor` → `_persist_memory`.
+- `Template.custom_dictionary` **droppato** (migration `0012_drop_template_custom_dictionary.py`). Speechmatics gira senza `additional_vocab`.
+- `simulation_config` resta nel modello DB perché serve al Simulator, ma **non** compare nell'editor utente.
+- Wizard: `template_builder` system instruction non chiede più `custom_dictionary` / `pii_class` / `mutates` / `mock_target`. `template_validator` rimuove la regola domain_hint↔dictionary.
+- Test cancellati: `tests/test_pii_sanitizer.py`, `tests/test_pii_policy.py`.
+
+**Why:** ticket "simplify template model" — l'editor era diventato un wizard "PII + ASR + mock routing" mentre il valore di hackathon è la pipeline post-call + esecuzione tipata. Il piano si chiama `ticket-simplify-template-fuzzy-forest`.
+
+**How to apply:** prima di rimettere un campo cancellato nel template Pydantic, leggere il ticket: il piano corretto è arricchire il catalog (o aggiungere uno step di policy esterno al template), non il template. Per nuovi campi di runtime safety (es. retry policy, rate limit), il posto è `ActionCatalogEntry`, non `ActionDefinition`.
 
 ### 9. Stato env in produzione (volatile, 2026-05-15)
 Sezione "what's live right now" — da rileggere prima di pushare grossi cambi al backend.

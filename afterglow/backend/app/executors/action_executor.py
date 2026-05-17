@@ -12,11 +12,12 @@ the catalog entry's `integration_kind`:
 Actions marked `manual-only` are NOT executed automatically — they land as
 `status='manual_required'` so the operator sees them in the post-call screen.
 
-Templates v2 enforcement (in addition to the legacy safety net):
+Enforcement on top of the catalog dispatch:
 - `evidence_required=True` + empty evidence → refused, never reaches the catalog.
 - `payload_schema` present → `jsonschema.validate(payload, schema)` before
   dispatch; validation failure → status=`validation_failed`.
-- `mutates=True` → flagged in audit + ExecutedAction.result["mutates"].
+- `mutates` is read from `action_catalog` (single source of truth) and
+  flagged in audit + ExecutedAction.result["mutates"].
 """
 from __future__ import annotations
 
@@ -57,7 +58,7 @@ def _refuse(
         evidence=entry.get("evidence"),
         execution_mode=template_action.get("execution_mode", "auto"),
         status=reason,
-        result={"refused": reason, "mutates": bool(template_action.get("mutates"))},
+        result={"refused": reason, "mutates": action_catalog.mutates(template_action["key"])},
         session_id=call.session_id,
     )
 
@@ -100,7 +101,7 @@ async def execute_planned_actions(
             continue
 
         mode = template_action.get("execution_mode", "auto")
-        mutates = bool(template_action.get("mutates", False))
+        mutates = action_catalog.mutates(action_type)
         evidence_required = bool(template_action.get("evidence_required", True))
         payload_schema = template_action.get("payload_schema")
         payload = entry.get("payload", {}) or {}
@@ -250,8 +251,10 @@ def _run_internal_real(
             "mock": False,
         }
     out = handler(customer, payload)
-    # Carry the catalog handler name on the result so revert knows which
-    # reverter to invoke without re-deriving it.
+    # Stamp `mutates`/`mock` from the catalog (single source of truth) and
+    # carry the handler name so the reverter can be re-resolved on undo.
+    out["mutates"] = mutates
+    out["mock"] = False
     out["internal_handler"] = catalog_entry.internal_handler
     return out
 

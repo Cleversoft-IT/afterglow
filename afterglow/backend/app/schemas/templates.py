@@ -1,14 +1,20 @@
 """Pydantic schemas for template configuration + prompt-to-template wizard.
 
-v2 (migration 0006): `FieldDefinition` and `ActionDefinition` carry the rich
-metadata the post-call pipeline needs to enforce PII gating, field
-dependencies, and typed action payloads. `prompt_hints` is a structured list
-of `{when, then}` rules evaluated against the caller's prior structured
-fields before the analyzer prompt is built.
+The template carries the *product* surface — what the operator wants to
+extract from each call and what actions the agent may plan / execute.
 
-There is no backward compatibility for the v1 shapes (`prompt_hints: str`,
-`payload_json: str`). The DB was wiped by migration 0006; legacy rows do not
-exist. See `.claude/memory/feedback_db_disposable.md`.
+System-level concerns live elsewhere:
+  - mock routing, integration kind, undo and `mutates` semantics live in
+    `app/integrations/action_catalog.py` (one source of truth, keyed by
+    the action's `key`);
+  - PII / privacy classification is out of scope for the hackathon
+    (see `afterglow/docs/future-ideas.md`);
+  - the ASR custom dictionary was removed 2026-05-17 with migration
+    `0012_drop_template_custom_dictionary`.
+
+`prompt_hints` remains a structured list of `{when, then}` rules evaluated
+against the caller's prior structured fields before the analyzer prompt is
+built.
 """
 from datetime import datetime
 from typing import Any, Literal, Optional
@@ -17,7 +23,6 @@ from uuid import UUID
 from pydantic import BaseModel, Field
 
 
-PiiClass = Literal["none", "contact", "health", "financial", "identity"]
 ExtractorHint = Literal["regex", "freeform", "enum", "llm_only"]
 ExecutionMode = Literal["auto", "manual-only"]
 
@@ -27,14 +32,11 @@ class FieldDefinition(BaseModel):
     type: str
     label: str
     required: bool = False
-    sensitive: bool = False
     options: list[str] = Field(default_factory=list)
     description: Optional[str] = None
 
-    # v2 additions
-    pii_class: PiiClass = "none"
-    # Per-field override of the default class threshold. `None` means "use
-    # the policy default for the field's pii_class".
+    # Floor on the analyzer's per-field confidence below which the field is
+    # treated as unknown (orchestrator `_coerce_extractions`).
     confidence_threshold: Optional[float] = Field(default=None, ge=0.0, le=1.0)
     extractor_hint: ExtractorHint = "freeform"
     # Other field keys that must be present (and at-or-above threshold) for
@@ -47,18 +49,13 @@ class ActionDefinition(BaseModel):
     key: str
     label: str
     execution_mode: ExecutionMode = "auto"
-    mock_target: str = "generic"
     description: Optional[str] = None
 
-    # v2 additions
     # Field keys whose presence is required before this action can be planned.
     preconditions: list[str] = Field(default_factory=list)
     # Minimum confidence (returned by the analyzer for the action itself,
     # NOT for the fields) below which the planner must skip the call.
     confidence_threshold: float = Field(default=0.7, ge=0.0, le=1.0)
-    # Marks the action as irreversible: the Action Planner never auto-retries
-    # it, and the executor flags `is_irreversible=True` in the audit row.
-    mutates: bool = False
     # When True, the planner must supply at least one evidence span or the
     # executor refuses to invoke MOCK_REGISTRY.
     evidence_required: bool = True
@@ -137,11 +134,12 @@ class TemplateView(BaseModel):
     domain_hint: str = "generic"
     fields_schema: list[FieldDefinition] = Field(default_factory=list)
     action_types: list[ActionDefinition] = Field(default_factory=list)
-    custom_dictionary: list[str] = Field(default_factory=list)
     prompt_hints: Optional[list[PromptHintRule]] = None
     is_active: bool = False
     is_seed: bool = False
     session_id: Optional[UUID] = None
+    # Internal / demo-only: not part of the user-facing template editor.
+    # The Simulator reads this to play the bundled (or wizard-generated) call.
     simulation_config: Optional[SimulationConfig] = None
     created_at: datetime
 
@@ -186,11 +184,9 @@ class ActionDefinitionDraft(BaseModel):
     key: str
     label: str
     execution_mode: ExecutionMode = "auto"
-    mock_target: str = "generic"
     description: Optional[str] = None
     preconditions: list[str] = Field(default_factory=list)
     confidence_threshold: float = Field(default=0.7, ge=0.0, le=1.0)
-    mutates: bool = False
     evidence_required: bool = True
 
 
@@ -200,7 +196,6 @@ class TemplateWizardResponse(BaseModel):
     domain_hint: str = "generic"
     fields_schema: list[FieldDefinition]
     action_types: list[ActionDefinitionDraft]
-    custom_dictionary: list[str]
     prompt_hints: list[PromptHintRule] = Field(default_factory=list)
     # Populated by the wizard endpoint with the deterministic + LLM validation
     # report. The refine UI uses it to surface issues inline; the persist
@@ -234,7 +229,6 @@ class UpdateTemplateRequest(BaseModel):
     domain_hint: Optional[str] = None
     fields_schema: Optional[list[FieldDefinition]] = None
     action_types: Optional[list[ActionDefinition]] = None
-    custom_dictionary: Optional[list[str]] = None
     prompt_hints: Optional[list[PromptHintRule]] = None
 
 

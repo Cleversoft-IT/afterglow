@@ -7,14 +7,16 @@ analysis as an *agent* whose available tools are the template's auto-mode
 the ADK session state. No execution happens here — that stays in
 ``executors.action_executor.execute_planned_actions``.
 
-Templates v2 changes:
-- Each tool now exposes a typed Pydantic payload built from
+Per-tool wiring:
+- Each tool exposes a typed Pydantic payload built from
   ``ActionDefinition.payload_schema`` (JSONSchema). Gemini emits a
   structured object that matches the schema; the executor revalidates with
   ``jsonschema.validate`` before MOCK_REGISTRY is reached.
 - ``preconditions`` and ``confidence_threshold`` are stitched into the
   agent instruction so Gemini knows when to skip a tool call.
-- ``evidence_required`` and ``mutates`` are also surfaced in the prompt.
+- ``evidence_required`` is surfaced from the template; ``mutates`` is read
+  from ``action_catalog`` (single source of truth for system-level
+  semantics) and surfaced in the same prompt.
 
 Fail-fast: per ``project_afterglow_decisions.md`` 1.ter (2026-05-16) there
 is no deterministic fallback. A missing GOOGLE_API_KEY or an ADK runner
@@ -31,6 +33,7 @@ from typing import Any, Optional
 from app.agents import call_analyzer
 from app.config import get_settings
 from app.db.models import Customer, Template
+from app.integrations import action_catalog
 from app.integrations.gemini_adk import AdkAgentSpec, create_runner, run_agent
 from app.integrations.jsonschema_to_pydantic import (
     JsonSchemaConversionError,
@@ -51,7 +54,7 @@ You have already received a structured analysis of a post-call: extracted fields
 
 Rules:
 - One tool call = one requested action. The tool will queue the request; the deterministic executor will run it afterwards.
-- Each tool's docstring documents the action's preconditions (fields that MUST be present and above their confidence threshold), confidence_threshold (the floor on your own confidence in invoking this tool), evidence_required (whether you must cite at least one transcript span), and mutates (whether the action is irreversible).
+- Each tool's docstring documents the action's preconditions (fields that MUST be present and above their confidence threshold), confidence_threshold (the floor on your own confidence in invoking this tool), evidence_required (whether you must cite at least one transcript span), and — when applicable — whether the action mutates external state and so cannot be auto-retried.
 - Only invoke a tool whose preconditions are grounded in the analysis. Cite the supporting evidence in the `evidence` argument.
 - Populate `payload` as a JSON object whose keys match the tool's typed payload schema. Use the extracted field values; do not invent.
 - Confidence must reflect how strongly the transcript supports invoking this tool, NOT the field-extraction confidence.
@@ -60,9 +63,12 @@ Rules:
 """
 
 
-def _format_action_docstring(action_def: dict[str, Any]) -> str:
+def _format_action_docstring(action_def: dict[str, Any], *, mutates: bool) -> str:
     """Render an ActionDefinition into the tool's __doc__ — the docstring is
     what ADK serializes into the FunctionDeclaration.description for Gemini.
+
+    `mutates` is passed in (sourced from the catalog) rather than read off
+    `action_def` because the template no longer carries it.
     """
     lines = [action_def.get("description") or action_def.get("label") or action_def["key"]]
     preconditions = action_def.get("preconditions") or []
@@ -73,7 +79,7 @@ def _format_action_docstring(action_def: dict[str, Any]) -> str:
         lines.append(f"Minimum confidence to invoke: {threshold}.")
     if action_def.get("evidence_required", True):
         lines.append("Evidence is REQUIRED — provide at least one verbatim transcript span.")
-    if action_def.get("mutates"):
+    if mutates:
         lines.append("This action mutates external state and CANNOT be auto-retried.")
     return "\n".join(lines)
 
@@ -91,7 +97,8 @@ def _make_tool(action_def: dict[str, Any]):
     """
     key: str = action_def["key"]
     label: str = action_def.get("label") or key
-    docstring = _format_action_docstring(action_def)
+    mutates = action_catalog.mutates(key)
+    docstring = _format_action_docstring(action_def, mutates=mutates)
     payload_schema = action_def.get("payload_schema")
 
     payload_model = None
@@ -115,7 +122,7 @@ def _make_tool(action_def: dict[str, Any]):
                 confidence=confidence,
                 evidence=list(evidence or []),
                 tool_context=tool_context,
-                mutates=bool(action_def.get("mutates", False)),
+                mutates=mutates,
             )
 
         # `from __future__ import annotations` would stringify the runtime
@@ -153,7 +160,7 @@ def _make_tool(action_def: dict[str, Any]):
                 confidence=confidence,
                 evidence=list(evidence or []),
                 tool_context=tool_context,
-                mutates=bool(action_def.get("mutates", False)),
+                mutates=mutates,
             )
 
         tool.__annotations__ = {

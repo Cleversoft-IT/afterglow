@@ -26,7 +26,10 @@ def test_apply_backfills_display_name_when_empty():
     result = apply_customer_update(cust, {"customer_name": "Mark Ross"})
     assert cust.display_name == "Mark Ross"
     assert result["applied"] is True
-    assert result["mock"] is False
+    # `mock` / `mutates` are no longer stamped by the handler; the executor
+    # stamps them from the action catalog in _run_internal_real.
+    assert "mock" not in result
+    assert "mutates" not in result
     assert result["previous_state"]["display_name"] is None
 
 

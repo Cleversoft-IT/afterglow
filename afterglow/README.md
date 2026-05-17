@@ -22,15 +22,15 @@ The autonomy is the whole point: the hackathon brief calls for *autonomous decis
 App (Expo + react-native-web)         ◄── embedded by ── Demo site (Vite)
        │ POST /api/v1/calls (audio + phone)
        ▼
-FastAPI background task ─► Speechmatics batch (diarization + lang detect + custom dict)
+FastAPI background task ─► Speechmatics batch (diarization + language auto-detect)
        │
        ├─► Vultr Vector Store /v1/chat/completions/RAG  (pre-fetch: prior_facts)
        │   └─► single collection, configured via VULTR_VECTOR_DEFAULT_COLLECTION
        │
        ├─► Gemini structured-output call  (single Gemini pass — see app/agents/call_analyzer.py)
-       │       prompt: transcript + template fields_schema (with pii_class /
-       │               confidence_threshold / depends_on) + action_types (with
-       │               preconditions / mutates / evidence_required / payload_schema) +
+       │       prompt: transcript + template fields_schema (confidence_threshold /
+       │               extractor_hint / depends_on) + action_types (preconditions /
+       │               confidence_threshold / evidence_required / payload_schema) +
        │               applicable prompt_hints rules + prior_facts
        │       response_schema = CallAnalysis (Pydantic):
        │         - fields[]  (key, value, confidence, evidence)
@@ -39,12 +39,6 @@ FastAPI background task ─► Speechmatics batch (diarization + lang detect + c
        │         - next_call_briefing  (NL paragraph, detected language)
        │       Fail-fast: missing key / error / schema mismatch → Call.failed.
        │
-       ├─► PII observer (pii_sanitizer.py — pure Python)
-       │       observe-only since 2026-05-16 feedback round 2: briefing + evidence
-       │       stay verbatim so the operator can read allergies/names. Audit step
-       │       `pii_policy_applied` records WHICH classes were present at what
-       │       confidence; redaction is no longer applied to runtime surfaces.
-       │
        ├─► Action Planner (agentic ADK loop — see app/agents/action_planner.py)
        │       Each auto-mode action_type is exposed as an ADK tool with a
        │       Pydantic payload model built dynamically from payload_schema.
@@ -52,16 +46,25 @@ FastAPI background task ─► Speechmatics batch (diarization + lang detect + c
        │       Fail-fast: ADK error → Call.failed (no fallback).
        │
        ├─► Action Executor (deterministic Python) ─► jsonschema.validate(payload),
-       │       evidence_required gate, mutates flag → action_catalog routes the
-       │       call to either MOCK_REGISTRY (mock_external, e.g. booking.create)
-       │       or INTERNAL_HANDLERS (internal_real, e.g. customer.update_profile
-       │       which actually writes Customer.tags + profile_facts on Postgres).
-       │       Audit_log records the integration_kind on every step.
+       │       evidence_required gate, `mutates` flag read from action_catalog
+       │       (single source of truth), routes the call to either MOCK_REGISTRY
+       │       (integration_kind=mock_external, e.g. booking.create) or
+       │       INTERNAL_HANDLERS (integration_kind=internal_real, e.g.
+       │       customer.update_profile which actually writes Customer.tags +
+       │       profile_facts on Postgres). Audit log records the integration_kind
+       │       and mutates flag on every step.
        │
        └─► Memory write-back ─► customer.memory_summary (Postgres, operator-visible)
                                 + bilingual chunk (native + EN summary) pushed to
                                   Vultr Vector Store
 ```
+
+PII / privacy classification and the Speechmatics ASR custom dictionary
+were removed from the template surface on 2026-05-17 (see
+`.claude/memory/project_template_simplified_2026_05_17.md`). The template
+now carries only the product-level shape (what to extract, what to do
+after); system-level concerns (`mock_target`, `mutates`, integration
+kind, undo semantics) live in `app/integrations/action_catalog.py`.
 
 The pipeline runs **entirely after the call ends** — the human-facing latency is whatever Postgres takes to return `customer.memory_summary`. No AI in the live-call hot path. See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the full diagram and rationale.
 
@@ -115,9 +118,9 @@ prefetches the chunk → briefing returns the memory.
 
 ### Speechmatics
 - `speechmatics-batch` SDK wired live (`AsyncClient.transcribe` with
-  `diarization=speaker` + `language=auto` + `additional_vocab` from the
-  template's `custom_dictionary`) — no offline fallback, missing key or
-  unreadable audio raise
+  `diarization=speaker` + `language=auto`) — no offline fallback, missing
+  key or unreadable audio raise. The template-level ASR custom dictionary
+  was removed 2026-05-17; Speechmatics handles vocabulary auto-detection.
 - The six demo MP3s bundled under `app/assets/audio/` (three domains ×
   two caller modes — `<domain>_existing.mp3` for returning callers,
   `<domain>_new.mp3` for first-time callers — plus a synthetic

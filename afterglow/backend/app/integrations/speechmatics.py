@@ -27,7 +27,6 @@ class TranscriptResult:
 async def transcribe_audio(
     audio_path: Path,
     *,
-    custom_dictionary: Optional[list[str]] = None,
     diarization: str = "speaker",
     language: str = "auto",
     timeout_sec: float = 120.0,
@@ -47,14 +46,9 @@ async def transcribe_audio(
     # (e.g. during local linting on a fresh checkout without `pip install`).
     from speechmatics.batch import AsyncClient, TranscriptionConfig
 
-    additional_vocab = (
-        [{"content": term} for term in custom_dictionary] if custom_dictionary else None
-    )
-
     transcription_config = TranscriptionConfig(
         language=language,
         diarization=diarization,
-        additional_vocab=additional_vocab,
     )
 
     client = AsyncClient(

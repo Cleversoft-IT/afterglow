@@ -248,8 +248,8 @@ async def get_call(
         ).scalar_one_or_none()
 
     # Pull the template once so we can label extracted fields with their
-    # human-readable label and pii_class. Templates v2 schema-only fields
-    # may be missing from older rows, so default everything defensively.
+    # human-readable label and type. Older rows may be missing keys, so
+    # default everything defensively.
     template_row: Optional[Template] = (
         await session.execute(
             select(Template).where(Template.id == call.template_id)
@@ -272,7 +272,6 @@ async def get_call(
                         key=key,
                         label=raw.get("label") or key,
                         type=raw.get("type") or "string",
-                        pii_class=raw.get("pii_class") or "none",
                     )
                 )
         extracted_view = CallExtractedView(

@@ -29,7 +29,6 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agents import action_planner, call_analyzer, memory_retrieval
-from app.agents.pii_sanitizer import sanitize_analysis
 from app.audit.logger import audit_step
 from app.config import get_settings
 from app.db.models import (
@@ -81,7 +80,6 @@ async def run_pipeline(session: AsyncSession, call_id: uuid.UUID) -> None:
     ):
         transcript = await speechmatics.transcribe_audio(
             Path(call.audio_url) if call.audio_url else Path("/dev/null"),
-            custom_dictionary=template.custom_dictionary,
             domain_hint=template.domain_hint,
         )
     call.raw_transcript = {
@@ -216,42 +214,9 @@ async def run_pipeline(session: AsyncSession, call_id: uuid.UUID) -> None:
         await session.commit()
         return
 
-    # 4b) PII observation pass. Runs immediately after the analyzer. Today
-    # this is observe-only: nothing in the analysis is mutated (the operator
-    # needs verbatim briefings to act on allergies, names, etc.). The audit
-    # row records which PII classes were present at what confidence so the
-    # log can answer "did this briefing carry health-class data?" without
-    # leaking the value.
-    sanitized = sanitize_analysis(template.fields_schema, analysis)
-    analysis = sanitized.analysis
-    if sanitized.audit_pii_actions:
-        async with audit_step(
-            call_id=call.id,
-            session_id=call.session_id,
-            agent_name="pii_sanitizer",
-            step_type="pii_policy_applied",
-            payload={
-                "mode": "observe_only",
-                "observations": [
-                    {
-                        "field": r.field,
-                        "pii_class": r.pii_class,
-                        "status": r.action,
-                        "threshold": r.threshold,
-                        "confidence": r.confidence,
-                    }
-                    for r in sanitized.audit_pii_actions
-                ],
-                "pii_classes_present": sorted(
-                    {r.pii_class for r in sanitized.audit_pii_actions}
-                ),
-            },
-        ):
-            pass
-
-    # 5) Persist extracted fields. briefing_snapshot freezes the SANITIZED
-    # briefing generated for *this* call so future structured_history lookups
-    # can show the operator-visible view, never the raw PII.
+    # 5) Persist extracted fields. briefing_snapshot freezes the briefing
+    # generated for *this* call so future structured_history lookups can show
+    # the same operator-visible view that was used at call time.
     fields_dict, confidence_dict, evidence_dict = _coerce_extractions(
         analysis.fields, template.fields_schema
     )
@@ -338,9 +303,6 @@ async def run_pipeline(session: AsyncSession, call_id: uuid.UUID) -> None:
             "language": analysis.language,
             "urgency": analysis.urgency,
         },
-        pii_classes_present=sorted(
-            {r.pii_class for r in sanitized.audit_pii_actions if r.pii_class != "none"}
-        ),
     )
 
     call.status = "completed"
@@ -357,15 +319,13 @@ _MIN_TRANSCRIPT_WORDS = 8
 
 
 # Field keys we treat as "the caller's name" when backfilling display_name.
-# `contact`-class fields ending in `_name` (customer_name, patient_name,
-# guest_name, ...) are the primary signal; a couple of common aliases cover
-# templates that name the field differently.
+# Templates name the field differently per domain (customer_name, patient_name,
+# guest_name, …) so we pattern-match on the `_name` suffix plus a small
+# alias list.
 _NAME_FIELD_KEYS = ("full_name", "caller_name")
 
 
-def _is_name_field(key: str, pii_class: Optional[str]) -> bool:
-    if pii_class != "contact":
-        return False
+def _is_name_field(key: str) -> bool:
     if key in _NAME_FIELD_KEYS:
         return True
     return key.endswith("_name")
@@ -384,10 +344,8 @@ def _backfill_display_name(
     if customer.display_name:
         return
 
-    field_by_key = {f["key"]: f for f in fields_schema if isinstance(f, dict)}
     for extraction in analysis.fields:
-        field_def = field_by_key.get(extraction.key) or {}
-        if not _is_name_field(extraction.key, field_def.get("pii_class")):
+        if not _is_name_field(extraction.key):
             continue
         value = (extraction.value or "").strip()
         if not value:
@@ -419,12 +377,12 @@ def _coerce_extractions(
 
     A field is marked `manual_review` when any of its `depends_on` keys is
     either missing from the extractions or below the dependency's
-    confidence threshold. The flag lives inside `confidence_dict` as a
-    sentinel value `{"value": <float>, "status": "manual_review", "reason": ...}`
-    so the UI can render a warning without losing the LLM's confidence.
+    `confidence_threshold` (defaulting to 0.0 — i.e. presence alone is
+    enough when no threshold is configured). The flag lives inside
+    `confidence_dict` as a sentinel value
+    `{"value": <float>, "status": "manual_review", "reason": ...}` so the UI
+    can render a warning without losing the LLM's confidence.
     """
-    from app.agents.pii_policy import threshold_for
-
     type_by_key = {f["key"]: f.get("type", "string") for f in fields_schema}
     field_def_by_key = {f["key"]: f for f in fields_schema}
 
@@ -453,10 +411,7 @@ def _coerce_extractions(
                 unmet.append(f"{dep_key}:missing")
                 continue
             dep_def = field_def_by_key.get(dep_key) or {}
-            dep_threshold = threshold_for(
-                dep_def.get("pii_class") or "none",
-                dep_def.get("confidence_threshold"),
-            )
+            dep_threshold = dep_def.get("confidence_threshold") or 0.0
             if dep_item.confidence < dep_threshold:
                 unmet.append(f"{dep_key}:low_confidence")
         if unmet:
@@ -589,7 +544,6 @@ async def _persist_memory(
     collection_id: Optional[str],
     briefing: str,
     classification: dict[str, Any],
-    pii_classes_present: Optional[list[str]] = None,
 ) -> None:
     """Save the next-call briefing on Postgres + push a chunk to Vector Store.
 
@@ -703,7 +657,6 @@ async def _persist_memory(
                     "customer_id": str(customer.id),
                     "language": detected_language,
                     "briefing_en": briefing_en,
-                    "pii_classes_present": pii_classes_present or [],
                 },
                 session_id=call.session_id,
             )

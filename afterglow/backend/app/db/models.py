@@ -84,9 +84,6 @@ class Template(Base):
     )
     fields_schema: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, default=list)
     action_types: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, default=list)
-    custom_dictionary: Mapped[list[str]] = mapped_column(
-        ARRAY(String), default=list
-    )
     # JSONB array of {when, then} rules. See schemas.templates.PromptHintRule.
     prompt_hints: Mapped[Optional[list[dict[str, Any]]]] = mapped_column(
         JSONB, nullable=True

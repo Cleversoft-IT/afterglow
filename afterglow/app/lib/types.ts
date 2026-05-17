@@ -1,6 +1,5 @@
 // Backend DTOs mirrored on the client. Keep in sync with afterglow/backend/app/schemas.
 
-export type PiiClass = 'none' | 'contact' | 'health' | 'financial' | 'identity';
 export type ExtractorHint = 'regex' | 'freeform' | 'enum' | 'llm_only';
 export type ExecutionMode = 'auto' | 'manual-only';
 
@@ -9,28 +8,25 @@ export type FieldDefinition = {
   type: string;
   label: string;
   required?: boolean;
-  sensitive?: boolean;
   options?: string[];
   description?: string | null;
 
-  // v2 additions
-  pii_class?: PiiClass;
   confidence_threshold?: number | null;
   extractor_hint?: ExtractorHint;
   depends_on?: string[];
 };
 
+// `mock_target` / `mutates` / `integration_kind` / `can_undo` live in
+// `ActionCatalogEntry` (sourced from backend/app/integrations/action_catalog.py),
+// not on the per-template action definition.
 export type ActionDefinition = {
   key: string;
   label: string;
   execution_mode: ExecutionMode;
-  mock_target?: string;
   description?: string | null;
 
-  // v2 additions
   preconditions?: string[];
   confidence_threshold?: number;
-  mutates?: boolean;
   evidence_required?: boolean;
   payload_schema?: Record<string, unknown> | null;
 };
@@ -70,11 +66,12 @@ export type TemplateView = {
   domain_hint: 'restaurant' | 'dentist' | 'bodyshop' | string;
   fields_schema: FieldDefinition[];
   action_types: ActionDefinition[];
-  custom_dictionary: string[];
   prompt_hints?: PromptHintRule[] | null;
   is_active: boolean;
   is_seed?: boolean;
   session_id?: string | null;
+  // Internal/demo-only — drives the Simulator screen, never exposed in the
+  // template editor surface.
   simulation_config?: SimulationConfig | null;
   created_at: string;
 };
@@ -131,7 +128,6 @@ export type TemplateWizardResponse = {
   domain_hint?: string;
   fields_schema: FieldDefinition[];
   action_types: ActionDefinition[];
-  custom_dictionary: string[];
   prompt_hints: PromptHintRule[];
   validation?: ValidationReport | null;
 };
@@ -147,7 +143,6 @@ export type UpdateTemplateRequest = {
   domain_hint?: string | null;
   fields_schema?: FieldDefinition[];
   action_types?: ActionDefinition[];
-  custom_dictionary?: string[];
   prompt_hints?: PromptHintRule[];
 };
 
@@ -214,7 +209,6 @@ export type FieldDefinitionLite = {
   key: string;
   label: string;
   type: string;
-  pii_class: PiiClass | string;
 };
 
 export type CallExtractedView = {

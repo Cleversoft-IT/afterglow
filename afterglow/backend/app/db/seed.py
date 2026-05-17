@@ -4,12 +4,13 @@ Single-tenant: there is no Business row. The active template is what drives the
 pipeline; the others are inactive presets the operator can switch to from the
 dashboard.
 
-The shape below is the v2 schema landed in migration 0006:
-- `FieldDefinition` carries `pii_class`, `confidence_threshold`, `extractor_hint`,
-  `depends_on`.
-- `ActionDefinition` carries `preconditions`, `confidence_threshold`, `mutates`,
+Template shape (simplified 2026-05-17, see `project_template_simplified_2026_05_17`):
+- `FieldDefinition` carries `confidence_threshold`, `extractor_hint`, `depends_on`.
+- `ActionDefinition` carries `preconditions`, `confidence_threshold`,
   `evidence_required`, `payload_schema` (JSONSchema feeding both the typed ADK
   FunctionDeclaration and the `action_executor` payload validation).
+- `mock_target` / `mutates` / `integration_kind` / `can_undo` live in
+  `app/integrations/action_catalog.py`, not on the template.
 - `prompt_hints` is a JSON array of `{when, then}` rules, evaluated against the
   caller's prior structured fields before the analyzer prompt is built.
 """
@@ -113,7 +114,6 @@ RESTAURANT_TEMPLATE = {
             "type": "integer",
             "label": "Number of guests",
             "required": True,
-            "pii_class": "none",
             "extractor_hint": "regex",
         },
         {
@@ -121,7 +121,6 @@ RESTAURANT_TEMPLATE = {
             "type": "date",
             "label": "Date",
             "required": True,
-            "pii_class": "none",
             "extractor_hint": "regex",
         },
         {
@@ -129,7 +128,6 @@ RESTAURANT_TEMPLATE = {
             "type": "time",
             "label": "Time",
             "required": True,
-            "pii_class": "none",
             "extractor_hint": "regex",
             "depends_on": ["booking_date"],
         },
@@ -138,7 +136,6 @@ RESTAURANT_TEMPLATE = {
             "type": "string",
             "label": "Name",
             "required": True,
-            "pii_class": "contact",
             "extractor_hint": "freeform",
         },
         {
@@ -146,8 +143,6 @@ RESTAURANT_TEMPLATE = {
             "type": "string_list",
             "label": "Allergies",
             "required": False,
-            "sensitive": True,
-            "pii_class": "health",
             "confidence_threshold": 0.90,
             "extractor_hint": "freeform",
         },
@@ -178,10 +173,8 @@ RESTAURANT_TEMPLATE = {
             "key": "booking.create",
             "label": "Create booking",
             "execution_mode": "auto",
-            "mock_target": "booking",
             "preconditions": ["party_size", "booking_date", "booking_time", "customer_name"],
             "confidence_threshold": 0.75,
-            "mutates": True,
             "evidence_required": True,
             "payload_schema": {
                 "type": "object",
@@ -201,10 +194,8 @@ RESTAURANT_TEMPLATE = {
             "key": "whatsapp.send_confirmation",
             "label": "Send WhatsApp confirmation",
             "execution_mode": "auto",
-            "mock_target": "whatsapp",
             "preconditions": ["customer_name", "booking_date", "booking_time"],
             "confidence_threshold": 0.70,
-            "mutates": False,
             "evidence_required": False,
             "payload_schema": {
                 "type": "object",
@@ -223,12 +214,9 @@ RESTAURANT_TEMPLATE = {
             "label": "Update customer profile",
             "execution_mode": "auto",
             # internal_real action — executor uses action_catalog to route to
-            # `customer_profile.apply_update`. `mock_target` is kept blank so
-            # the validator / wizard render the action as "internal" in the UI.
-            "mock_target": "internal",
+            # `customer_profile.apply_update`.
             "preconditions": ["customer_name"],
             "confidence_threshold": 0.70,
-            "mutates": False,
             "evidence_required": False,
             "payload_schema": {
                 "type": "object",
@@ -247,15 +235,9 @@ RESTAURANT_TEMPLATE = {
             "key": "booking.cancel",
             "label": "Cancel booking",
             "execution_mode": "manual-only",
-            "mock_target": "booking",
             "preconditions": ["booking_date"],
-            "mutates": True,
             "evidence_required": True,
         },
-    ],
-    "custom_dictionary": [
-        "celiac", "gluten", "lactose", "intolerance", "Nebbiolo", "Barolo",
-        "table", "covers", "tasting menu", "vegan", "vegetarian",
     ],
     "prompt_hints": [
         {
@@ -264,7 +246,7 @@ RESTAURANT_TEMPLATE = {
         },
         {
             "when": "field.allergies is not null",
-            "then": "Confirm allergies verbatim and require an evidence span; health-class data requires confidence >= 0.90.",
+            "then": "Confirm allergies verbatim and require an evidence span (confidence >= 0.90).",
         },
     ],
 }
@@ -279,7 +261,6 @@ DENTIST_TEMPLATE = {
             "type": "string",
             "label": "Patient name",
             "required": True,
-            "pii_class": "contact",
             "extractor_hint": "freeform",
         },
         {
@@ -294,8 +275,6 @@ DENTIST_TEMPLATE = {
             "type": "string",
             "label": "Reason for visit",
             "required": True,
-            "sensitive": True,
-            "pii_class": "health",
             "confidence_threshold": 0.90,
             "extractor_hint": "freeform",
         },
@@ -325,10 +304,8 @@ DENTIST_TEMPLATE = {
             "key": "appointment.create",
             "label": "Create appointment",
             "execution_mode": "auto",
-            "mock_target": "booking",
             "preconditions": ["patient_name", "urgency"],
             "confidence_threshold": 0.75,
-            "mutates": True,
             "evidence_required": True,
             "payload_schema": {
                 "type": "object",
@@ -350,19 +327,15 @@ DENTIST_TEMPLATE = {
             "key": "patient.update_profile",
             "label": "Update patient profile",
             "execution_mode": "manual-only",
-            "mock_target": "crm",
             "preconditions": ["patient_name"],
-            "mutates": False,
             "evidence_required": False,
         },
         {
             "key": "sms.send_reminder",
             "label": "Send SMS reminder",
             "execution_mode": "auto",
-            "mock_target": "whatsapp",
             "preconditions": ["patient_name", "preferred_date"],
             "confidence_threshold": 0.70,
-            "mutates": False,
             "evidence_required": False,
             "payload_schema": {
                 "type": "object",
@@ -376,14 +349,10 @@ DENTIST_TEMPLATE = {
             },
         },
     ],
-    "custom_dictionary": [
-        "dental hygiene", "cavity", "extraction", "implant", "orthodontics",
-        "root canal", "crown", "filling",
-    ],
     "prompt_hints": [
         {
             "when": "always",
-            "then": "Health-related fields are sensitive. Quote the patient verbatim in evidence and never paraphrase clinical descriptions.",
+            "then": "Quote the patient verbatim in evidence and never paraphrase clinical descriptions.",
         },
         {
             "when": "field.urgency == 'emergency'",
@@ -402,7 +371,6 @@ BODYSHOP_TEMPLATE = {
             "type": "string",
             "label": "Customer name",
             "required": True,
-            "pii_class": "contact",
             "extractor_hint": "freeform",
         },
         {
@@ -416,7 +384,6 @@ BODYSHOP_TEMPLATE = {
             "key": "license_plate",
             "type": "string",
             "label": "License plate",
-            "pii_class": "identity",
             "confidence_threshold": 0.85,
             "extractor_hint": "regex",
         },
@@ -444,10 +411,8 @@ BODYSHOP_TEMPLATE = {
             "key": "appointment.create_inspection",
             "label": "Schedule inspection",
             "execution_mode": "auto",
-            "mock_target": "booking",
             "preconditions": ["customer_name", "vehicle_make_model"],
             "confidence_threshold": 0.75,
-            "mutates": True,
             "evidence_required": True,
             "payload_schema": {
                 "type": "object",
@@ -466,10 +431,8 @@ BODYSHOP_TEMPLATE = {
             "key": "whatsapp.request_photos",
             "label": "Request damage photos",
             "execution_mode": "auto",
-            "mock_target": "whatsapp",
             "preconditions": ["customer_name"],
             "confidence_threshold": 0.65,
-            "mutates": False,
             "evidence_required": False,
             "payload_schema": {
                 "type": "object",
@@ -485,15 +448,9 @@ BODYSHOP_TEMPLATE = {
             "key": "case.open_insurance",
             "label": "Open insurance case",
             "execution_mode": "manual-only",
-            "mock_target": "crm",
             "preconditions": ["customer_name", "license_plate", "damage_type"],
-            "mutates": True,
             "evidence_required": True,
         },
-    ],
-    "custom_dictionary": [
-        "bumper", "bodywork", "accident", "appraiser", "deductible", "plate",
-        "fender", "panel", "dent", "scratch",
     ],
     "prompt_hints": [
         {
@@ -653,7 +610,6 @@ async def seed():
                     domain_hint=tpl["domain_hint"],
                     fields_schema=tpl["fields_schema"],
                     action_types=tpl["action_types"],
-                    custom_dictionary=tpl["custom_dictionary"],
                     prompt_hints=tpl["prompt_hints"],
                     is_active=is_active,
                     is_seed=True,
@@ -970,7 +926,7 @@ def _seed_call_specs(
                     "applied": True,
                     "tags_added": ["repeat"],
                     "mock": False,
-                    "mutates": False,
+                    "mutates": True,
                 },
             },
         ],
@@ -1061,7 +1017,7 @@ def _seed_call_specs(
                     "applied": True,
                     "tags_added": ["vip", "anniversary"],
                     "mock": False,
-                    "mutates": False,
+                    "mutates": True,
                 },
             },
         ],
@@ -1270,7 +1226,6 @@ def _emit_seeded_call_audit(session, spec) -> None:
     audit_steps = [
         ("speechmatics", "tool_call", "success"),
         ("call_analyzer", "llm_call", "success"),
-        ("pii_sanitizer", "pii_policy_applied", "success"),
         ("action_planner", "agent_loop", "success"),
         ("action_executor", "action_exec", "success"),
         ("memory_updater", "tool_call", "success"),

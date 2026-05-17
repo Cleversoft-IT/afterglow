@@ -7,12 +7,12 @@ through `POST /templates/validate`). Returns a `ValidationReport`:
     produced deterministically (snake_case key violations, depends_on
     cycles, invalid JSONSchema, action keys with no registered mock target).
     Soft issues come from a small Gemini call that evaluates semantic
-    consistency (custom_dictionary fits domain_hint, prompt_hints make
-    sense, action labels match what the actions actually do).
+    consistency (prompt_hints make sense, action labels match what the
+    actions actually do).
 
-  - `proposed_mocks`: when an action key is not present in MOCK_REGISTRY,
-    the Gemini step suggests an existing `mock_target` the operator should
-    map it to.
+  - `proposed_mocks`: when an action key is not present in the action
+    catalog, the Gemini step suggests an existing catalog `key` the
+    operator should map it to.
 
 The deterministic step never raises; it just records issues. The Gemini
 step degrades gracefully to "no soft issues" on failure (the user still
@@ -263,16 +263,15 @@ _SEMANTIC_INSTRUCTION = (
     "Inspect the candidate template the prompt-to-template wizard just "
     "produced. Return a ValidationReport with two parts:\n\n"
     "- `issues[]`: semantic problems (severity `error|warning|info`) that the "
-    "deterministic validator cannot catch. Look for: (a) custom_dictionary "
-    "terms that do not match the declared `domain_hint`; (b) prompt_hints "
-    "whose `then` instruction is ambiguous; (c) action `label` strings that "
-    "do not match what the action actually does; (d) fields whose "
-    "`pii_class` looks wrong for the field name.\n\n"
+    "deterministic validator cannot catch. Look for: (a) prompt_hints whose "
+    "`then` instruction is ambiguous; (b) action `label` strings that do not "
+    "match what the action actually does; (c) field `label` or `description` "
+    "that do not match the field `key`.\n\n"
     "- `proposed_mocks[]`: for every action key the operator listed that is "
     "NOT in `mock_registry_keys` (passed in the user prompt), propose the "
-    "closest matching `mock_target` from that registry, with a one-sentence "
+    "closest matching catalog `key` from that registry, with a one-sentence "
     "rationale. If no reasonable mapping exists, omit the entry — do not "
-    "invent a mock target.\n\n"
+    "invent a target.\n\n"
     "Be concise; one sentence per issue is enough."
 )
 

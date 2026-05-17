@@ -48,6 +48,11 @@ class ActionCatalogEntry:
     mock_target: Optional[str] = None
     internal_handler: Optional[str] = None
     can_undo: bool = False
+    # True when the action creates / modifies / deletes records in the target
+    # system. Surfaced to the Action Planner (tool docstring) and stamped on
+    # the executor's audit row + ExecutedAction.result. Independent of
+    # `can_undo`: a booking creation mutates state but is also undoable.
+    mutates: bool = False
     default_payload_schema: Optional[dict[str, Any]] = None
     compatible_domains: list[str] = field(default_factory=lambda: ["*"])
 
@@ -60,6 +65,7 @@ class ActionCatalogEntry:
             "mock_target": self.mock_target,
             "internal_handler": self.internal_handler,
             "can_undo": self.can_undo,
+            "mutates": self.mutates,
             "default_payload_schema": self.default_payload_schema,
             "compatible_domains": self.compatible_domains,
         }
@@ -73,6 +79,7 @@ CATALOG: dict[str, ActionCatalogEntry] = {
         integration_kind="mock_external",
         mock_target="booking",
         can_undo=True,
+        mutates=True,
         compatible_domains=["restaurant", "*"],
     ),
     "booking.cancel": ActionCatalogEntry(
@@ -82,6 +89,7 @@ CATALOG: dict[str, ActionCatalogEntry] = {
         integration_kind="mock_external",
         mock_target="booking",
         can_undo=False,  # cancellation is the undo itself
+        mutates=True,
         compatible_domains=["restaurant", "*"],
     ),
     "appointment.create": ActionCatalogEntry(
@@ -91,6 +99,7 @@ CATALOG: dict[str, ActionCatalogEntry] = {
         integration_kind="mock_external",
         mock_target="booking",
         can_undo=True,
+        mutates=True,
         compatible_domains=["dentist", "*"],
     ),
     "appointment.create_inspection": ActionCatalogEntry(
@@ -100,6 +109,7 @@ CATALOG: dict[str, ActionCatalogEntry] = {
         integration_kind="mock_external",
         mock_target="booking",
         can_undo=True,
+        mutates=True,
         compatible_domains=["bodyshop", "*"],
     ),
     "whatsapp.send_confirmation": ActionCatalogEntry(
@@ -146,6 +156,7 @@ CATALOG: dict[str, ActionCatalogEntry] = {
         integration_kind="internal_real",
         internal_handler="customer_profile.apply_update",
         can_undo=True,
+        mutates=True,
     ),
     "patient.update_profile": ActionCatalogEntry(
         key="patient.update_profile",
@@ -158,6 +169,7 @@ CATALOG: dict[str, ActionCatalogEntry] = {
         integration_kind="internal_real",
         internal_handler="customer_profile.apply_update",
         can_undo=True,
+        mutates=True,
         compatible_domains=["dentist", "*"],
     ),
     "case.open_insurance": ActionCatalogEntry(
@@ -167,6 +179,7 @@ CATALOG: dict[str, ActionCatalogEntry] = {
         integration_kind="mock_external",
         mock_target="crm",
         can_undo=False,  # legal artefact — never auto-undone
+        mutates=True,
         compatible_domains=["bodyshop", "*"],
     ),
 }
@@ -199,3 +212,17 @@ def can_undo(action_key: str) -> bool:
     if entry is None:
         return False
     return entry.can_undo
+
+
+def mutates(action_key: str) -> bool:
+    """True when the action creates / modifies / deletes records in its target.
+
+    Used by `action_executor` (audit step + ExecutedAction.result["mutates"])
+    and by `action_planner._format_action_docstring` (Gemini tool docstring).
+    Unknown keys default to False — the executor will reject them earlier
+    anyway because they are not in the template's `action_types`.
+    """
+    entry = CATALOG.get(action_key)
+    if entry is None:
+        return False
+    return entry.mutates

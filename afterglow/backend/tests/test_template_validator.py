@@ -33,7 +33,6 @@ def _draft(**over) -> TemplateWizardResponse:
         domain_hint=over.get("domain_hint", "generic"),
         fields_schema=over.get("fields_schema", []),
         action_types=over.get("action_types", []),
-        custom_dictionary=over.get("custom_dictionary", []),
         prompt_hints=over.get("prompt_hints", []),
     )
 
@@ -111,11 +110,9 @@ def test_invalid_payload_schema_flagged():
         key="booking.create",
         label="b",
         execution_mode="auto",
-        mock_target="generic",
         description=None,
         preconditions=[],
         confidence_threshold=0.7,
-        mutates=False,
         evidence_required=True,
         payload_schema={"type": "not_a_real_type"},
     )
@@ -151,7 +148,7 @@ def test_clean_template_produces_no_errors():
     d = _draft(
         fields_schema=[
             FieldDefinition(key="party_size", type="integer", label="Guests"),
-            FieldDefinition(key="customer_name", type="string", label="Name", pii_class="contact"),
+            FieldDefinition(key="customer_name", type="string", label="Name"),
         ],
         action_types=[
             ActionDefinition(

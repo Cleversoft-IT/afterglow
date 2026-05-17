@@ -2,9 +2,9 @@
 
 > Material for the pitch's *"future work"* slide. Everything below is
 > intentionally **out of scope** for the AI Agent Olympics @ Milan AI Week
-> 2026 deadline (19 May 2026, 17:00 CEST). The three items here were
-> validated as worthwhile during the v2 templates roadmap design but
-> rolled out of the build to keep the demo surface small.
+> 2026 deadline (19 May 2026, 17:00 CEST). The items here were validated
+> as worthwhile during the v2 templates roadmap design but rolled out of
+> the build to keep the demo surface small.
 
 The hackathon's "produzione" surface = the public demo URL
 (`https://app.95-179-245-107.sslip.io`). Everything below assumes a real
@@ -92,12 +92,68 @@ demo-worthy.
 
 ---
 
+## 4. PII / privacy gating
+
+**Scenario.** Each `FieldDefinition` carries a `pii_class`
+(`contact|health|financial|identity`) plus a per-class threshold; the
+post-call pipeline runs a sanitizer that redacts low-confidence
+classified fields out of the briefing and the audit log, surfaces a
+`pii_policy_applied` audit row, and pushes a `pii_classes_present` list
+into the Vultr Vector Store chunk metadata so an auditor can answer
+"which chunks carry health-class data" without parsing the chunk body.
+
+**Why it matters.** Real-world dialer deployments hit GDPR / HIPAA the
+moment the operator starts hearing names and allergies. The hackathon
+build deliberately ships **without** this layer: the operator needs to
+see allergies verbatim before the next pickup, and a half-built privacy
+system is more dangerous than no system at all. A grown-up version would
+also need DSAR endpoints, retention policy on `customer_memory_chunks`,
+and a redaction queue for the audit log.
+
+**Cost.** One sanitizer module, one policy module with per-class
+thresholds, audit shape changes, Vector Store metadata changes, plus
+end-to-end tests. About three days of work — and a non-trivial
+governance/legal review that is outside the hackathon's brief. **Removed
+from the runtime on 2026-05-17** along with `pii_sanitizer.py` /
+`pii_policy.py` (see
+[`.claude/memory/project_template_simplified_2026_05_17.md`](../../.claude/memory/project_template_simplified_2026_05_17.md))
+so this section becomes the canonical place to find the original design
+when we pick it back up.
+
+---
+
+## 5. Speechmatics custom dictionary per template
+
+**Scenario.** Each template carries a small `custom_dictionary: list[str]`
+of domain terms (`celiac`, `crown`, `bumper`, …) that the orchestrator
+passes to Speechmatics as `additional_vocab`. The Wizard's LLM generates
+the list at template creation time.
+
+**Why it matters.** Speechmatics auto-detection is already good on the
+six bundled MP3s, but a real production deployment on real audio would
+benefit from domain-specific vocabulary hints — especially for medical
+and legal terminology where ASR errors land at the wrong end of the
+threshold and either flag a field as low-confidence or extract a wrong
+value.
+
+**Cost.** Already done once and reverted on 2026-05-17 (migration
+`0012_drop_template_custom_dictionary.py`). The original implementation
+lived in `Template.custom_dictionary` (ARRAY column), the
+`additional_vocab` parameter on `speechmatics.transcribe_audio`, plus a
+Wizard prompt rule. Adding it back is a couple of hours; the reason it
+was removed was UX — it pushed the template editor toward "ASR config
+panel" instead of "what the business wants the AI to capture".
+
+---
+
 ## Why not in the hackathon build
 
-The v2 templates roadmap audit (2026-05-16) concluded that PII gating,
-typed action payloads, structured `prompt_hints`, and the persisted
-wizard already saturate the "Application of Technology" + "Agentic
-Workflows" judging axes. Adding lineage / versioning / learning loops
-would dilute the pitch's coherence — every minute spent on them is a
-minute not spent making the four shipped features rock-solid. They go
-on the slide, not on the merge queue.
+The v2 templates roadmap audit (2026-05-16) plus the 2026-05-17
+simplification concluded that typed action payloads, structured
+`prompt_hints`, the agentic action planner, the typed executor with
+`mutates` + `evidence_required` gates, and the persisted Wizard already
+saturate the "Application of Technology" + "Agentic Workflows" judging
+axes. Adding lineage / versioning / learning loops / PII gating / ASR
+dictionaries on top would dilute the pitch's coherence — every minute
+spent on them is a minute not spent making the shipped features
+rock-solid. They go on the slide, not on the merge queue.

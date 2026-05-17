@@ -1,4 +1,4 @@
-"""Unit tests for app.schemas.templates — v2 round-trip + defaults."""
+"""Unit tests for app.schemas.templates — round-trip + defaults."""
 from __future__ import annotations
 
 from app.schemas.templates import (
@@ -17,12 +17,10 @@ from app.schemas.templates import (
 
 def test_field_definition_defaults():
     f = FieldDefinition(key="x", type="string", label="X")
-    assert f.pii_class == "none"
     assert f.extractor_hint == "freeform"
     assert f.depends_on == []
     assert f.confidence_threshold is None
     assert f.required is False
-    assert f.sensitive is False
 
 
 def test_field_definition_full_roundtrip():
@@ -31,18 +29,15 @@ def test_field_definition_full_roundtrip():
         "type": "string_list",
         "label": "Allergies",
         "required": False,
-        "sensitive": True,
         "options": [],
         "description": "comma-separated allergens",
-        "pii_class": "health",
         "confidence_threshold": 0.9,
         "extractor_hint": "freeform",
         "depends_on": [],
     }
     f = FieldDefinition.model_validate(payload)
     again = f.model_dump()
-    # All v2 keys must survive the round-trip.
-    for key in ("pii_class", "confidence_threshold", "extractor_hint", "depends_on"):
+    for key in ("confidence_threshold", "extractor_hint", "depends_on"):
         assert key in again
 
 
@@ -51,7 +46,6 @@ def test_action_definition_defaults():
     assert a.execution_mode == "auto"
     assert a.preconditions == []
     assert a.confidence_threshold == 0.7
-    assert a.mutates is False
     assert a.evidence_required is True
     assert a.payload_schema is None
 
@@ -60,7 +54,6 @@ def test_action_definition_with_payload_schema():
     a = ActionDefinition(
         key="booking.create",
         label="Create",
-        mutates=True,
         payload_schema={
             "type": "object",
             "properties": {"party_size": {"type": "integer"}},
@@ -87,7 +80,6 @@ def test_template_wizard_response_with_validation():
         description="d",
         fields_schema=[FieldDefinition(key="a", type="string", label="A")],
         action_types=[ActionDefinitionDraft(key="x.y", label="y")],
-        custom_dictionary=[],
         prompt_hints=[PromptHintRule(then="t")],
         validation=rep,
     )
@@ -102,7 +94,6 @@ def test_create_template_request_minimal():
         description="d",
         fields_schema=[],
         action_types=[],
-        custom_dictionary=[],
         prompt_hints=[],
     )
     req = CreateTemplateRequest(template=base)
@@ -118,7 +109,6 @@ def test_update_and_validate_requests_accept_partial():
         description="d",
         fields_schema=[],
         action_types=[],
-        custom_dictionary=[],
         prompt_hints=[],
     )
     val = ValidateDraftRequest(template=base)

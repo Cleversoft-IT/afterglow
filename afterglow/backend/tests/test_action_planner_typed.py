@@ -30,14 +30,14 @@ def _get_payload_annotation(tool):
 
 
 def _booking_action() -> dict[str, Any]:
+    # mock_target / mutates live in the catalog; `booking.create` resolves to
+    # mutates=True via action_catalog.mutates(key).
     return {
         "key": "booking.create",
         "label": "Create booking",
         "execution_mode": "auto",
-        "mock_target": "booking",
         "preconditions": ["party_size"],
         "confidence_threshold": 0.75,
-        "mutates": True,
         "evidence_required": True,
         "payload_schema": {
             "type": "object",
@@ -86,13 +86,13 @@ def test_make_tool_records_call_with_mutates_flag():
 
 
 def test_make_tool_without_payload_schema_falls_back_to_dict():
+    # whatsapp.send_confirmation: mutates=False in the catalog.
     action = {
         "key": "whatsapp.send_confirmation",
         "label": "Send confirmation",
         "execution_mode": "auto",
         "preconditions": [],
         "confidence_threshold": 0.7,
-        "mutates": False,
         "evidence_required": False,
     }
     tool = _make_tool(action)

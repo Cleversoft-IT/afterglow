@@ -465,7 +465,6 @@ async def create_template(
         domain_hint=tpl.domain_hint,
         fields_schema=[f.model_dump() for f in tpl.fields_schema],
         action_types=[a.model_dump() for a in tpl.action_types],
-        custom_dictionary=list(tpl.custom_dictionary),
         prompt_hints=[r.model_dump() for r in tpl.prompt_hints],
         is_active=False,
         session_id=target_session_id,
@@ -537,8 +536,6 @@ async def update_template(
         row.fields_schema = [f.model_dump() for f in payload.fields_schema]
     if payload.action_types is not None:
         row.action_types = [a.model_dump() for a in payload.action_types]
-    if payload.custom_dictionary is not None:
-        row.custom_dictionary = list(payload.custom_dictionary)
     if payload.prompt_hints is not None:
         row.prompt_hints = [r.model_dump() for r in payload.prompt_hints]
 

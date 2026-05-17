@@ -299,10 +299,9 @@ FastAPI background task ─► Speechmatics batch (diarization + lang detect + c
        │        configured via VULTR_VECTOR_DEFAULT_COLLECTION)
        │
        ├─► Gemini structured-output call  (call_analyzer.py — single Gemini pass)
-       │       prompt: transcript + template fields_schema (incl. pii_class /
-       │               confidence_threshold / extractor_hint / depends_on) +
-       │               action_types (incl. preconditions / confidence_threshold /
-       │               mutates / evidence_required / payload_schema) +
+       │       prompt: transcript + template fields_schema (confidence_threshold /
+       │               extractor_hint / depends_on) + action_types (preconditions /
+       │               confidence_threshold / evidence_required / payload_schema) +
        │               applicable prompt_hints rules (when evaluated against
        │               prior_structured) + prior_facts
        │       response_schema = CallAnalysis (Pydantic):
@@ -312,25 +311,21 @@ FastAPI background task ─► Speechmatics batch (diarization + lang detect + c
        │         - next_call_briefing  (NL paragraph, detected language)
        │       Fail-fast: missing key / error / schema mismatch → Call.failed.
        │
-       ├─► PII inspector (pii_sanitizer.py — pure Python, no LLM)
-       │       observe-only: it does not redact or mutate the analysis.
-       │       audit step `pii_policy_applied` records which PII classes were
-       │       present, at what confidence, and whether they cleared the
-       │       relevant threshold. Raw values stay available to the operator,
-       │       executor, memory_summary, briefing_snapshot, and vector chunk.
-       │
        ├─► Action Planner (action_planner.py — Google ADK agentic loop)
        │       reads the analysis, exposes the template's auto-mode
        │       action_types as ADK tools with TYPED payload parameters
-       │       (Pydantic models built from payload_schema). Gemini emits a
-       │       structured object that matches the schema; the executor revalidates.
+       │       (Pydantic models built from payload_schema). Each tool's
+       │       docstring surfaces `mutates` from the action catalog (single
+       │       source of truth). Gemini emits a structured object that
+       │       matches the schema; the executor revalidates.
        │       Fail-fast: ADK runner error → Call.failed (no fallback).
        │
        ├─► Action Executor (deterministic Python) ─► jsonschema.validate(payload),
-       │       evidence_required gate, mutates flag, catalog dispatch:
-       │       `mock_external` actions are stamped `mock: True`; `internal_real`
-       │       actions mutate Postgres and are stamped `mock: False`.
-       │       All executions/refusals write executed_actions + audit_log.
+       │       evidence_required gate, `mutates` flag read from action_catalog,
+       │       catalog dispatch: `mock_external` actions are stamped
+       │       `mock: True`; `internal_real` actions mutate Postgres and are
+       │       stamped `mock: False`. All executions/refusals write
+       │       executed_actions + audit_log.
        │
        └─► Memory write-back ─► customer.memory_summary (Postgres, operator-visible)
                                 + extracted_fields.briefing_snapshot (per-call copy)
@@ -505,43 +500,21 @@ ships with a working default until the admin chooses.
 
 ## PII handling
 
-Every `FieldDefinition` carries a `pii_class` (`none|contact|health|
-financial|identity`) and an optional per-field `confidence_threshold`
-that overrides the class default. The defaults are encoded in
-`backend/app/agents/pii_policy.py`:
+PII classification and the post-call PII observer were removed from the
+runtime on 2026-05-17 — see
+`.claude/memory/project_template_simplified_2026_05_17.md`. The hackathon
+scope does not include a privacy gate; the template editor would have
+made it look like a feature in development, which the ticket explicitly
+calls out as misleading. `FieldDefinition` no longer carries `pii_class`
+or `sensitive`; `backend/app/agents/pii_sanitizer.py` and
+`backend/app/agents/pii_policy.py` were deleted along with their tests;
+the orchestrator no longer emits the `pii_policy_applied` audit step.
+Vector Store chunk metadata no longer carries `pii_classes_present`.
 
-| Class       | Default threshold | Runtime behavior today                                      |
-|-------------|-------------------|-------------------------------------------------------------|
-| `none`      | 0.0               | passthrough; no audit observation                           |
-| `contact`   | 0.80              | observed and labeled; value remains verbatim                |
-| `identity`  | 0.85              | observed and labeled; value remains verbatim                |
-| `financial` | 0.90              | observed and labeled; value remains verbatim                |
-| `health`    | 0.90              | observed and labeled; value remains verbatim                |
-
-The sanitizer (`backend/app/agents/pii_sanitizer.py`) runs **immediately
-after** the call_analyzer and produces a `SanitizedAnalysis` wrapper for API
-stability, but the wrapped `analysis` is the original object. This is
-intentional: the operator needs to see names, allergies, identifiers, and
-other call facts verbatim before the next pickup. A placeholder such as
-`[redacted: health]` would make the briefing much less useful.
-
-The runtime behavior is observe-only:
-
-1. `next_call_briefing`, planned-action evidence, extracted fields,
-   `customer.memory_summary`, `extracted_fields.briefing_snapshot`, and the
-   production Vultr chunk keep the original values.
-2. The `pii_policy_applied` audit row records only field key, `pii_class`,
-   confidence, threshold, and status (`observed` or
-   `observed_low_confidence`). It does not store the raw value in that audit
-   payload.
-3. The production Vultr Vector Store metadata records
-   `pii_classes_present: list[pii_class]`, so an auditor can answer whether
-   a chunk carried health/contact/financial/etc. data without parsing the
-   chunk body.
-
-`pii_policy.py` still contains helper functions such as `redact_for_briefing`
-and `hash_for_audit`, but they are retained for future alternate projections;
-they are not applied on the post-call runtime path today.
+`FieldDefinition.confidence_threshold` (per-field, 0.0–1.0) is kept and
+gates `depends_on` propagation in `orchestrator._coerce_extractions`. A
+proper privacy/retention story belongs to a future iteration (see
+`afterglow/docs/future-ideas.md`).
 
 ## Bilingual briefing
 

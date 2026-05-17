@@ -43,14 +43,14 @@ class FakeSession:
 
 
 def _booking_action() -> dict[str, Any]:
+    # mock_target / mutates removed from the template surface — they live in
+    # action_catalog. booking.create resolves to mutates=True at runtime.
     return {
         "key": "booking.create",
         "label": "Create booking",
         "execution_mode": "auto",
-        "mock_target": "booking",
         "preconditions": ["party_size"],
         "confidence_threshold": 0.75,
-        "mutates": True,
         "evidence_required": True,
         "payload_schema": {
             "type": "object",
