@@ -1,29 +1,17 @@
-import { useMemo } from 'react';
-import { StyleSheet, TextInput, TextInputProps } from 'react-native';
-import { useTheme } from '../lib/ThemeContext';
-import { radius, spacing } from '../lib/theme';
+import { TextInput as PaperTextInput } from 'react-native-paper';
+import type { TextInputProps } from 'react-native';
 
-export function Input({ style, ...rest }: TextInputProps) {
-  const { colors } = useTheme();
-  const styles = useMemo(
-    () =>
-      StyleSheet.create({
-        input: {
-          backgroundColor: colors.surface,
-          borderColor: colors.border,
-          borderWidth: 1,
-          borderRadius: radius.lg,
-          color: colors.text,
-          paddingHorizontal: spacing.lg,
-          paddingVertical: spacing.md + 2,
-          fontSize: 15,
-          minHeight: 48,
-        },
-      }),
-    [colors],
-  );
-
+export function Input({ value, onChangeText, placeholder, editable, style, ...rest }: TextInputProps) {
   return (
-    <TextInput placeholderTextColor={colors.textSubtle} {...rest} style={[styles.input, style]} />
+    <PaperTextInput
+      mode="outlined"
+      value={value ?? ''}
+      onChangeText={onChangeText}
+      placeholder={placeholder}
+      editable={editable}
+      dense
+      style={style as never}
+      {...(rest as object)}
+    />
   );
 }

@@ -1,36 +1,26 @@
-import { useMemo } from 'react';
-import { StyleSheet, TextInput, TextInputProps } from 'react-native';
-import { useTheme } from '../lib/ThemeContext';
-import { radius, spacing } from '../lib/theme';
+import { TextInput as PaperTextInput } from 'react-native-paper';
+import type { TextInputProps } from 'react-native';
 
-export function Textarea({ style, ...rest }: TextInputProps) {
-  const { colors } = useTheme();
-  const styles = useMemo(
-    () =>
-      StyleSheet.create({
-        input: {
-          backgroundColor: colors.surface,
-          borderColor: colors.border,
-          borderWidth: 1,
-          borderRadius: radius.lg,
-          color: colors.text,
-          paddingHorizontal: spacing.lg,
-          paddingVertical: spacing.md + 4,
-          fontSize: 15,
-          lineHeight: 22,
-          minHeight: 120,
-        },
-      }),
-    [colors],
-  );
-
+export function Textarea({
+  value,
+  onChangeText,
+  placeholder,
+  editable,
+  numberOfLines = 4,
+  style,
+  ...rest
+}: TextInputProps) {
   return (
-    <TextInput
-      placeholderTextColor={colors.textSubtle}
+    <PaperTextInput
+      mode="outlined"
+      value={value ?? ''}
+      onChangeText={onChangeText}
+      placeholder={placeholder}
+      editable={editable}
       multiline
-      textAlignVertical="top"
-      {...rest}
-      style={[styles.input, style]}
+      numberOfLines={numberOfLines}
+      style={style as never}
+      {...(rest as object)}
     />
   );
 }

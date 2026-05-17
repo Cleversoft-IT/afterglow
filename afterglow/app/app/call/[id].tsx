@@ -1,17 +1,58 @@
-import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { Badge } from '../../components/Badge';
-import { Button } from '../../components/Button';
-import { Card } from '../../components/Card';
+import { ScrollView, StyleSheet, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Avatar,
+  Banner,
+  Button,
+  Card,
+  Chip,
+  Divider,
+  IconButton,
+  type MD3Theme,
+  Text,
+  useTheme,
+} from 'react-native-paper';
 import { api, ApiError } from '../../lib/api';
-import { useTheme } from '../../lib/ThemeContext';
-import { radius, spacing } from '../../lib/theme';
+import { ContactAvatar } from '../../components/ContactAvatar';
 import type { CallDetailView, FieldDefinitionLite } from '../../lib/types';
 
+function statusChip(status: string, theme: MD3Theme): {
+  label: string;
+  style: { backgroundColor: string };
+  textColor: string;
+} {
+  if (status === 'completed') {
+    return {
+      label: status,
+      style: { backgroundColor: theme.colors.tertiaryContainer },
+      textColor: theme.colors.onTertiaryContainer,
+    };
+  }
+  if (status === 'failed') {
+    return {
+      label: status,
+      style: { backgroundColor: theme.colors.errorContainer },
+      textColor: theme.colors.onErrorContainer,
+    };
+  }
+  return {
+    label: status,
+    style: { backgroundColor: theme.colors.secondaryContainer },
+    textColor: theme.colors.onSecondaryContainer,
+  };
+}
+
+function formatValue(v: unknown): string {
+  if (v == null) return '—';
+  if (Array.isArray(v)) return v.join(', ');
+  if (typeof v === 'object') return JSON.stringify(v);
+  return String(v);
+}
+
 export default function CallDetailScreen() {
-  const { colors } = useTheme();
+  const theme = useTheme();
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const [call, setCall] = useState<CallDetailView | null>(null);
@@ -35,6 +76,12 @@ export default function CallDetailScreen() {
   useEffect(() => {
     load();
   }, [load]);
+
+  const labelByKey = useMemo(() => {
+    const out: Record<string, FieldDefinitionLite> = {};
+    for (const def of call?.extracted?.field_definitions ?? []) out[def.key] = def;
+    return out;
+  }, [call]);
 
   const undo = async (actionId: string) => {
     setBusyAction(actionId);
@@ -60,190 +107,194 @@ export default function CallDetailScreen() {
     }
   };
 
-  const labelByKey = useMemo(() => {
-    const out: Record<string, FieldDefinitionLite> = {};
-    for (const def of call?.extracted?.field_definitions ?? []) {
-      out[def.key] = def;
-    }
-    return out;
-  }, [call]);
+  if (loading) {
+    return (
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+        <ActivityIndicator />
+      </View>
+    );
+  }
+  if (error || !call) {
+    return (
+      <Banner visible icon="alert-circle-outline" actions={[{ label: 'Retry', onPress: load }]}>
+        {error ?? 'Call not found.'}
+      </Banner>
+    );
+  }
 
-  const styles = useMemo(
-    () =>
-      StyleSheet.create({
-        scroll: { padding: spacing.lg, gap: spacing.lg, paddingBottom: spacing.xxxl },
-        headerRow: {
-          flexDirection: 'row',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          gap: spacing.md,
-        },
-        callerLink: {
-          flexDirection: 'row',
-          alignItems: 'center',
-          gap: spacing.xs,
-          paddingHorizontal: spacing.sm + 2,
-          paddingVertical: 5,
-          borderRadius: radius.pill,
-          backgroundColor: colors.infoBg,
-          borderWidth: StyleSheet.hairlineWidth,
-          borderColor: colors.infoBorder,
-          flexShrink: 1,
-        },
-        heading: { color: colors.text, fontSize: 16, fontWeight: '600' },
-        meta: { color: colors.textMuted, fontSize: 13 },
-        errorBanner: {
-          color: colors.danger,
-          fontSize: 12,
-          marginTop: spacing.sm,
-          paddingTop: spacing.sm,
-          borderTopWidth: StyleSheet.hairlineWidth,
-          borderTopColor: colors.border,
-        },
-        section: { color: colors.text, fontWeight: '600', fontSize: 15, marginBottom: 4 },
-        classifyRow: { flexDirection: 'row', gap: 6, flexWrap: 'wrap', marginBottom: spacing.sm },
-        fieldRow: {
-          flexDirection: 'row',
-          justifyContent: 'space-between',
-          gap: spacing.md,
-          paddingVertical: 6,
-          borderTopWidth: StyleSheet.hairlineWidth,
-          borderTopColor: colors.border,
-        },
-        fieldLabel: { color: colors.text, fontSize: 13, fontWeight: '600' },
-        fieldKey: { color: colors.textSubtle, fontSize: 10, fontFamily: 'monospace', marginTop: 1 },
-        fieldValue: { color: colors.text, fontSize: 13, flex: 1, textAlign: 'right' },
-        actionRow: {
-          flexDirection: 'row',
-          alignItems: 'center',
-          gap: spacing.md,
-          paddingVertical: spacing.sm,
-          borderTopWidth: StyleSheet.hairlineWidth,
-          borderTopColor: colors.border,
-        },
-        actionHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, flexWrap: 'wrap' },
-        actionTitle: { color: colors.text, fontWeight: '600' },
-        actionMeta: { color: colors.textSubtle, fontSize: 11, fontFamily: 'monospace' },
-        actionSummary: { color: colors.textMuted, fontSize: 13 },
-        transcript: { color: colors.textMuted, lineHeight: 20, fontSize: 13 },
-        error: { color: colors.danger, padding: spacing.lg },
-      }),
-    [colors],
-  );
-
-  if (loading) return <ActivityIndicator color={colors.brand} style={{ marginTop: 32 }} />;
-  if (error || !call) return <Text style={styles.error}>{error ?? 'Call not found.'}</Text>;
-
-  const extracted = call.extracted;
   const callerDisplay = call.customer?.display_name ?? call.phone_e164;
+  const sc = statusChip(call.status, theme);
+  const extracted = call.extracted;
 
   return (
     <ScrollView contentContainerStyle={styles.scroll}>
-      <Card>
-        <View style={styles.headerRow}>
-          {call.customer_id ? (
-            <Pressable
-              onPress={() => router.push(`/customer/${call.customer_id}` as never)}
-              style={({ pressed }) => [styles.callerLink, pressed && { opacity: 0.7 }]}
-            >
-              <Ionicons name="person-circle-outline" size={20} color={colors.brand} />
-              <Text style={styles.heading}>{callerDisplay}</Text>
-              <Ionicons name="chevron-forward" size={16} color={colors.brand} />
-            </Pressable>
-          ) : (
-            <Text style={styles.heading}>{callerDisplay}</Text>
+      <Card mode="elevated">
+        <Card.Title
+          title={callerDisplay}
+          subtitle={`${call.phone_e164}${call.detected_language ? ` · ${call.detected_language}` : ''}`}
+          left={() => <ContactAvatar phone={call.phone_e164} name={callerDisplay} size={48} />}
+          right={() => (
+            <Chip mode="flat" compact style={[{ marginRight: 12 }, sc.style]} textStyle={{ color: sc.textColor }}>
+              {sc.label}
+            </Chip>
           )}
-          <Badge tone={call.status === 'completed' ? 'success' : call.status === 'failed' ? 'danger' : 'warning'}>
-            {call.status}
-          </Badge>
-        </View>
-        {call.customer?.display_name ? (
-          <Text style={styles.meta}>{call.phone_e164}</Text>
+        />
+        <Card.Content>
+          <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
+            {new Date(call.created_at).toLocaleString()}
+          </Text>
+          {call.error ? (
+            <Text variant="bodySmall" style={{ color: theme.colors.error, marginTop: 8 }}>
+              {call.error}
+            </Text>
+          ) : null}
+        </Card.Content>
+        {call.customer_id ? (
+          <Card.Actions>
+            <Button
+              mode="text"
+              icon="account-circle-outline"
+              onPress={() => router.push(`/customer/${call.customer_id}` as never)}
+            >
+              Open contact
+            </Button>
+          </Card.Actions>
         ) : null}
-        <Text style={styles.meta}>
-          {new Date(call.created_at).toLocaleString()}
-          {call.detected_language ? ` · ${call.detected_language}` : ''}
-        </Text>
-        {call.error ? <Text style={styles.errorBanner}>{call.error}</Text> : null}
       </Card>
 
       {extracted ? (
-        <Card>
-          <Text style={styles.section}>Extracted</Text>
-          <View style={styles.classifyRow}>
-            {extracted.intent ? <Badge tone="brand">{`intent · ${extracted.intent}`}</Badge> : null}
-            {extracted.sentiment ? <Badge>{`sentiment · ${extracted.sentiment}`}</Badge> : null}
-            {extracted.urgency ? <Badge tone="warning">{`urgency · ${extracted.urgency}`}</Badge> : null}
-          </View>
-          {Object.entries(extracted.fields).map(([k, v]) => {
-            const def = labelByKey[k];
-            return (
-              <View key={k} style={styles.fieldRow}>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.fieldLabel}>{def?.label ?? k}</Text>
-                  <Text style={styles.fieldKey}>{k}</Text>
+        <Card mode="elevated">
+          <Card.Title title="Extracted" />
+          <Card.Content>
+            <View style={styles.chipRow}>
+              {extracted.intent ? (
+                <Chip mode="flat" compact icon="target">{`intent · ${extracted.intent}`}</Chip>
+              ) : null}
+              {extracted.sentiment ? (
+                <Chip mode="flat" compact icon="emoticon-outline">{`sentiment · ${extracted.sentiment}`}</Chip>
+              ) : null}
+              {extracted.urgency ? (
+                <Chip mode="flat" compact icon="clock-alert-outline">{`urgency · ${extracted.urgency}`}</Chip>
+              ) : null}
+            </View>
+            {Object.entries(extracted.fields).map(([k, v], i) => {
+              const def = labelByKey[k];
+              return (
+                <View key={k}>
+                  {i > 0 ? <Divider /> : null}
+                  <View style={styles.fieldRow}>
+                    <View style={{ flex: 1 }}>
+                      <Text variant="bodyMedium" style={{ fontWeight: '600' }}>
+                        {def?.label ?? k}
+                      </Text>
+                      <Text variant="labelSmall" style={{ fontFamily: 'monospace', color: theme.colors.onSurfaceVariant }}>
+                        {k}
+                      </Text>
+                    </View>
+                    <Text variant="bodyMedium" style={{ flex: 1, textAlign: 'right' }}>
+                      {formatValue(v)}
+                    </Text>
+                  </View>
                 </View>
-                <Text style={styles.fieldValue}>{formatValue(v)}</Text>
-              </View>
-            );
-          })}
+              );
+            })}
+          </Card.Content>
         </Card>
       ) : null}
 
       {call.executed_actions.length > 0 ? (
-        <Card>
-          <Text style={styles.section}>Actions ({call.executed_actions.length})</Text>
-          {call.executed_actions.map((a) => {
-            const isUndone = a.status === 'undone' || a.status === 'reverted';
-            const isSimulated = a.is_simulated ?? a.result?.mock === true;
-            const canUndo = a.can_undo ?? false;
-            return (
-              <View key={a.id} style={styles.actionRow}>
-                <View style={{ flex: 1, gap: 4 }}>
-                  <View style={styles.actionHeader}>
-                    <Text style={styles.actionTitle}>{a.title}</Text>
-                    {isSimulated ? <Badge tone="brand">Simulated</Badge> : null}
+        <Card mode="elevated">
+          <Card.Title title={`Actions (${call.executed_actions.length})`} />
+          <Card.Content>
+            {call.executed_actions.map((a, i) => {
+              const isUndone = a.status === 'undone' || a.status === 'reverted';
+              const isSimulated = a.is_simulated ?? a.result?.mock === true;
+              const canUndo = a.can_undo ?? false;
+              return (
+                <View key={a.id}>
+                  {i > 0 ? <Divider style={{ marginVertical: 8 }} /> : null}
+                  <View style={styles.actionRow}>
+                    <View style={{ flex: 1, gap: 4 }}>
+                      <View style={styles.actionHeader}>
+                        <Text variant="bodyLarge" style={{ fontWeight: '600' }}>
+                          {a.title}
+                        </Text>
+                        {isSimulated ? (
+                          <Chip mode="outlined" compact icon="record-circle-outline">
+                            Simulated
+                          </Chip>
+                        ) : null}
+                      </View>
+                      <Text
+                        variant="labelSmall"
+                        style={{ fontFamily: 'monospace', color: theme.colors.onSurfaceVariant }}
+                      >
+                        {a.action_type}
+                      </Text>
+                      {a.summary ? (
+                        <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
+                          {a.summary}
+                        </Text>
+                      ) : null}
+                    </View>
+                    {isUndone && canUndo ? (
+                      <Button
+                        mode="text"
+                        icon="redo"
+                        loading={busyAction === a.id}
+                        onPress={() => redo(a.id)}
+                      >
+                        Redo
+                      </Button>
+                    ) : isUndone ? (
+                      <Chip mode="flat" compact icon="cancel">
+                        Undone
+                      </Chip>
+                    ) : canUndo ? (
+                      <Button
+                        mode="text"
+                        icon="undo"
+                        loading={busyAction === a.id}
+                        onPress={() => undo(a.id)}
+                      >
+                        Undo
+                      </Button>
+                    ) : null}
                   </View>
-                  <Text style={styles.actionMeta}>{a.action_type}</Text>
-                  {a.summary ? <Text style={styles.actionSummary}>{a.summary}</Text> : null}
                 </View>
-                {isUndone && canUndo ? (
-                  <Button
-                    title="Redo"
-                    variant="secondary"
-                    onPress={() => redo(a.id)}
-                    loading={busyAction === a.id}
-                  />
-                ) : isUndone ? (
-                  <Badge tone="danger">Undone</Badge>
-                ) : canUndo ? (
-                  <Button
-                    title="Undo"
-                    variant="danger"
-                    onPress={() => undo(a.id)}
-                    loading={busyAction === a.id}
-                  />
-                ) : null}
-              </View>
-            );
-          })}
+              );
+            })}
+          </Card.Content>
         </Card>
       ) : null}
 
       {call.raw_transcript?.text ? (
-        <Card>
-          <Text style={styles.section}>Transcript</Text>
-          <Text style={styles.transcript}>{call.raw_transcript.text}</Text>
+        <Card mode="elevated">
+          <Card.Title title="Transcript" />
+          <Card.Content>
+            <Text variant="bodyMedium" style={{ color: theme.colors.onSurfaceVariant, lineHeight: 20 }}>
+              {call.raw_transcript.text}
+            </Text>
+          </Card.Content>
         </Card>
       ) : null}
     </ScrollView>
   );
 }
 
-function formatValue(v: unknown): string {
-  if (v == null) return '—';
-  if (Array.isArray(v)) return v.join(', ');
-  if (typeof v === 'object') return JSON.stringify(v);
-  return String(v);
-}
-
+const styles = StyleSheet.create({
+  scroll: { padding: 16, gap: 16, paddingBottom: 48 },
+  chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 12 },
+  fieldRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 12,
+    paddingVertical: 8,
+  },
+  actionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  actionHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' },
+});

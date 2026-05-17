@@ -1,26 +1,37 @@
-import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
+import { ScrollView, StyleSheet, View } from 'react-native';
 import {
   ActivityIndicator,
-  Pressable,
-  ScrollView,
-  StyleSheet,
+  Avatar,
+  Banner,
+  Button,
+  Card,
+  Chip,
+  List,
   Text,
-  View,
-} from 'react-native';
-import { Badge } from '../components/Badge';
-import { Button } from '../components/Button';
-import { Card } from '../components/Card';
+  useTheme,
+} from 'react-native-paper';
 import { api, ApiError } from '../lib/api';
-import { useTheme } from '../lib/ThemeContext';
-import { radius, spacing } from '../lib/theme';
 import type { SimulationConfig, SimulationScenario, TemplateView } from '../lib/types';
 
 type CallerMode = 'existing' | 'new';
 
+function domainIcon(domain: string | null | undefined): string {
+  switch (domain) {
+    case 'restaurant':
+      return 'silverware-fork-knife';
+    case 'dentist':
+      return 'tooth-outline';
+    case 'bodyshop':
+      return 'car-wrench';
+    default:
+      return 'phone-in-talk';
+  }
+}
+
 export default function SimulatorScreen() {
-  const { colors } = useTheme();
+  const theme = useTheme();
   const router = useRouter();
   const [template, setTemplate] = useState<TemplateView | null>(null);
   const [loading, setLoading] = useState(true);
@@ -93,11 +104,7 @@ export default function SimulatorScreen() {
       setUploading(true);
       setError(null);
       try {
-        const updated = await api.uploadSimulationAudio(
-          template.id,
-          file,
-          file.name,
-        );
+        const updated = await api.uploadSimulationAudio(template.id, file, file.name);
         setTemplate(updated);
       } catch (e) {
         setError(e instanceof ApiError ? e.message : String(e));
@@ -108,47 +115,38 @@ export default function SimulatorScreen() {
     input.click();
   };
 
-  const styles = useMemo(
-    () =>
-      StyleSheet.create({
-        scroll: { padding: spacing.lg, gap: spacing.lg, paddingBottom: spacing.xxxl },
-        headerRow: {
-          flexDirection: 'row',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          marginBottom: spacing.sm,
-        },
-        heading: { color: colors.text, fontWeight: '600', fontSize: 16, flex: 1 },
-        section: { color: colors.text, fontWeight: '600', fontSize: 15, marginBottom: spacing.sm },
-        body: { color: colors.textMuted, fontSize: 14, lineHeight: 21 },
-        bold: { color: colors.text, fontWeight: '600' },
-        cta: { alignItems: 'stretch', paddingVertical: spacing.md, gap: spacing.sm },
-        error: { color: colors.danger, fontSize: 14 },
-      }),
-    [colors],
-  );
-
-  if (loading) return <ActivityIndicator color={colors.brand} style={{ marginTop: 32 }} />;
+  if (loading) {
+    return (
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+        <ActivityIndicator />
+      </View>
+    );
+  }
 
   if (!template) {
     return (
       <ScrollView contentContainerStyle={styles.scroll}>
-        <Card>
-          <Text style={styles.heading}>No active template</Text>
-          <Text style={styles.body}>
-            Pick or create a template in the Templates tab and activate it before running the
-            simulator.
-          </Text>
+        <Card mode="elevated">
+          <Card.Title
+            title="No active template"
+            left={(p) => <Avatar.Icon {...p} icon="alert-circle-outline" />}
+          />
+          <Card.Content>
+            <Text variant="bodyMedium" style={{ color: theme.colors.onSurfaceVariant }}>
+              Pick or create a template in the drawer and activate it before running the simulator.
+            </Text>
+          </Card.Content>
         </Card>
-        {error ? <Text style={styles.error}>{error}</Text> : null}
+        {error ? (
+          <Banner visible icon="alert-circle-outline">
+            {error}
+          </Banner>
+        ) : null}
       </ScrollView>
     );
   }
 
   const sim = template.simulation_config;
-  // Seeded templates ship `scenarios.{existing,new}`; wizard-built templates
-  // still use the flat shape. Treat the simulator as "ready" if either the
-  // legacy flat audio is in place OR both per-mode scenarios are ready.
   const seededScenariosReady =
     sim?.scenarios?.existing?.audio_status === 'ready' &&
     !!sim?.scenarios?.existing?.audio_url &&
@@ -163,203 +161,143 @@ export default function SimulatorScreen() {
 
   return (
     <ScrollView contentContainerStyle={styles.scroll}>
-      <Card>
-        <View style={styles.headerRow}>
-          <Text style={styles.heading}>Incoming call simulator</Text>
-          {audioReady ? (
-            <Badge tone="success">audio ready</Badge>
-          ) : (
-            <Badge tone="warning">audio missing</Badge>
+      <Card mode="elevated">
+        <Card.Title
+          title="Incoming call simulator"
+          subtitle={`Active template: ${template.name} (${template.domain_hint})`}
+          left={(p) => <Avatar.Icon {...p} icon={domainIcon(template.domain_hint)} />}
+          right={() => (
+            <Chip
+              selected={audioReady}
+              mode="flat"
+              icon={audioReady ? 'check' : 'alert-circle-outline'}
+              style={{ marginRight: 12 }}
+            >
+              {audioReady ? 'Audio ready' : 'Audio missing'}
+            </Chip>
           )}
-        </View>
-        <Text style={styles.body}>
-          Active template: <Text style={styles.bold}>{template.name}</Text> ({template.domain_hint})
-        </Text>
+        />
       </Card>
 
       {audioReady ? (
-        <Card>
-          <Text style={styles.section}>Trigger demo call</Text>
-          <Text style={styles.body}>
-            Existing customer plays back the seed phone number for this template; new customer
-            generates a fresh phone so you can watch Afterglow create the record from scratch.
-          </Text>
-          <View style={styles.cta}>
-            <TriggerButton mode="existing" onPress={() => trigger('existing')} />
-            <TriggerButton mode="new" onPress={() => trigger('new')} />
-          </View>
+        <Card mode="elevated">
+          <Card.Title title="Trigger demo call" />
+          <Card.Content>
+            <Text variant="bodyMedium" style={{ color: theme.colors.onSurfaceVariant, marginBottom: 12 }}>
+              Existing customer plays back the seed phone for this template; new customer generates
+              a fresh phone so you can watch Afterglow create the record from scratch.
+            </Text>
+          </Card.Content>
+          <Card.Actions style={{ flexDirection: 'column', gap: 8, padding: 16 }}>
+            <Button
+              mode="contained"
+              icon="phone-incoming"
+              onPress={() => trigger('existing')}
+              style={{ alignSelf: 'stretch' }}
+              contentStyle={{ paddingVertical: 6 }}
+            >
+              Call from existing customer
+            </Button>
+            <Button
+              mode="outlined"
+              icon="account-plus-outline"
+              onPress={() => trigger('new')}
+              style={{ alignSelf: 'stretch' }}
+              contentStyle={{ paddingVertical: 6 }}
+            >
+              Call from new customer
+            </Button>
+          </Card.Actions>
         </Card>
       ) : (
-        <Card>
-          <Text style={styles.section}>This template has no demo recording yet</Text>
-          <Text style={styles.body}>
-            Generate a script + MP3 with Speechmatics TTS, or upload your own recording. Once an
-            audio is in place the trigger buttons will appear.
-          </Text>
-
-          <View style={[styles.cta, { gap: spacing.sm }]}>
+        <Card mode="elevated">
+          <Card.Title
+            title="This template has no demo recording yet"
+            left={(p) => <Avatar.Icon {...p} icon="microphone-message-off" />}
+          />
+          <Card.Content>
+            <Text variant="bodyMedium" style={{ color: theme.colors.onSurfaceVariant, marginBottom: 12 }}>
+              Generate a script + MP3 with Speechmatics TTS, or upload your own recording. Once an
+              audio is in place the trigger buttons will appear.
+            </Text>
+          </Card.Content>
+          <Card.Actions style={{ flexDirection: 'column', gap: 8, padding: 16 }}>
             <Button
-              title={hasScript ? 'Regenerate script' : 'Generate script'}
-              variant="secondary"
+              mode="text"
+              icon="script-text-outline"
               onPress={generateScript}
               loading={generatingScript}
-            />
+            >
+              {hasScript ? 'Regenerate script' : 'Generate script'}
+            </Button>
             <Button
-              title="Generate audio (Speechmatics TTS)"
+              mode="contained-tonal"
+              icon="record-rec"
               onPress={generateAudio}
               loading={generatingAudio}
               disabled={!hasScript}
-            />
-            <Button
-              title="Upload audio file (mp3/wav)"
-              variant="secondary"
-              onPress={pickAndUpload}
-              loading={uploading}
-            />
-          </View>
-
-          {hasScript ? <ScriptPreview sim={sim} /> : null}
+            >
+              Generate audio (Speechmatics TTS)
+            </Button>
+            <Button mode="text" icon="upload-outline" onPress={pickAndUpload} loading={uploading}>
+              Upload audio file (mp3/wav)
+            </Button>
+          </Card.Actions>
         </Card>
       )}
 
+      {hasScript ? <ScriptPreview sim={sim} /> : null}
+
       {error ? (
-        <Card>
-          <Text style={styles.error}>{error}</Text>
-        </Card>
+        <Banner visible icon="alert-circle-outline">
+          {error}
+        </Banner>
       ) : null}
     </ScrollView>
   );
 }
 
 function ScriptPreview({ sim }: { sim: SimulationConfig | null | undefined }) {
-  const { colors } = useTheme();
-  const styles = useMemo(
-    () =>
-      StyleSheet.create({
-        scriptBlock: {
-          marginTop: spacing.md,
-          padding: spacing.md + 2,
-          borderRadius: radius.lg,
-          backgroundColor: colors.surfaceAlt,
-          borderWidth: StyleSheet.hairlineWidth,
-          borderColor: colors.border,
-          gap: 4,
-        },
-        scriptTitle: {
-          color: colors.text,
-          fontWeight: '600',
-          fontSize: 13,
-          marginBottom: spacing.xs,
-        },
-        scriptLine: { color: colors.textMuted, fontSize: 13, lineHeight: 20 },
-        scriptSpeaker: { color: colors.text, fontWeight: '600' },
-      }),
-    [colors],
-  );
-
+  const theme = useTheme();
   if (!sim) return null;
   const fromScenarios: Array<{ key: CallerMode; label: string; scenario: SimulationScenario }> = [];
   if (sim.scenarios?.existing?.script_turns?.length) {
-    fromScenarios.push({
-      key: 'existing',
-      label: 'Existing caller',
-      scenario: sim.scenarios.existing,
-    });
+    fromScenarios.push({ key: 'existing', label: 'Existing caller', scenario: sim.scenarios.existing });
   }
   if (sim.scenarios?.new?.script_turns?.length) {
-    fromScenarios.push({
-      key: 'new',
-      label: 'New caller',
-      scenario: sim.scenarios.new,
-    });
+    fromScenarios.push({ key: 'new', label: 'New caller', scenario: sim.scenarios.new });
   }
-  // Custom wizard-built templates ship the legacy flat shape — render that
-  // single block when no scenarios map is present.
   if (fromScenarios.length === 0 && sim.script_turns?.length) {
-    fromScenarios.push({
-      key: 'existing',
-      label: 'Script preview',
-      scenario: sim as SimulationScenario,
-    });
+    fromScenarios.push({ key: 'existing', label: 'Script preview', scenario: sim as SimulationScenario });
   }
   if (fromScenarios.length === 0) return null;
+
   return (
-    <View style={{ gap: spacing.md }}>
-      {fromScenarios.map(({ key, label, scenario }) => (
-        <View key={key} style={styles.scriptBlock}>
-          <Text style={styles.scriptTitle}>
-            {label} · {scenario.caller_name ?? 'unknown caller'} ·{' '}
-            {scenario.caller_phone_e164 ?? '(random phone)'}
-          </Text>
-          {scenario.script_turns?.map((t, i) => (
-            <Text key={i} style={styles.scriptLine}>
-              <Text style={styles.scriptSpeaker}>{t.speaker}</Text> ({t.voice}): {t.text}
-            </Text>
-          ))}
-        </View>
-      ))}
-    </View>
+    <Card mode="elevated">
+      <Card.Title title="Script preview" />
+      <Card.Content style={{ paddingHorizontal: 0 }}>
+        {fromScenarios.map(({ key, label, scenario }) => (
+          <List.Accordion
+            key={key}
+            title={label}
+            description={`${scenario.caller_name ?? 'unknown'} · ${scenario.caller_phone_e164 ?? '(random)'}`}
+            left={(p) => <List.Icon {...p} icon={key === 'existing' ? 'account' : 'account-plus-outline'} />}
+          >
+            <View style={{ paddingHorizontal: 16, paddingBottom: 8, gap: 6 }}>
+              {scenario.script_turns?.map((t, i) => (
+                <Text key={i} variant="bodyMedium" style={{ lineHeight: 20 }}>
+                  <Text style={{ fontWeight: '600' }}>{t.speaker}</Text>
+                  <Text style={{ color: theme.colors.onSurfaceVariant }}> ({t.voice})</Text>: {t.text}
+                </Text>
+              ))}
+            </View>
+          </List.Accordion>
+        ))}
+      </Card.Content>
+    </Card>
   );
 }
 
-function TriggerButton({
-  mode,
-  onPress,
-}: {
-  mode: CallerMode;
-  onPress: () => void;
-}) {
-  const { colors } = useTheme();
-  const styles = useMemo(
-    () =>
-      StyleSheet.create({
-        triggerExisting: {
-          flexDirection: 'row',
-          alignItems: 'center',
-          justifyContent: 'center',
-          gap: spacing.sm,
-          backgroundColor: colors.brand,
-          paddingVertical: spacing.md + 2,
-          paddingHorizontal: spacing.xl,
-          borderRadius: radius.pill,
-          minHeight: 48,
-        },
-        triggerNew: {
-          flexDirection: 'row',
-          alignItems: 'center',
-          justifyContent: 'center',
-          gap: spacing.sm,
-          backgroundColor: colors.surface,
-          paddingVertical: spacing.md + 2,
-          paddingHorizontal: spacing.xl,
-          borderRadius: radius.pill,
-          borderWidth: 1,
-          borderColor: colors.border,
-          minHeight: 48,
-        },
-        triggerText: { color: colors.onPrimary, fontWeight: '500', fontSize: 15 },
-        triggerTextOutline: { color: colors.text },
-      }),
-    [colors],
-  );
-  const existing = mode === 'existing';
-  return (
-    <Pressable
-      onPress={onPress}
-      style={({ pressed }) => [
-        existing ? styles.triggerExisting : styles.triggerNew,
-        { opacity: pressed ? 0.85 : 1, transform: [{ scale: pressed ? 0.98 : 1 }] },
-      ]}
-    >
-      <Ionicons
-        name={existing ? 'person' : 'person-add'}
-        size={18}
-        color={existing ? colors.onPrimary : colors.text}
-      />
-      <Text style={[styles.triggerText, !existing && styles.triggerTextOutline]}>
-        {existing ? 'Call from existing customer' : 'Call from new customer'}
-      </Text>
-    </Pressable>
-  );
-}
-
+const styles = StyleSheet.create({
+  scroll: { padding: 16, gap: 16, paddingBottom: 48 },
+});

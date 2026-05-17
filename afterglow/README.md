@@ -1,8 +1,8 @@
 # Afterglow
 
-> **What remains after the call.**
+> **The dialer that takes notes for you.**
 >
-> Human-first AI dialer that turns booking phone calls into structured data, customer memory, and autonomously executed actions — every action is revertible, every decision is traceable.
+> A drop-in replacement for the system Phone app: the operator handles every call, the AI runs silently after each one — extracting fields, executing actions, and writing a one-line briefing for the next call. Every action is revertible, every decision is traceable.
 
 Built for the **AI Agent Olympics Hackathon @ Milan AI Week 2026** — targeting Best use of Vultr, Best use of Gemini, and bonus integration with Speechmatics.
 
@@ -12,7 +12,7 @@ Small appointment-driven businesses (restaurants, dental clinics, body shops) st
 
 ## The approach
 
-The human keeps talking. The AI listens (opt-in via the **blue phone button**), transcribes with diarization, and **after** the call runs a Gemini pass that extracts the fields, classifies the call, plans the follow-up actions and writes a one-or-two-sentence "next-call briefing" for the operator who will pick up the next call. Every executed action lands on the post-call screen with an **Undo / Redo** button (only when the catalog says the action can be safely undone — sent messages do not get one). Every step is logged in a production-shape audit log.
+Afterglow looks and feels like the system Phone app on a Pixel: a Drawer with Contacts/Templates/Settings, a 2-tab bottom bar (Home for recents, Keypad for dialing), and a full-screen incoming-call screen. The human keeps talking on every call; the AI listens in opt-in (the **AI button** during the ringing screen), transcribes with diarization, and **after** the call runs a Gemini pass that extracts the fields, classifies the call, plans the follow-up actions and writes a one-or-two-sentence "next-call briefing" for the operator who will pick up the next call. Every executed action lands on the post-call screen with an **Undo / Redo** button (only when the catalog says the action can be safely undone — sent messages do not get one). Every step is logged in a production-shape audit log.
 
 The autonomy is the whole point: the hackathon brief calls for *autonomous decision-making systems*, not copilots. The undo + audit + confidence/evidence are the trust net that justifies the autonomy.
 
@@ -130,13 +130,25 @@ prefetches the chunk → briefing returns the memory.
 
 | Layer | Tech |
 |---|---|
-| App | Expo SDK 54 · React Native · react-native-web · expo-router · expo-av · TypeScript |
+| App | Expo SDK 54 · React Native · react-native-web · expo-router · TypeScript |
+| App UI kit | **react-native-paper v5.15 (Material 3)** · **@material/material-color-utilities** (palette generated from brand seed `#3b82f6`) · **@react-navigation/drawer v7** · **react-native-gesture-handler** · **react-native-reanimated v4** |
 | Demo site | Vite 5 · React 18 · TypeScript (static landing that iframes the app) |
 | Backend | Python 3.11 · FastAPI · google-genai · SQLAlchemy 2.0 async · Alembic |
 | Speech | Speechmatics batch SDK |
 | LLM | Gemini 3.1 Flash-Lite (default + template wizard) · MiniMax-M2.7 on Vultr (RAG) |
 | Storage | Vultr Managed Postgres · Vultr Vector Store |
 | Deploy | Podman / Docker Compose · Vultr Cloud Compute HP · Coolify |
+
+> **Reanimated 4 caveat:** the app ships a `app/babel.config.js` with `'react-native-worklets/plugin'` (Reanimated 4 moved the plugin into the separate `react-native-worklets` package — the legacy `react-native-reanimated/plugin` is gone).
+
+### User-facing navigation
+
+The app does NOT use a single 5-tab bar. It is shaped like the Google Phone (Pixel) app:
+
+- **Bottom Tabs (2):** **Home** (Pixel-style Recents — sticky date headers, chip filter row, CallRow with hash-colored avatars) + **Keypad** (4×3 dialpad, Call FAB is UI-only and shows a Snackbar pointing to the Test simulator).
+- **Drawer (hamburger top-left):** Contacts (alphabetical list mixing 20 client-side mock UK/US contacts with the server's `Customer` table — a "Client" chip marks customers), Templates, Audit log, Test simulator, Settings, [Reset demo] (demo mode only).
+- **Stack screens (out of drawer):** Incoming call (Pixel-inspired full-screen), Call detail, Customer detail, Template detail, Template wizard.
+- **Home chip filters:** All / Missed / **Bookings** / Saved / Unsaved. The "Bookings" filter hides the phone number and renders `payload.booking_date · booking_time · party_size` from the executed booking action.
 
 ## Local development
 
@@ -198,8 +210,10 @@ npm run dev
 ```
 
 Open the demo site at <http://localhost:5173> → the app is embedded as an
-iframe. Activate a template from the Templates tab, then press the blue
-button on the Simulator to run the full post-call pipeline.
+iframe. Open the **Drawer** (hamburger top-left) → tap **Templates**, activate
+one of the seeded presets, then open the Drawer again → **Test simulator** →
+tap **"Call from existing customer"** and accept the call with the **AI**
+button on the ringing screen to run the full post-call pipeline.
 
 ### Live-AI behaviour
 
@@ -248,6 +262,25 @@ expectation). Regenerate them with
   top level, scalar / array / object properties, no `$ref` / `oneOf` /
   `anyOf`). Schemas outside the dialect fall back to a `dict` annotation
   and still pass through `jsonschema.validate` on the executor side.
+- **Icon set:** Paper uses `MaterialCommunityIcons` (via `@expo/vector-icons`)
+  by default. The Material Symbols icon `auto-awesome` is **not** available
+  there; the AI-state indicators (ringing-phase AI FAB, "Afterglow listening"
+  chip during the talking phase) use `creation` instead (thematically
+  equivalent sparkle icon).
+- **`PaperProvider` placement:** it lives **inside** `RootLayoutInner` (wrapped
+  in `<GestureHandlerRootView>`) because the Paper theme depends on the
+  `useTheme()` hook from our custom `ThemeContext`. Moving it above
+  `ThemeProvider` breaks dark-mode toggling.
+- **Tonal surfaces:** Paper v5 does **not** expose MD3's `surfaceContainerHigh`
+  in the `MD3Colors` type. We use `theme.colors.elevation.level1 / level2 /
+  level3` instead (e.g. briefing card on the Customer detail and Incoming
+  call screens uses `level2`).
+- **Mock personal contacts:** the Contacts drawer entry mixes 20 hardcoded
+  UK/US contacts from `app/lib/mockContacts.ts` with the server's `Customer`
+  table. Resolution priority is *customer > mock > "Unknown caller"* (see
+  `app/lib/callerResolver.ts`); contacts have no backend representation and
+  no API — they exist purely client-side to make the "system phone app
+  replacement" pitch credible.
 
 ## Demo
 

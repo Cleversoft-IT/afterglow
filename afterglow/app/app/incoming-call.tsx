@@ -1,22 +1,30 @@
-import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Animated, Easing, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { CallButton } from '../components/CallButton';
+import { Animated, Easing, StyleSheet, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Avatar,
+  Banner,
+  Button,
+  Card,
+  Chip,
+  FAB,
+  IconButton,
+  Surface,
+  Text,
+  useTheme,
+} from 'react-native-paper';
 import { api, ApiError } from '../lib/api';
+import { initialsFromName } from '../lib/avatar';
 import type { AudioDomain } from '../lib/audio';
+import { callGreen, callRed } from '../lib/paperTheme';
 import { setPipelineToast } from '../lib/pipelineToast';
-import { useTheme } from '../lib/ThemeContext';
-import { radius, spacing, type ColorPalette } from '../lib/theme';
 import type { CallListItem, CustomerCard, TemplateView } from '../lib/types';
 import { usePhoneAudio } from '../lib/usePhoneAudio';
 
 type CallerInfo = { name: string; phone: string };
 type CallerMode = 'existing' | 'new';
 
-// Existing-customer numbers map to seeded customer rows (see backend seed.py).
-// Names + voices align with the Speechmatics TTS demo MP3s under
-// app/assets/audio/, so the recording matches the caller card.
 const CALLERS: Record<AudioDomain, CallerInfo> = {
   restaurant: { name: 'Mark Ross', phone: '+1 (555) 111-2233' },
   dentist: { name: 'Laura Bennett', phone: '+1 (555) 999-1122' },
@@ -30,7 +38,6 @@ const PHONE_E164: Record<AudioDomain, string> = {
 };
 
 function formatE164ToDisplay(e164: string): string {
-  // Crude US-style pretty print: +15551234567 -> +1 (555) 123-4567.
   const digits = e164.replace(/^\+/, '');
   if (digits.length === 11 && digits.startsWith('1')) {
     return `+1 (${digits.slice(1, 4)}) ${digits.slice(4, 7)}-${digits.slice(7)}`;
@@ -39,21 +46,40 @@ function formatE164ToDisplay(e164: string): string {
 }
 
 function generateNewCallerPhone(): { e164: string; pretty: string } {
-  // Pick a random 7-digit number in the +1 555 0XX XXXX range so it never
-  // collides with the seed numbers above and stays in the reserved test
-  // block. Fresh on every press: every new-caller trigger creates a new
-  // Customer row in the backend.
   const middle = String(Math.floor(Math.random() * 100)).padStart(2, '0');
   const tail = String(Math.floor(Math.random() * 10_000)).padStart(4, '0');
   const e164 = `+15550${middle}${tail}`;
   return { e164, pretty: formatE164ToDisplay(e164) };
 }
 
+function formatTime(seconds: number): string {
+  const m = Math.floor(seconds / 60).toString().padStart(2, '0');
+  const s = (seconds % 60).toString().padStart(2, '0');
+  return `${m}:${s}`;
+}
+
+function relativeTime(iso: string): string {
+  const then = new Date(iso).getTime();
+  if (Number.isNaN(then)) return iso;
+  const diff = Date.now() - then;
+  const sec = Math.round(diff / 1000);
+  if (sec < 60) return `${sec}s ago`;
+  const min = Math.round(sec / 60);
+  if (min < 60) return `${min}m ago`;
+  const hr = Math.round(min / 60);
+  if (hr < 24) return `${hr}h ago`;
+  const days = Math.round(hr / 24);
+  if (days < 30) return `${days}d ago`;
+  const months = Math.round(days / 30);
+  if (months < 12) return `${months}mo ago`;
+  const years = Math.round(months / 12);
+  return `${years}y ago`;
+}
+
 type Phase = 'loading' | 'ringing' | 'human' | 'talking' | 'error';
 
 export default function IncomingCallScreen() {
-  const { colors } = useTheme();
-  const styles = useIncomingCallStyles();
+  const theme = useTheme();
   const router = useRouter();
   const audio = usePhoneAudio();
   const params = useLocalSearchParams<{ caller?: string }>();
@@ -66,20 +92,12 @@ export default function IncomingCallScreen() {
   const [elapsed, setElapsed] = useState(0);
   const [error, setError] = useState<string | null>(null);
 
-  // The fresh-customer phone is pinned for the lifetime of THIS dialer
-  // session so the ringing screen, the submit and the caller card all
-  // agree on it. A new "Call from new customer" press from the simulator
-  // generates a different one because this component unmounts and remounts.
   const newCallerPhone = useRef(callerMode === 'new' ? generateNewCallerPhone() : null);
-
   const pulse = useRef(new Animated.Value(1)).current;
 
   const domain = (template?.domain_hint as AudioDomain) ?? 'restaurant';
   const fallbackCaller = CALLERS[domain] ?? CALLERS.restaurant;
   const sim = template?.simulation_config;
-  // New seeded templates expose `scenarios.{existing,new}`. Wizard-built
-  // templates may still ship the legacy flat shape — read with a fallback
-  // ladder so a custom template that hasn't been regenerated keeps working.
   const scenario = sim?.scenarios?.[callerMode] ?? null;
   const audioSource = scenario?.audio_source ?? sim?.audio_source ?? null;
   const useBundledAudio =
@@ -106,7 +124,6 @@ export default function IncomingCallScreen() {
         : fallbackCaller.phone;
   const displayName = customer?.display_name ?? fallbackDisplayName;
 
-  // Load template + customer in parallel on mount, then transition to ringing.
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -136,10 +153,6 @@ export default function IncomingCallScreen() {
               PHONE_E164[t.domain_hint as AudioDomain] ??
               PHONE_E164.restaurant;
 
-        // For "new caller" mode we deliberately skip the customer lookup —
-        // the whole point of that path is to demonstrate the create-on-call
-        // flow, and a stray match against a recycled seed phone would
-        // poison the demo.
         const customerPromise =
           callerMode === 'new'
             ? Promise.resolve(null)
@@ -183,12 +196,9 @@ export default function IncomingCallScreen() {
     return () => {
       cancelled = true;
     };
-    // audio is stable across renders (refs only, no state) — omitting from
-    // deps prevents the cleanup loop that swallows the first mount.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [callerMode]);
 
-  // Ringtone + pulse animation while ringing.
   useEffect(() => {
     if (phase !== 'ringing') return;
     audio.playRingtone();
@@ -216,7 +226,6 @@ export default function IncomingCallScreen() {
     };
   }, [phase, audio, pulse]);
 
-  // mm:ss timer for human and talking phases.
   useEffect(() => {
     if (phase !== 'human' && phase !== 'talking') return;
     setElapsed(0);
@@ -244,16 +253,13 @@ export default function IncomingCallScreen() {
         phoneE164,
         `${domain}_${callerMode}.mp3`,
       );
-      // Park the banner so the Calls tab shows "Analysis in progress" on mount.
       setPipelineToast({
         callId: submitted.call_id,
         phoneE164,
         startedAt: Date.now(),
       });
       audio.stopAll();
-      // Replace, not back: prevents the user from "going back" into a dialer
-      // that has already shipped the audio.
-      router.replace('/(tabs)' as never);
+      router.replace('/(drawer)/(tabs)' as never);
     } catch (e) {
       setError(e instanceof ApiError ? e.message : String(e));
       setPhase('error');
@@ -267,11 +273,6 @@ export default function IncomingCallScreen() {
     audio.playCallAudio(
       audioKey,
       () => {
-        // Natural hang-up beat: HTML5 'ended' fires a hair early on some MP3s
-        // (Chrome rounds `currentTime` against an imprecise duration tag),
-        // and even when it doesn't, a real call always has a short pause
-        // between "goodbye" and "click". Holding for ~800ms lets the last
-        // word breathe before the dialer chiude.
         setTimeout(() => {
           void submitAndClose();
         }, 800);
@@ -298,339 +299,306 @@ export default function IncomingCallScreen() {
     }
   }, [phase]);
 
-  return (
-    <View style={styles.root}>
-      <ScrollView
-        style={styles.scroll}
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
-      >
-        <Text style={styles.subtitle}>{subtitle}</Text>
+  const initials = initialsFromName(displayName);
 
-        <Animated.View style={[styles.avatar, { transform: [{ scale: phase === 'ringing' ? pulse : 1 }] }]}>
-          <Ionicons name="person" size={56} color={colors.text} />
-        </Animated.View>
-
-        <Text style={styles.caller}>{displayName}</Text>
-        <Text style={styles.phone}>{fallbackDisplayPhone}</Text>
-
-        {phase === 'ringing' && (
-          <CallerContext customer={customer} recentCalls={recentCalls} callerMode={callerMode} />
-        )}
-
-        {(phase === 'human' || phase === 'talking') && (
-          <Text style={styles.timer}>{formatTime(elapsed)}</Text>
-        )}
-
-        {phase === 'talking' && (
-          <View style={styles.tag}>
-            <Ionicons name="sparkles" size={12} color={colors.brand} />
-            <Text style={styles.tagText}>Afterglow listening</Text>
-          </View>
-        )}
-
-        {phase === 'error' && (
-          <Text style={styles.errorText}>{error}</Text>
-        )}
-      </ScrollView>
-
-      <View style={styles.bottomBlock}>
-        {phase === 'loading' && <ActivityIndicator color={colors.brand} />}
-
-        {phase === 'ringing' && (
-          <View style={styles.dialerRow}>
-            <CallButton variant="decline" onPress={hangUp} />
-            <CallButton variant="ai" onPress={acceptAi} />
-            <CallButton variant="accept" onPress={acceptHuman} />
-          </View>
-        )}
-
-        {(phase === 'human' || phase === 'talking') && (
-          <View style={styles.singleRow}>
-            <CallButton variant="decline" onPress={hangUp} />
-          </View>
-        )}
-
-        {phase === 'error' && (
-          <Pressable onPress={() => router.back()} style={styles.dismiss}>
-            <Text style={styles.dismissText}>Dismiss</Text>
-          </Pressable>
-        )}
-      </View>
-    </View>
-  );
-}
-
-type CallerContextProps = {
-  customer: CustomerCard | null;
-  recentCalls: CallListItem[];
-  callerMode: CallerMode;
-};
-
-function CallerContext({ customer, recentCalls, callerMode }: CallerContextProps) {
-  const { colors } = useTheme();
-  const styles = useIncomingCallStyles();
-
-  if (!customer) {
+  if (phase === 'loading') {
     return (
-      <View style={styles.newCallerBadge}>
-        <Ionicons name="sparkles-outline" size={12} color={colors.brand} />
-        <Text style={styles.newCallerText}>
-          {callerMode === 'new' ? 'New customer · will be created on submit' : 'New caller'}
-        </Text>
+      <View style={[styles.root, { backgroundColor: theme.colors.background }]}>
+        <View style={styles.center}>
+          <ActivityIndicator size="large" />
+          <Text variant="bodyMedium" style={{ color: theme.colors.onSurfaceVariant, marginTop: 12 }}>
+            {subtitle}
+          </Text>
+        </View>
       </View>
     );
   }
 
-  const lang = customer.preferred_language?.toUpperCase();
-  const lastCall = customer.last_call_at ? relativeTime(customer.last_call_at) : null;
-  const tags = (customer.tags ?? []).slice(0, 3);
+  if (phase === 'error') {
+    return (
+      <View style={[styles.root, { backgroundColor: theme.colors.background }]}>
+        <Banner visible icon="alert-circle-outline">
+          {error ?? 'Something went wrong.'}
+        </Banner>
+        <View style={styles.center}>
+          <Button mode="outlined" icon="close" onPress={() => router.back()}>
+            Dismiss
+          </Button>
+        </View>
+      </View>
+    );
+  }
 
   return (
-    <View style={styles.contextBlock}>
-      <View style={styles.metaRow}>
-        <View style={styles.metaPill}>
-          <Ionicons name="call-outline" size={12} color={colors.textMuted} />
-          <Text style={styles.metaText}>
-            {customer.total_calls} {customer.total_calls === 1 ? 'call' : 'calls'}
+    <View style={[styles.root, { backgroundColor: theme.colors.background }]}>
+      {/* Header zone */}
+      <View style={styles.header}>
+        <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant, letterSpacing: 0.4 }}>
+          {subtitle}
+        </Text>
+        {(phase === 'human' || phase === 'talking') && (
+          <Text
+            variant="titleLarge"
+            style={{ fontVariant: ['tabular-nums'], fontWeight: '700', marginTop: 4 }}
+          >
+            {formatTime(elapsed)}
           </Text>
-        </View>
-        {lang && (
-          <View style={styles.metaPill}>
-            <Ionicons name="language-outline" size={12} color={colors.textMuted} />
-            <Text style={styles.metaText}>{lang}</Text>
-          </View>
         )}
-        {lastCall && (
-          <View style={styles.metaPill}>
-            <Ionicons name="time-outline" size={12} color={colors.textMuted} />
-            <Text style={styles.metaText}>last {lastCall}</Text>
-          </View>
+        <Text variant="headlineLarge" style={[styles.callerName, { color: theme.colors.onSurface }]}>
+          {displayName}
+        </Text>
+        <Text
+          variant="titleMedium"
+          style={{ color: theme.colors.onSurfaceVariant, marginTop: 4 }}
+        >
+          {fallbackDisplayPhone}
+        </Text>
+        {phase === 'talking' && (
+          <Chip
+            mode="flat"
+            icon="creation"
+            style={{ marginTop: 12, alignSelf: 'center' }}
+          >
+            Afterglow listening
+          </Chip>
         )}
       </View>
 
-      {tags.length > 0 && (
-        <View style={styles.tagRow}>
-          {tags.map((t) => (
-            <View key={t} style={styles.chip}>
-              <Text style={styles.chipText}>{t}</Text>
-            </View>
-          ))}
-        </View>
-      )}
+      {/* Avatar zone */}
+      <View style={styles.avatarZone}>
+        <Animated.View style={{ transform: [{ scale: phase === 'ringing' ? pulse : 1 }] }}>
+          <Avatar.Text
+            size={160}
+            label={initials || '?'}
+            color="#FFFFFF"
+            style={{ backgroundColor: callGreen }}
+          />
+        </Animated.View>
+        {phase === 'ringing' ? (
+          <CallerContext customer={customer} recentCalls={recentCalls} callerMode={callerMode} />
+        ) : null}
+      </View>
 
-      {customer.memory_summary && (
-        <View style={styles.briefingCard}>
-          <View style={styles.briefingHeader}>
-            <Ionicons name="sparkles" size={14} color={colors.brand} />
-            <Text style={styles.briefingTitle}>Next-call briefing</Text>
+      {/* Footer / actions */}
+      <Surface
+        mode="flat"
+        style={[
+          styles.footer,
+          { backgroundColor: theme.colors.elevation.level1, borderTopColor: theme.colors.outlineVariant },
+        ]}
+      >
+        {(phase === 'human' || phase === 'talking') && (
+          <View style={styles.controlsRow}>
+            <ControlBtn icon="dialpad" label="Keypad" />
+            <ControlBtn icon="microphone-off" label="Mute" />
+            <ControlBtn icon="volume-high" label="Speaker" />
+            <ControlBtn icon="dots-horizontal" label="More" />
           </View>
-          <Text style={styles.briefingText}>{customer.memory_summary}</Text>
-        </View>
-      )}
+        )}
 
-      {recentCalls.length > 0 && (
-        <View style={styles.timelineBlock}>
-          <Text style={styles.timelineTitle}>Recent calls</Text>
-          {recentCalls.slice(0, 2).map((c) => (
-            <View key={c.id} style={styles.timelineRow}>
-              <View style={styles.timelineDot} />
-              <Text style={styles.timelineText}>
-                {relativeTime(c.created_at)} · {c.status}
+        {phase === 'ringing' ? (
+          <View style={styles.fabRow}>
+            <View style={styles.fabCol}>
+              <FAB
+                icon="phone-hangup"
+                color="#FFFFFF"
+                style={[styles.actionFab, { backgroundColor: callRed }]}
+                onPress={hangUp}
+              />
+              <Text variant="labelSmall" style={styles.fabLabel}>
+                Decline
               </Text>
             </View>
-          ))}
-        </View>
-      )}
+            <View style={styles.fabCol}>
+              <FAB
+                icon="creation"
+                color="#FFFFFF"
+                style={[styles.actionFab, { backgroundColor: theme.colors.primary }]}
+                onPress={acceptAi}
+              />
+              <Text variant="labelSmall" style={styles.fabLabel}>
+                AI
+              </Text>
+            </View>
+            <View style={styles.fabCol}>
+              <FAB
+                icon="phone"
+                color="#FFFFFF"
+                style={[styles.actionFab, { backgroundColor: callGreen }]}
+                onPress={acceptHuman}
+              />
+              <Text variant="labelSmall" style={styles.fabLabel}>
+                Accept
+              </Text>
+            </View>
+          </View>
+        ) : (
+          <View style={styles.hangupCenter}>
+            <FAB
+              icon="phone-hangup"
+              color="#FFFFFF"
+              style={[styles.hangupPill, { backgroundColor: callRed }]}
+              onPress={hangUp}
+            />
+          </View>
+        )}
+      </Surface>
     </View>
   );
 }
 
-function formatTime(seconds: number): string {
-  const m = Math.floor(seconds / 60).toString().padStart(2, '0');
-  const s = (seconds % 60).toString().padStart(2, '0');
-  return `${m}:${s}`;
+function ControlBtn({ icon, label }: { icon: string; label: string }) {
+  return (
+    <View style={{ alignItems: 'center', gap: 4 }}>
+      <IconButton mode="contained-tonal" icon={icon} size={24} />
+      <Text variant="labelSmall">{label}</Text>
+    </View>
+  );
 }
 
-function relativeTime(iso: string): string {
-  const then = new Date(iso).getTime();
-  if (Number.isNaN(then)) return iso;
-  const diff = Date.now() - then;
-  const sec = Math.round(diff / 1000);
-  if (sec < 60) return `${sec}s ago`;
-  const min = Math.round(sec / 60);
-  if (min < 60) return `${min}m ago`;
-  const hr = Math.round(min / 60);
-  if (hr < 24) return `${hr}h ago`;
-  const days = Math.round(hr / 24);
-  if (days < 30) return `${days}d ago`;
-  const months = Math.round(days / 30);
-  if (months < 12) return `${months}mo ago`;
-  const years = Math.round(months / 12);
-  return `${years}y ago`;
+function CallerContext({
+  customer,
+  recentCalls,
+  callerMode,
+}: {
+  customer: CustomerCard | null;
+  recentCalls: CallListItem[];
+  callerMode: CallerMode;
+}) {
+  const theme = useTheme();
+  if (!customer) {
+    return (
+      <Chip mode="outlined" icon="account-plus-outline" style={{ marginTop: 16 }}>
+        {callerMode === 'new' ? 'New customer · will be created on submit' : 'New caller'}
+      </Chip>
+    );
+  }
+
+  const tags = (customer.tags ?? []).slice(0, 3);
+  const lastCall = customer.last_call_at ? relativeTime(customer.last_call_at) : null;
+
+  return (
+    <View style={styles.contextBlock}>
+      <View style={styles.metaRow}>
+        <Chip compact mode="outlined" icon="phone">
+          {`${customer.total_calls} ${customer.total_calls === 1 ? 'call' : 'calls'}`}
+        </Chip>
+        {customer.preferred_language ? (
+          <Chip compact mode="outlined" icon="translate">
+            {customer.preferred_language.toUpperCase()}
+          </Chip>
+        ) : null}
+        {lastCall ? (
+          <Chip compact mode="outlined" icon="clock-outline">
+            {`last ${lastCall}`}
+          </Chip>
+        ) : null}
+      </View>
+
+      {tags.length > 0 ? (
+        <View style={styles.tagRow}>
+          {tags.map((t) => (
+            <Chip key={t} compact mode="flat">
+              {t}
+            </Chip>
+          ))}
+        </View>
+      ) : null}
+
+      {customer.memory_summary ? (
+        <Card mode="elevated" style={{ backgroundColor: theme.colors.elevation.level2 }}>
+          <Card.Title
+            title="Next-call briefing"
+            titleVariant="labelLarge"
+            left={(p) => <Avatar.Icon {...p} icon="lightbulb-on-outline" size={32} />}
+          />
+          <Card.Content>
+            <Text variant="bodyMedium" numberOfLines={3} style={{ lineHeight: 20 }}>
+              {customer.memory_summary}
+            </Text>
+          </Card.Content>
+        </Card>
+      ) : null}
+
+      {recentCalls.length > 0 ? (
+        <View style={{ gap: 4 }}>
+          <Text variant="labelSmall" style={{ color: theme.colors.onSurfaceVariant }}>
+            RECENT CALLS
+          </Text>
+          {recentCalls.slice(0, 2).map((c) => (
+            <Text key={c.id} variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
+              · {relativeTime(c.created_at)} · {c.status}
+            </Text>
+          ))}
+        </View>
+      ) : null}
+    </View>
+  );
 }
 
-function useIncomingCallStyles() {
-  const { colors } = useTheme();
-  return useMemo(() => createIncomingCallStyles(colors), [colors]);
-}
-
-function createIncomingCallStyles(colors: ColorPalette) {
-  return StyleSheet.create({
-    root: {
-      flex: 1,
-      backgroundColor: colors.bg,
-      paddingHorizontal: spacing.xl,
-      paddingTop: spacing.xxl + spacing.xl,
-      paddingBottom: spacing.xxl,
-    },
-    scroll: { flex: 1 },
-    scrollContent: { alignItems: 'center', gap: spacing.md, paddingBottom: spacing.xl },
-    subtitle: {
-      color: colors.textMuted,
-      fontSize: 13,
-      letterSpacing: 0.4,
-      marginBottom: spacing.lg,
-    },
-    avatar: {
-      width: 120,
-      height: 120,
-      borderRadius: 60,
-      backgroundColor: colors.surface,
-      borderWidth: StyleSheet.hairlineWidth,
-      borderColor: colors.border,
-      alignItems: 'center',
-      justifyContent: 'center',
-      marginBottom: spacing.md,
-    },
-    caller: { color: colors.text, fontSize: 26, fontWeight: '600', letterSpacing: -0.3 },
-    phone: { color: colors.textMuted, fontSize: 16, letterSpacing: 0.5 },
-    timer: {
-      color: colors.textMuted,
-      fontSize: 18,
-      fontVariant: ['tabular-nums'],
-      marginTop: spacing.md,
-    },
-    tag: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 6,
-      paddingHorizontal: 10,
-      paddingVertical: 4,
-      borderRadius: radius.pill,
-      backgroundColor: colors.highlightBg,
-      borderWidth: StyleSheet.hairlineWidth,
-      borderColor: colors.highlightBorder,
-      marginTop: spacing.sm,
-    },
-    tagText: { color: colors.callAfterglow, fontSize: 12, fontWeight: '500' },
-    errorText: { color: colors.danger, textAlign: 'center', marginTop: spacing.lg },
-    bottomBlock: { alignItems: 'center', gap: spacing.lg, paddingTop: spacing.lg },
-    dialerRow: {
-      flexDirection: 'row',
-      alignItems: 'flex-end',
-      justifyContent: 'space-between',
-      width: '100%',
-      maxWidth: 360,
-      paddingHorizontal: spacing.md,
-    },
-    singleRow: { alignItems: 'center' },
-    dismiss: {
-      paddingHorizontal: spacing.xl,
-      paddingVertical: spacing.md + 2,
-      backgroundColor: colors.surface,
-      borderRadius: radius.pill,
-      borderWidth: StyleSheet.hairlineWidth,
-      borderColor: colors.border,
-      minHeight: 44,
-    },
-    dismissText: { color: colors.text, fontWeight: '500', fontSize: 15 },
-    contextBlock: {
-      width: '100%',
-      maxWidth: 360,
-      gap: spacing.sm,
-      marginTop: spacing.md,
-    },
-    metaRow: {
-      flexDirection: 'row',
-      flexWrap: 'wrap',
-      justifyContent: 'center',
-      gap: spacing.sm,
-    },
-    metaPill: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 4,
-      paddingHorizontal: 10,
-      paddingVertical: 4,
-      borderRadius: radius.pill,
-      backgroundColor: colors.surface,
-      borderWidth: StyleSheet.hairlineWidth,
-      borderColor: colors.border,
-    },
-    metaText: { color: colors.textMuted, fontSize: 12, fontWeight: '500' },
-    tagRow: {
-      flexDirection: 'row',
-      flexWrap: 'wrap',
-      justifyContent: 'center',
-      gap: 6,
-    },
-    chip: {
-      paddingHorizontal: 10,
-      paddingVertical: 3,
-      borderRadius: radius.pill,
-      backgroundColor: colors.surfaceAlt,
-      borderWidth: StyleSheet.hairlineWidth,
-      borderColor: colors.border,
-    },
-    chipText: { color: colors.textMuted, fontSize: 12, fontWeight: '500' },
-    briefingCard: {
-      backgroundColor: colors.surface,
-      borderRadius: radius.lg,
-      borderWidth: StyleSheet.hairlineWidth,
-      borderColor: colors.border,
-      padding: spacing.md + 2,
-      gap: spacing.xs,
-    },
-    briefingHeader: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 6,
-    },
-    briefingTitle: {
-      color: colors.textMuted,
-      fontSize: 12,
-      fontWeight: '600',
-      letterSpacing: 0.2,
-    },
-    briefingText: { color: colors.text, fontSize: 14, lineHeight: 21 },
-    timelineBlock: { gap: 4, paddingTop: spacing.xs },
-    timelineTitle: {
-      color: colors.textSubtle,
-      fontSize: 11,
-      fontWeight: '600',
-      letterSpacing: 0.2,
-    },
-    timelineRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-    timelineDot: {
-      width: 6,
-      height: 6,
-      borderRadius: 3,
-      backgroundColor: colors.brand,
-    },
-    timelineText: { color: colors.textMuted, fontSize: 12 },
-    newCallerBadge: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 6,
-      paddingHorizontal: 10,
-      paddingVertical: 4,
-      borderRadius: radius.pill,
-      backgroundColor: colors.surfaceAlt,
-      borderWidth: StyleSheet.hairlineWidth,
-      borderColor: colors.border,
-      marginTop: spacing.sm,
-    },
-    newCallerText: { color: colors.textMuted, fontSize: 12, fontWeight: '500' },
-  });
-}
+const styles = StyleSheet.create({
+  root: { flex: 1 },
+  center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12 },
+  header: {
+    paddingTop: 56,
+    paddingHorizontal: 24,
+    alignItems: 'center',
+  },
+  callerName: {
+    fontSize: 32,
+    fontWeight: '600',
+    marginTop: 8,
+    textAlign: 'center',
+  },
+  avatarZone: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 24,
+    gap: 24,
+  },
+  footer: {
+    paddingTop: 24,
+    paddingBottom: 32,
+    paddingHorizontal: 24,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    gap: 24,
+  },
+  controlsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    alignItems: 'flex-start',
+  },
+  fabRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    alignItems: 'flex-start',
+  },
+  fabCol: { alignItems: 'center', gap: 6 },
+  actionFab: { width: 72, height: 72, borderRadius: 20 },
+  fabLabel: { fontWeight: '500' },
+  hangupCenter: { alignItems: 'center' },
+  hangupPill: {
+    width: '60%',
+    minWidth: 200,
+    height: 64,
+    borderRadius: 999,
+  },
+  contextBlock: {
+    width: '100%',
+    maxWidth: 360,
+    gap: 12,
+  },
+  metaRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    gap: 6,
+  },
+  tagRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    gap: 6,
+  },
+});

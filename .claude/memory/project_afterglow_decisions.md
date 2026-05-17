@@ -1,6 +1,6 @@
 ---
 name: project-afterglow-decisions
-description: Decisioni di prodotto/architettura di Afterglow. Pivot da non rinegoziare senza ridiscutere. Aggiornato 2026-05-16 — feedback round 2 (no PII redaction, action catalog, dialer non bloccante, Undo/Redo flip-only, simulator 2-mode con MP3 distinti existing/new e 4 customer seedati).
+description: Decisioni di prodotto/architettura di Afterglow. Pivot da non rinegoziare senza ridiscutere. Aggiornato 2026-05-17 — frontend Material 3 rewrite (Drawer + 2-tab Pixel-inspired, react-native-paper, mock personal contacts, KeyPad UI-only, pitch riformulato "sostituto del dialer di sistema"). 2026-05-16 — feedback round 2 (no PII redaction, action catalog, dialer non bloccante, Undo/Redo flip-only, simulator 2-mode con MP3 distinti existing/new e 4 customer seedati).
 metadata:
   type: project
 ---
@@ -33,7 +33,7 @@ L'app è caricata in iframe da `demo.95...` durante la judging window; più giud
 
 **Cleanup:** asyncio task in lifespan FastAPI sweep ogni 30 min sessioni con `last_seen_at < now-24h`, cascade delete di tutto il sub-tree.
 
-**Reset on-demand (2026-05-16):** `POST /api/v1/demo/reset` (`app/api/demo.py`) chiama la stessa `purge_session_data` del cron sul `session_id` corrente con `drop_session_row=False`, poi azzera `active_template_id` e bumpa `last_seen_at`. La row `DemoSession` resta viva → il client mantiene la stessa uuid in `localStorage`, niente nuovo handshake. 403 in production. Pulsante "Reset demo" nella tab Settings dell'app (`app/(tabs)/settings.tsx`), visibile solo se `isDemoMode()`. Dopo il reset il client fa hard reload (web) / `router.replace('/')` (native); il gate `ActiveTemplateBootstrap` in `app/_layout.tsx` redirige a `/(tabs)/templates` se `getActiveTemplate()` ritorna 204. Il modal "soft warning" in `app/(tabs)/templates.tsx` intercetta `tabPress` sul parent navigator e avverte se l'utente lascia la pagina senza aver scelto un template. `GET /api/v1/templates/active` ritorna **204** per demo senza `active_template_id` (no fallback al seed `is_active=TRUE`, che resta solo per production).
+**Reset on-demand (2026-05-16):** `POST /api/v1/demo/reset` (`app/api/demo.py`) chiama la stessa `purge_session_data` del cron sul `session_id` corrente con `drop_session_row=False`, poi azzera `active_template_id` e bumpa `last_seen_at`. La row `DemoSession` resta viva → il client mantiene la stessa uuid in `localStorage`, niente nuovo handshake. 403 in production. Pulsante "Reset demo" nella tab Settings dell'app (`app/(tabs)/settings.tsx`), visibile solo se `isDemoMode()`. Dopo il reset il client fa hard reload (web) / `router.replace('/')` (native); il gate `ActiveTemplateBootstrap` in `app/_layout.tsx` redirige a `/(drawer)/templates` se `getActiveTemplate()` ritorna 204. Il modal "soft warning" in `app/(drawer)/templates.tsx` intercetta `tabPress` sul parent navigator e avverte se l'utente lascia la pagina senza aver scelto un template. `GET /api/v1/templates/active` ritorna **204** per demo senza `active_template_id` (no fallback al seed `is_active=TRUE`, che resta solo per production).
 
 **Why:** la decisione 1.bis (single-tenant in produzione) resta vincolata. La sandbox è layer opzionale che si attiva solo quando l'header è presente; production senza header = comportamento single-tenant immutato. Aderiscere al vincolo di prodotto + non bruciare Presentation per concorrenza demo.
 
@@ -188,6 +188,68 @@ Dopo il primo giro di test su installazione fresh (Mark Ross / Julia White) sono
 - NON ri-introdurre la redaction del briefing senza ridiscutere — i test in `test_pii_sanitizer.py` lockano la semantica observe-only.
 - NON toccare il polling bloccante dentro al dialer: la fase `analyzing` locale è morta apposta.
 - Quando aggiungi un campo a `ExecutedAction.result`, valutare se modificarne anche la shape che la UI usa per `is_simulated` / `can_undo` (ora vengono SERVER-side dal catalog, non dal result).
+
+### 1.sette. Frontend Material 3 rewrite — sostituto del dialer di sistema (2026-05-17)
+
+Riscrittura end-to-end del frontend Expo PWA. **Pitch narrative riformulato**: Afterglow non è "un AI dialer demo per booking telefonici", è il **sostituto dell'app Phone di sistema** (Pixel-inspired). L'operatore lo usa per tutte le chiamate; l'AI lavora silenziosamente dopo ogni chiamata.
+
+**Why:** la prima incarnazione "5 tab generiche (Calls / Customers / Bookings / Templates / Settings)" sembrava un'app web demo. Il pitch hackathon premia "enterprise-grade verticale" — un sostituto del dialer è enterprise-grade visibility, non un demo player. Reference visiva = screenshot Google Phone (AOSP/Pixel) condivisi dall'utente in `tmp/WhatsApp Unknown 2026-05-17 at 02.26.39/` + pattern Material 3 specifici da Amadz (`tmp/Amadz/`, Apache-2.0) per avatar palette e KeyPad.
+
+**Nuova architettura navigation:**
+
+- Top-level `Drawer` (hamburger sx, custom DrawerContent in `app/(drawer)/_layout.tsx`):
+  - **Contacts** (nuova screen) — lista alfabetica unica che fonde 20 mock UK/US (`app/lib/mockContacts.ts`, client-side hardcoded JSON) con il `Customer` table; Chip "Client" distingue i customer. Resolution priority `customer > mock > "Unknown caller"` in `app/lib/callerResolver.ts`.
+  - **Templates** (spostato da `(tabs)/`)
+  - **Audit log** (spostato da `app/audit.tsx`)
+  - **Test simulator** (escape hatch — la tab Calls non esiste più, il simulatore è raggiungibile solo dal drawer)
+  - **Settings** (spostato)
+  - **Reset demo** (conditional `isDemoMode()`)
+- Bottom `BottomNavigation.Bar` Paper 2 tab dentro al drawer (`(drawer)/(tabs)/`):
+  - **Home** = Pixel Recents (`(drawer)/(tabs)/index.tsx`)
+  - **Keypad** = 4×3 dialpad con Call FAB UI-only (Snackbar "Use the Simulator…")
+- Stack screen fuori drawer: `incoming-call`, `call/[id]`, `customer/[id]`, `templates/[id]`, `templates/wizard`, `simulator`.
+
+**Eliminati dal codice (3 route):** `(tabs)/bookings.tsx` (diventa chip filter "Bookings" su Home), `(tabs)/customers.tsx` (confluito in Contacts drawer), vecchio `(tabs)/_layout.tsx`. **Deprecati componenti:** `components/ListRow.tsx` (screen consumano `List.Item` Paper direttamente), `components/CallButton.tsx` (incoming-call usa `<FAB>` Paper). `components/FormField.tsx` tenuto temporaneamente (usato dal Template Detail editor).
+
+**Home (Recents) Pixel-style:**
+- AppBar pill `Searchbar` con `icon="menu"` (hamburger → openDrawer) + `traileringIcon="microphone"`.
+- Chip filter row scrollabile (5 chip, **niente "AI" chip**): All / Missed / **Bookings** / Saved / Unsaved. Audit esterno finding #1: `CallListItem` (`/api/v1/calls`) NON espone `executed_actions`, quindi un chip "AI" richiederebbe N+1 fetch. Il chip "Bookings" usa fetch parallelo `api.listBookings({limit:100})` + Map `bookingByCallId` per filtrare e arricchire visivamente la riga.
+- `SectionList` con sticky date headers azzurri (`color: theme.colors.primary`) — Today / Yesterday / `D Mon`.
+- `CallRow` (nuovo componente `app/components/CallRow.tsx`): `Avatar.Text` 48dp con bg hash-derived (11 colori Amadz `Contact.kt`: `#EF5350 #EC407A #AB47BC #7E57C2 #5C6BC0 #42A5F5 #26A69A #66BB6A #FFA726 #8D6E63 #78909C`, `Math.abs(hashCode(phone)) % 11`), iniziali first+last via `initialsFromName`; Chip "Booking" inline accanto al name quando la call ha un booking action; `direction icon` (phone-missed/incoming) + label + `formatRelativeTime`.
+- Quando filter=`bookings` la riga **nasconde il phone** e mostra `booking.title · payload.booking_date · payload.booking_time · party of N` dal `payload` del `BookingListItem` (audit finding #5: campi in `payload`, non al top level).
+- Trailing `phone-outline` `IconButton` → **Snackbar** "Use the Simulator from the drawer to test the AI pipeline" (audit finding #4: **non** apre incoming-call, la state machine accetta solo `caller=existing|new` e non un `phone=` arbitrario).
+
+**Incoming Call — "Pixel-inspired" (NOT exact match):** rewrite **solo visivo**, la state machine (`useState`/`useEffect`/`usePhoneAudio`/parsing param `caller=existing|new`/`submitAndClose`) è copiata 1:1 dal pre-rewrite (audit finding #7). Tre divergenze esplicite dal Pixel originale documentate per il pitch: (a) avatar `Avatar.Text` 160dp verde fisso `#26B31E` con iniziali bianche e pulse animation durante `ringing`, (b) 3 FAB invece di 2 (Decline rosso / **AI** primary con icon `creation` / Accept verde, rounded 20dp) per esporre il pulsante AI, (c) Chip "Afterglow listening" con icon `creation` durante `talking`. In-call: timer in `tabular-nums`, 4 `IconButton` `mode="contained-tonal"` (Keypad/Mute/Speaker/More) sotto, big red pill hangup centrato. Submit dopo audio: `router.replace('/(drawer)/(tabs)' as never)`.
+
+**Stack frontend (nuove dep, Expo SDK 54):**
+- `react-native-paper@^5.15` (MIT) — componenti MD3.
+- `@material/material-color-utilities@^0.4` (Apache-2.0) — generazione palette MD3 dal seed `#3b82f6` via `themeFromSourceColor`; output spreado dentro `MD3LightTheme.colors` / `MD3DarkTheme.colors` (audit finding #3: senza lo spread restano i token viola baseline su `surfaceDisabled`/`onSurfaceDisabled`).
+- `@react-navigation/drawer@^7.10` (MIT) — Drawer navigator.
+- `react-native-gesture-handler@~2.28` — peer dep del drawer.
+- `react-native-reanimated@~4.1` — animazioni. **Attenzione:** Reanimated 4 ha spostato il Babel plugin in `react-native-worklets/plugin` (NON più `react-native-reanimated/plugin`). Aggiunto `app/babel.config.js` con `presets: ['babel-preset-expo'], plugins: ['react-native-worklets/plugin']` + dep `babel-preset-expo` come devDep esplicita.
+
+**Token MD3 — convenzione tonal surfaces:** Paper v5 non espone `surfaceContainerHigh` nel tipo `MD3Colors`. Per le superfici tonali (briefing card, draft sidebar wizard, in-call footer) usare `theme.colors.elevation.level1` / `level2` / `level3` (Paper genera questi shading da MD3). Non re-introdurre `surfaceContainerHigh` finché Paper non lo tipa.
+
+**`PaperProvider` posizione:** **dentro** `RootLayoutInner`, **dopo** `useTheme()` del nostro `ThemeContext`, wrapped in `<GestureHandlerRootView style={{flex:1}}>` (richiesto da `react-native-gesture-handler`). Sopra al `PaperProvider` resta `<ThemeProvider>` esterno. Audit finding #3: spostarlo fuori da `RootLayoutInner` rompe il binding mode light/dark del SegmentedButtons in Settings.
+
+**Bug fix runtime (smoke test Chrome):** l'icon name `auto-awesome` (Material Symbols) **non esiste** in `MaterialCommunityIcons` (il set di default di Paper via `@expo/vector-icons`). Sostituito ovunque con `creation` (scintilla MD Community) — FAB AI in `incoming-call.tsx` + Chip "Afterglow listening" durante `talking`. NON re-introdurre `auto-awesome` né `sparkles`: nessuno dei due esiste in MaterialCommunityIcons.
+
+**Routing pivot:** path hardcoded migrati nello stesso commit della creazione del drawer (audit finding #5):
+- `app/_layout.tsx` gate redirect → `/(drawer)/templates` (era `/(tabs)/templates`)
+- `app/incoming-call.tsx` post-submit → `/(drawer)/(tabs)` (era `/(tabs)`)
+- `(drawer)/settings.tsx` audit log link → `/(drawer)/audit` (era `/audit`)
+- `Stack.Screen name="(tabs)"` → `name="(drawer)"` nel root `_layout.tsx`
+- `Stack.Screen name="audit"` rimosso dal root (audit è dentro drawer)
+
+**Audit log spostamento:** `app/audit.tsx` → `app/(drawer)/audit.tsx` (refactor MD3: `List.Item` con `Avatar.Icon` colorato per `status`, `Chip` per `step_type`/model, monospace per token count).
+
+**How to apply:**
+- Quando aggiungi un nuovo schermo full-rewrite MD3, usa Paper widgets diretti (`<Card mode="elevated">`, `<List.Item>`, `<Chip>`, `<Surface elevation={N}>`), non i wrapper legacy in `components/`. I wrapper `Button/Card/Badge/Input/Textarea/Select/Checkbox` di Paper sono compat-API per gli schermi non rifatti (es. Template Detail editor); per il nuovo screen vai diretto.
+- Quando devi una superficie tonale, leggi `theme.colors.elevation.levelN` (mai `surfaceContainerHigh`).
+- Quando aggiungi un icon nell'UI, verifica che esista in MaterialCommunityIcons (https://pictogrammers.com/library/mdi/) — se non esiste cerca un equivalente prima di usare un nome Material Symbols.
+- Quando aggiungi un mock contact, **client-side only**, modifica `app/lib/mockContacts.ts` (nessun backend touch).
+- Quando aggiungi una nuova entry nel drawer, modifica `app/(drawer)/_layout.tsx` `CustomDrawerContent` + (se serve uno screen nuovo) crea il file in `(drawer)/`.
+- La state machine di `incoming-call.tsx` è LOCKED. Cambia solo JSX. Se serve mutare `phase` / `audio.*` ridiscuti.
 
 ### 9. Stato env in produzione (volatile, 2026-05-15)
 Sezione "what's live right now" — da rileggere prima di pushare grossi cambi al backend.

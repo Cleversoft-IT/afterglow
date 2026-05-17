@@ -1,29 +1,17 @@
-import { useMemo } from 'react';
-import { StyleSheet, View, type ViewProps } from 'react-native';
-import { useTheme } from '../lib/ThemeContext';
-import { radius, spacing } from '../lib/theme';
+import { Card as PaperCard } from 'react-native-paper';
+import type { ReactNode } from 'react';
+import type { StyleProp, ViewStyle } from 'react-native';
 
-export function Card({ style, children, ...rest }: ViewProps) {
-  const { colors, shadows } = useTheme();
-  const styles = useMemo(
-    () =>
-      StyleSheet.create({
-        card: {
-          backgroundColor: colors.surface,
-          borderRadius: radius.lg,
-          borderWidth: StyleSheet.hairlineWidth,
-          borderColor: colors.border,
-          padding: spacing.lg,
-          gap: spacing.sm,
-          ...shadows.card,
-        },
-      }),
-    [colors, shadows],
-  );
-
+export function Card({
+  children,
+  style,
+}: {
+  children?: ReactNode;
+  style?: StyleProp<ViewStyle>;
+}) {
   return (
-    <View style={[styles.card, style]} {...rest}>
-      {children}
-    </View>
+    <PaperCard mode="elevated" style={style}>
+      <PaperCard.Content>{children}</PaperCard.Content>
+    </PaperCard>
   );
 }

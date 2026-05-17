@@ -1,19 +1,15 @@
-import { useMemo } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text } from 'react-native';
-import { useTheme } from '../lib/ThemeContext';
-import { radius, spacing, type ColorPalette } from '../lib/theme';
+import { Button as PaperButton } from 'react-native-paper';
+import { callRed } from '../lib/paperTheme';
+import type { StyleProp, ViewStyle } from 'react-native';
 
 type Variant = 'primary' | 'secondary' | 'danger' | 'ghost';
 
-function variantStyle(colors: ColorPalette, variant: Variant) {
-  const map = {
-    primary: { bg: colors.brand, fg: colors.onPrimary, border: colors.brand },
-    secondary: { bg: colors.surface, fg: colors.text, border: colors.border },
-    danger: { bg: colors.surface, fg: colors.danger, border: colors.border },
-    ghost: { bg: 'transparent', fg: colors.textMuted, border: 'transparent' },
-  };
-  return map[variant];
-}
+const MODE_BY_VARIANT: Record<Variant, 'contained' | 'outlined' | 'text'> = {
+  primary: 'contained',
+  secondary: 'outlined',
+  danger: 'contained',
+  ghost: 'text',
+};
 
 export function Button({
   title,
@@ -21,52 +17,33 @@ export function Button({
   disabled,
   loading,
   variant = 'primary',
+  style,
+  icon,
 }: {
   title: string;
   onPress?: () => void;
   disabled?: boolean;
   loading?: boolean;
   variant?: Variant;
+  style?: StyleProp<ViewStyle>;
+  icon?: string;
 }) {
-  const { colors } = useTheme();
-  const styles = useMemo(() => createStyles(), []);
-  const v = variantStyle(colors, variant);
-
+  const mode = MODE_BY_VARIANT[variant];
+  const buttonColor = variant === 'danger' ? callRed : undefined;
+  const textColor = variant === 'danger' ? '#FFFFFF' : undefined;
   return (
-    <Pressable
+    <PaperButton
+      mode={mode}
       onPress={onPress}
-      disabled={disabled || loading}
-      accessibilityRole="button"
-      accessibilityState={{ disabled: disabled || loading, busy: loading }}
-      style={({ pressed }) => [
-        styles.btn,
-        {
-          backgroundColor: v.bg,
-          borderColor: v.border,
-          opacity: disabled ? 0.45 : pressed ? 0.88 : 1,
-        },
-      ]}
+      disabled={disabled}
+      loading={loading}
+      icon={icon}
+      buttonColor={buttonColor}
+      textColor={textColor}
+      style={style}
+      compact={false}
     >
-      {loading ? (
-        <ActivityIndicator color={v.fg} size="small" />
-      ) : (
-        <Text style={[styles.label, { color: v.fg }]}>{title}</Text>
-      )}
-    </Pressable>
+      {title}
+    </PaperButton>
   );
-}
-
-function createStyles() {
-  return StyleSheet.create({
-    btn: {
-      paddingVertical: spacing.md + 2,
-      paddingHorizontal: spacing.xl,
-      borderRadius: radius.pill,
-      borderWidth: 1,
-      alignItems: 'center',
-      justifyContent: 'center',
-      minHeight: 44,
-    },
-    label: { fontWeight: '500', fontSize: 15 },
-  });
 }

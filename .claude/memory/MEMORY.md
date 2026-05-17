@@ -1,5 +1,5 @@
 - [Afterglow hackathon context](project_afterglow_hackathon.md) — partner targeting, deadline, vincoli legali, dominio demo
-- [Afterglow decisions](project_afterglow_decisions.md) — autonomia full, single-tenant (Business table dropped), pipeline post-call Gemini + ADK con fail-fast esplicito (niente più fallback stub), scope incrementale, baseline tutorial lablab, MIT day-1, Vultr Managed Postgres in prod
+- [Afterglow decisions](project_afterglow_decisions.md) — autonomia full, single-tenant, pipeline post-call Gemini + ADK fail-fast, **frontend Material 3 rewrite Pixel-inspired (Drawer + 2-tab, react-native-paper, KeyPad UI-only, mock personal contacts) — sezione 1.sette**, baseline tutorial lablab, MIT day-1, Vultr Managed Postgres in prod
 - [DevOps pipeline](reference_devops_pipeline.md) — flow local → GitHub → Coolify auto-deploy su VM Vultr; coordinate risorse (no segreti)
 - [Coolify API playbook](reference_coolify_api.md) — come parlare alla Coolify API: setup, endpoint corretti, gotchas, snippet
 - [Hackathon docs reference](reference_hackathon_docs.md) — path knowledge base + repo baseline

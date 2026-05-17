@@ -1,8 +1,90 @@
 # Afterglow architecture
 
 > What remains after the call.
-> Human-first AI dialer that turns booking phone calls into structured data,
-> customer memory, and autonomously executed actions.
+> Drop-in replacement for the system Phone app: the operator handles every
+> call; the AI runs silently after each one — extracting fields, executing
+> actions, and writing a one-line briefing for the next call.
+
+## User-facing navigation
+
+The frontend is an Expo SDK 54 / react-native-web PWA shaped like the Google
+Phone (Pixel) app. There is no single 5-tab bar; the structure is:
+
+```
+Stack root  (app/_layout.tsx)
+└─ (drawer)/_layout.tsx                     Drawer navigator (@react-navigation/drawer v7)
+    ├─ (tabs)/_layout.tsx                   BottomNavigation.Bar Paper, 2 entries
+    │   ├─ index.tsx                        Home — Pixel Recents
+    │   └─ keypad.tsx                       Keypad — 4×3 dialpad (Call FAB is UI-only)
+    ├─ contacts.tsx                         Contacts — alphabetical, mock + customer
+    ├─ templates.tsx                        Templates list
+    ├─ audit.tsx                            Audit log
+    └─ settings.tsx                         Settings
+
+Stack siblings (outside the drawer)
+├─ incoming-call.tsx                        Full-screen Pixel-inspired dialer
+├─ call/[id].tsx                            Call detail (MD3 Card + Chip + Undo/Redo)
+├─ customer/[id].tsx                        Contact detail (briefing on elevation.level2)
+├─ templates/[id].tsx                       Template editor
+├─ templates/wizard.tsx                     Wizard chat (MD3 Surface bubbles)
+└─ simulator.tsx                            Test simulator (drawer entry → push)
+```
+
+**Home (Recents) layout** mirrors the Pixel call log: an `Appbar` pill
+`Searchbar` with hamburger leading + voice trailing, a horizontal chip filter
+row (**All / Missed / Bookings / Saved / Unsaved**), a `SectionList` with
+sticky azure date headers (Today / Yesterday / `D Mon`), and a `CallRow` per
+call with a hash-colored `Avatar.Text` (11-color Amadz palette, hash on
+phone), first+last initials, a "Booking" `Chip` when the call has an
+executed booking action, and a trailing `phone-outline` `IconButton` that
+opens a `Snackbar` (the trailing icon deliberately does **not** navigate to
+the dialer — would have required touching the `incoming-call` state machine,
+which is locked).
+
+**Booking chip filter** hides the phone number on each row and renders
+`payload.booking_date · booking_time · party_size · customer_name` from the
+matching `BookingListItem`. The Home screen fetches `listCalls` and
+`listBookings` in parallel and joins them on `call_id` client-side; the
+chip is not powered by a new endpoint.
+
+**Search query** (the Searchbar text) filters across `caller.display_name`,
+`call.phone_e164`, `booking.title`, and `payload.customer_name`. It is
+ANDed with whichever chip is active.
+
+**Contacts drawer entry** is a unified list of:
+1. The `Customer` table (`GET /api/v1/customers?limit=50`), marked with a
+   "Client" `Chip`.
+2. Twenty client-side hardcoded UK/US `PersonalContact` entries from
+   `app/lib/mockContacts.ts` — they have no backend representation. Their
+   purpose is to make the "system phone replacement" pitch credible: even
+   on a fresh install, the Contacts entry looks populated.
+The two sources are deduped on phone (customer wins), sorted alphabetically,
+and grouped by first-letter section header. `app/lib/callerResolver.ts`
+provides the sync resolver used by every `CallRow`:
+`customer.display_name > MOCK_CONTACTS[phone] > "Unknown caller"`.
+
+**Incoming-call screen** is "Pixel-inspired, not 1:1": three FABs (Decline
+red `#B3261E` / AI primary with `creation` icon / Accept green `#26B31E`)
+during the ringing phase instead of the two-button Pixel layout; an
+animated 160 dp green `Avatar.Text` (the avatar is hardcoded green because
+"in-call" is a phone-app semantic state, not the brand color); during the
+talking phase the layout becomes `Chip "Afterglow listening"` + timer in
+`tabular-nums` + four `IconButton` controls (Keypad / Mute / Speaker /
+More — all UI-only) + a big red pill hangup. The state machine
+(`useEffect` / `useState` / `usePhoneAudio` calls) is **unchanged** from
+the pre-Material-3 codebase; only the JSX was rewritten.
+
+**Material 3 theme** is generated at startup from a single seed color
+(`#3b82f6`) using `@material/material-color-utilities` — `paperLightTheme`
+and `paperDarkTheme` in `app/lib/paperTheme.ts` carry the full MD3 palette
+(`primaryContainer`, `secondaryContainer`, `surfaceVariant`, `outline`, the
+tonal `elevation.level0..5`, etc.). `PaperProvider` is wired **inside**
+`RootLayoutInner` because the Paper theme depends on the `useTheme()` hook
+from our custom `ThemeContext` (the mode toggle in Settings flips Paper's
+light/dark scheme via the same hook). Two colors are hardcoded outside the
+generated palette and survive any brand-color change because they are
+phone-app semantics, not branding: `callGreen = '#26B31E'` (accept / in-call
+avatar) and `callRed = '#B3261E'` (decline / end).
 
 ## End-to-end shape
 
@@ -133,7 +215,8 @@ wizard-generated templates, cloned customers, the session row itself). Vultr
 is not touched because we never wrote to it for demo sessions.
 
 **On-demand reset.** Visitors can also wipe their sandbox immediately from
-the app's Settings tab. `POST /api/v1/demo/reset` runs the same DELETE
+the app's Drawer (the **Reset demo** entry, visible only in demo mode) or
+from the Settings screen (drawer entry). `POST /api/v1/demo/reset` runs the same DELETE
 sweep as the cron (`purge_session_data` in `app/tasks/session_cleanup.py`)
 on the caller's `session_id`, but keeps the `demo_sessions` row alive and
 clears `active_template_id` — so the visitor's localStorage uuid stays
