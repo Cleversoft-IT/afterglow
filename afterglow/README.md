@@ -275,6 +275,30 @@ expectation). Regenerate them with
   in the `MD3Colors` type. We use `theme.colors.elevation.level1 / level2 /
   level3` instead (e.g. briefing card on the Customer detail and Incoming
   call screens uses `level2`).
+- **`AppTheme` + success palette:** the source-color generator
+  (`@material/material-color-utilities`) leans pink on a blue seed, so
+  `lib/paperTheme.ts` overrides `background` / `surface` / `surfaceVariant`
+  / `outline` with flat neutrals and exports an `AppTheme` type that adds
+  a semantic `success` / `onSuccess` / `successContainer` /
+  `onSuccessContainer` palette (green in both modes). Screens that show
+  a "success" / "completed" state (Audit log, Call detail, Customer
+  detail, `Badge tone="success"`) call `useTheme<AppTheme>()` and read
+  `theme.colors.successContainer` instead of `tertiaryContainer`
+  (which is pink in light, purple in dark — semantically wrong).
+- **Drawer theme propagation:** `@react-navigation/drawer` ignores the
+  Paper theme by default. `app/(drawer)/_layout.tsx` reads
+  `useTheme()` from Paper and passes the bridge explicitly via
+  `drawerStyle.backgroundColor`, `sceneStyle.backgroundColor`,
+  `drawerActiveTintColor`, `drawerInactiveTintColor`,
+  `drawerActiveBackgroundColor`. Each `DrawerItem` also takes an
+  explicit `labelStyle={{ color: theme.colors.onSurface, fontWeight:
+  '500' }}` — without it the labels are unreadable in dark mode.
+- **`Audio.play()` AbortError:** `lib/usePhoneAudio.ts` swallows the
+  `AbortError "interrupted by a call to pause()"` that browsers emit
+  when the operator hangs up mid-MP3. Hangup also uses
+  `router.canGoBack() ? router.back() : router.replace('/(drawer)/(tabs)')`
+  so a cold-loaded `/incoming-call` deep link doesn't leave a black
+  screen behind a stale rejection toast.
 - **Mock personal contacts:** the Contacts drawer entry mixes 20 hardcoded
   UK/US contacts from `app/lib/mockContacts.ts` with the server's `Customer`
   table. Resolution priority is *customer > mock > "Unknown caller"* (see

@@ -78,13 +78,60 @@ the pre-Material-3 codebase; only the JSX was rewritten.
 (`#3b82f6`) using `@material/material-color-utilities` — `paperLightTheme`
 and `paperDarkTheme` in `app/lib/paperTheme.ts` carry the full MD3 palette
 (`primaryContainer`, `secondaryContainer`, `surfaceVariant`, `outline`, the
-tonal `elevation.level0..5`, etc.). `PaperProvider` is wired **inside**
-`RootLayoutInner` because the Paper theme depends on the `useTheme()` hook
-from our custom `ThemeContext` (the mode toggle in Settings flips Paper's
-light/dark scheme via the same hook). Two colors are hardcoded outside the
-generated palette and survive any brand-color change because they are
-phone-app semantics, not branding: `callGreen = '#26B31E'` (accept / in-call
-avatar) and `callRed = '#B3261E'` (decline / end).
+tonal `elevation.level0..5`, etc.). The generator's `secondary` / `tertiary`
+tracks lean pinkish off a blue seed, so on top of the generated scheme we:
+
+- override `background` / `surface` / `surfaceVariant` / `outline` with
+  flat neutrals (light = `#F7F8FA` / `#FFFFFF`, dark = `#0B0D12` /
+  `#161922`) so the app reads as a clean Pixel-like dialer in both modes
+  instead of inheriting the tinted greys the source-color generator
+  produces;
+- add a semantic **success palette** (`success`, `onSuccess`,
+  `successContainer`, `onSuccessContainer`) — green in both light and
+  dark — and export an `AppTheme` type that extends `MD3Theme` with
+  those four keys. Screens that show "success" / "completed" status
+  (audit log avatars, call-detail status chip, customer-detail call
+  rows, the `Badge tone="success"` component) call
+  `useTheme<AppTheme>()` and read `theme.colors.successContainer`
+  instead of the generator's `tertiaryContainer` (which is pink in
+  light and purple in dark — semantically wrong for success).
+
+`PaperProvider` is wired **inside** `RootLayoutInner` because the Paper
+theme depends on the `useTheme()` hook from our custom `ThemeContext`
+(the mode toggle in Settings flips Paper's light/dark scheme via the
+same hook). Two colors are hardcoded outside the generated palette and
+survive any brand-color change because they are phone-app semantics,
+not branding: `callGreen = '#26B31E'` (accept / in-call avatar) and
+`callRed = '#B3261E'` (decline / end).
+
+**Drawer theme propagation.** `@react-navigation/drawer` does not pick
+up the Paper theme on its own — it uses its own `DefaultTheme` (always
+light) for the navigator chrome. `app/(drawer)/_layout.tsx` therefore
+calls `useTheme()` from Paper and passes the bridge explicitly:
+`drawerStyle.backgroundColor = theme.colors.surface`,
+`sceneStyle.backgroundColor = theme.colors.background`,
+`drawerActiveTintColor = theme.colors.primary`,
+`drawerInactiveTintColor = theme.colors.onSurfaceVariant`,
+`drawerActiveBackgroundColor = theme.colors.secondaryContainer`. Each
+`DrawerItem` also receives `labelStyle={{ color: theme.colors.onSurface,
+fontWeight: '500' }}` because the navigator otherwise paints labels with
+its own tint that becomes invisible on the dark surface.
+
+**Incoming-call layout.** The avatar sits in a `flex: 1` zone underneath
+a header zone (caption / display name / phone subtitle). To keep the
+green pulse from clipping into the name when the viewport is short
+(landscape web, demo iframe), the header reserves `paddingBottom: 24`
+and the ringing-phase avatar shrinks from 160 to **128 dp** while
+pulsing; the talking-phase avatar stays at 160 dp.
+
+**Hangup audio.** Browsers reject `Audio.play()` with `AbortError`
+("interrupted by a call to pause()") when the operator hangs up
+mid-MP3. `app/lib/usePhoneAudio.ts` catches that specific case and
+returns silently — it is a graceful stop, not an error. The hangup
+handler in `app/incoming-call.tsx` also falls back to
+`router.replace('/(drawer)/(tabs)')` when `router.canGoBack()` is
+false, so a deep-link / cold-load hangup no longer leaves a black
+screen behind a stale `play()` rejection toast.
 
 ## End-to-end shape
 

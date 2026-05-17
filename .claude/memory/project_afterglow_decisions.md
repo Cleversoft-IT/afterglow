@@ -1,6 +1,6 @@
 ---
 name: project-afterglow-decisions
-description: Decisioni di prodotto/architettura di Afterglow. Pivot da non rinegoziare senza ridiscutere. Aggiornato 2026-05-17 — frontend Material 3 rewrite (Drawer + 2-tab Pixel-inspired, react-native-paper, mock personal contacts, KeyPad UI-only, pitch riformulato "sostituto del dialer di sistema"). 2026-05-16 — feedback round 2 (no PII redaction, action catalog, dialer non bloccante, Undo/Redo flip-only, simulator 2-mode con MP3 distinti existing/new e 4 customer seedati).
+description: Decisioni di prodotto/architettura di Afterglow. Pivot da non rinegoziare senza ridiscutere. Aggiornato 2026-05-17 — frontend Material 3 rewrite (Drawer + 2-tab Pixel-inspired, react-native-paper, mock personal contacts, KeyPad UI-only, pitch riformulato "sostituto del dialer di sistema") + UI bug cluster post-rewrite (AppTheme + successContainer palette, drawer theme propagation manuale, Templates listener rimosso, hangup AbortError swallow). 2026-05-16 — feedback round 2 (no PII redaction, action catalog, dialer non bloccante, Undo/Redo flip-only, simulator 2-mode con MP3 distinti existing/new e 4 customer seedati).
 metadata:
   type: project
 ---
@@ -250,6 +250,35 @@ Riscrittura end-to-end del frontend Expo PWA. **Pitch narrative riformulato**: A
 - Quando aggiungi un mock contact, **client-side only**, modifica `app/lib/mockContacts.ts` (nessun backend touch).
 - Quando aggiungi una nuova entry nel drawer, modifica `app/(drawer)/_layout.tsx` `CustomDrawerContent` + (se serve uno screen nuovo) crea il file in `(drawer)/`.
 - La state machine di `incoming-call.tsx` è LOCKED. Cambia solo JSX. Se serve mutare `phase` / `audio.*` ridiscuti.
+
+### 1.sette-bis. UI bug cluster post-rewrite (2026-05-17 pomeriggio)
+
+Dopo il commit del rewrite MD3, smoke test in Chrome (deployato e locale) ha esposto 7 famiglie di bug che ho risolto in `032d3a5`. Le decisioni sotto sono permanenti — non re-introdurre i pattern vecchi senza ridiscutere.
+
+**A. `AppTheme` + palette `successContainer` custom.** `material-color-utilities` da seed `#3b82f6` (blu) produce un secondary/tertiary track **rosa in light / viola in dark**: i chip e gli avatar status "success" / "completed" finivano rosa/viola, semanticamente sbagliato. `lib/paperTheme.ts` ora esporta un tipo `AppTheme` che estende `MD3Theme` con `success` / `onSuccess` / `successContainer` / `onSuccessContainer` (verde in entrambi i mode), più due hash override per `successLight` (`#1F7A3D` / `#B7E7C5`) e `successDark` (`#86D8A2` / `#1F5230`). Consumer pattern: `const theme = useTheme<AppTheme>()` poi `theme.colors.successContainer`. Già migrati: `(drawer)/audit.tsx`, `call/[id].tsx`, `customer/[id].tsx`, `components/Badge.tsx`. **Non re-introdurre `tertiaryContainer` per stati success** — i test smoke locks lockano la palette.
+
+**B. Override `background` / `surface` / `surfaceVariant` / `outline` in `paperTheme.ts`.** Lo stesso source-color generator produce `scheme.background` con tinta pinkish-grey, e `surfaceVariant` ancora più tinto: l'app sembra "viola sporca" in light e "marsh" in dark. `paperTheme.ts` ora ha due record `surfacesLight` / `surfacesDark` (light: `#F7F8FA` / `#FFFFFF`, dark: `#0B0D12` / `#161922`, plus `outline` / `outlineVariant` neutri) che vengono spreadati DOPO i token generati dentro `buildSchemeColors`. Il risultato è un Pixel-feel pulito in entrambi i mode. Se rivedi tokens generati e vedi sfondo nero in light → sicuro che lo screen sta consumando `theme.colors.background` di Paper, NON un `colors.bg` hardcoded di `lib/theme.ts`.
+
+**C. Drawer theme propagation manuale.** `@react-navigation/drawer` ignora il tema di Paper e usa il proprio `DefaultTheme` (sempre light). Risultato: drawer bianco anche con app in dark = inconsistenza grave. Fix in `(drawer)/_layout.tsx`: chiamare `useTheme()` (Paper) nel `DrawerLayout` e passare esplicitamente `drawerStyle.backgroundColor = theme.colors.surface`, `sceneStyle.backgroundColor = theme.colors.background`, `drawerActiveTintColor`, `drawerInactiveTintColor`, `drawerActiveBackgroundColor = theme.colors.secondaryContainer`. **Inoltre** ogni `DrawerItem` deve ricevere `labelStyle={{ color: theme.colors.onSurface, fontWeight: '500' }}` — senza questo, in dark le label sono quasi invisibili (il navigator ha un tint default che cade su `outline`).
+
+**D. Listener Templates rimosso (renderer freeze).** `(drawer)/templates.tsx` aveva un `useEffect` con `parent.addListener('state', ...)` che mostrava un Dialog "Pick a template first" ogni volta che il parent drawer cambiava state. In pratica firing continuo sui transition state del drawer → renderer pegged → `Page.captureScreenshot` timeout → la screen `/templates` era unscreenshottabile. Risolto rimuovendo l'intero listener + relativo `<Portal><Dialog>` + state `warningVisible` / `pendingRoute`. Il bootstrap gate in `app/_layout.tsx` già fa il redirect a Templates quando manca l'active template; il soft-warning era ridondante *e* rotto. **Non re-introdurre listener `parent.addListener('state', …)`** — se serve un soft-warning, usare `useFocusEffect` + `beforeRemove` event, non lo state listener globale.
+
+**E. Chip filter row Home: `flexGrow: 0` + `compact`.** `(drawer)/(tabs)/index.tsx` la `<ScrollView horizontal>` ereditava altezza dal flex parent → i chip diventavano box rettangolari ~120 dp alti. Fix: `style={{ flexGrow: 0, flexShrink: 0 }}` sulla ScrollView + `contentContainerStyle.alignItems: 'center'` + `<Chip compact mode="flat" selected={...}>` con `style` esplicito condizionale (`secondaryContainer` se selected, `surfaceVariant` altrimenti). Adesso pill 32 dp standard MD3.
+
+**F. Searchbar opaca + sticky.** Sempre in Home: `<Searchbar elevation={0}>` lasciava i contatti scorrere visibili dietro il bordo inferiore della pill. Fix: `style={{ backgroundColor: theme.colors.surfaceVariant }}` esplicito sulla Searchbar così la superficie è opaca.
+
+**G. Hangup audio AbortError + fallback navigation.** `lib/usePhoneAudio.ts` ora intercetta nel `.catch()` di `el.play()` la rejection `AbortError "interrupted by a call to pause()"` (browser quando l'utente fa hangup mid-MP3) e ritorna silenziosamente — è uno stop volontario, non un errore. Inoltre `incoming-call.tsx` `hangUp` ora fa `router.canGoBack() ? router.back() : router.replace('/(drawer)/(tabs)')` invece di solo `router.back()`: un deep-link / cold load su `/incoming-call` non ha back history, e prima lasciava schermo nero. **Non aggiungere altre rejection silenziate** — solo questa specifica è "graceful stop".
+
+**H. Avatar incoming-call ringing 128 dp (era 160).** Il pulse animation faceva scale 1→1.15, e con avatar 160 dp + viewport short (web landscape, demo iframe) la testa dell'avatar copriva "Mark Ross" + phone subtitle. Fix in `incoming-call.tsx`: `size={phase === 'ringing' ? 128 : 160}` + `paddingBottom: 24` allo `styles.header`. La fase talking resta 160 dp.
+
+**Why:** la pipeline e l'UI MD3 erano logicamente corrette ma la palette generata + il drawer mancante + i listener legacy + lo state machine audio rendevano la demo inguardabile in alcuni scenari. Tutti fix sono in `032d3a5` ed entrambi i mode (light/dark) ora sono visivamente coerenti.
+
+**How to apply:**
+- Quando aggiungi una nuova screen che mostra status "success/completed", usa `useTheme<AppTheme>()` + `theme.colors.successContainer` / `onSuccessContainer`. **Mai più `tertiaryContainer`** per success.
+- Quando aggiungi un Drawer entry, propaga `labelStyle` con `theme.colors.onSurface`.
+- Quando aggiungi un container "fullscreen", usa `theme.colors.background` (mai hardcoded `#000` / `#fff`). Se vedi sfondo bizzarro in uno dei due mode → controlla `paperTheme.ts surfacesLight` / `surfacesDark`.
+- Quando aggiungi un audio asset al dialer, gestisci il caso "hangup durante play" con la stessa AbortError pattern in `usePhoneAudio.ts`.
+- Quando aggiungi un soft-warning "non hai fatto X" su uno screen, **non** usare `parent.addListener('state')` — usa `useFocusEffect` + navigation `beforeRemove`.
 
 ### 9. Stato env in produzione (volatile, 2026-05-15)
 Sezione "what's live right now" — da rileggere prima di pushare grossi cambi al backend.
