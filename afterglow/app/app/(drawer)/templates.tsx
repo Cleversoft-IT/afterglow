@@ -1,6 +1,6 @@
 import { DrawerActions } from '@react-navigation/native';
 import { router, useFocusEffect, useNavigation } from 'expo-router';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { FlatList, StyleSheet, View } from 'react-native';
 import {
   ActivityIndicator,
@@ -43,6 +43,12 @@ export default function TemplatesScreen() {
   // When the user activates a template we offer to jump to the calls feed
   // so they're not stranded here. The flag is one-shot, set by RootLayout.
   const [goHomeDialogVisible, setGoHomeDialogVisible] = useState(false);
+  // Welcome onboarding dialog: shown once per fresh session, the very first
+  // time the user lands on Templates with no active template. We consume the
+  // flag in the useState initializer so it fires exactly on mount — refocus
+  // (e.g. coming back from /templates/wizard) does NOT re-trigger it.
+  const [shouldShowWelcome] = useState(() => consumeFreshSession());
+  const [welcomeDialogVisible, setWelcomeDialogVisible] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -62,12 +68,20 @@ export default function TemplatesScreen() {
     }, [load]),
   );
 
+  useEffect(() => {
+    if (shouldShowWelcome) {
+      setWelcomeDialogVisible(true);
+    }
+  }, [shouldShowWelcome]);
+
   const activate = async (id: string) => {
     setSwitching(id);
     try {
       await api.setActiveTemplate(id);
       await load();
-      if (consumeFreshSession()) {
+      // The "Go to Calls" prompt only makes sense the very first time —
+      // gate it on the same fresh-session signal the welcome dialog used.
+      if (shouldShowWelcome) {
         setGoHomeDialogVisible(true);
       }
     } catch (e) {
@@ -162,6 +176,35 @@ export default function TemplatesScreen() {
       />
 
       <Portal>
+        <Dialog
+          visible={welcomeDialogVisible}
+          onDismiss={() => setWelcomeDialogVisible(false)}
+        >
+          <Dialog.Icon icon="hand-wave-outline" />
+          <Dialog.Title>Welcome to Afterglow</Dialog.Title>
+          <Dialog.Content>
+            <Text variant="bodyMedium">
+              To get started, tell the dialer what kind of calls it handles. Pick one of the three presets — fastest path for a demo — or describe your own business from a prompt.
+            </Text>
+          </Dialog.Content>
+          <Dialog.Actions>
+            <Button
+              mode="text"
+              onPress={() => {
+                setWelcomeDialogVisible(false);
+                router.push('/templates/wizard' as never);
+              }}
+            >
+              Build from prompt
+            </Button>
+            <Button
+              mode="contained"
+              onPress={() => setWelcomeDialogVisible(false)}
+            >
+              Pick a preset
+            </Button>
+          </Dialog.Actions>
+        </Dialog>
         <Dialog visible={goHomeDialogVisible} onDismiss={() => setGoHomeDialogVisible(false)}>
           <Dialog.Icon icon="phone-incoming" />
           <Dialog.Title>Template activated</Dialog.Title>
@@ -173,7 +216,7 @@ export default function TemplatesScreen() {
           <Dialog.Actions>
             <Button onPress={() => setGoHomeDialogVisible(false)}>Stay on Templates</Button>
             <Button
-              mode="contained-tonal"
+              mode="contained"
               onPress={() => {
                 setGoHomeDialogVisible(false);
                 router.navigate('/(drawer)/(tabs)' as never);

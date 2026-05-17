@@ -71,6 +71,90 @@ class ActionCatalogEntry:
         }
 
 
+# Default JSONSchema payloads applied at the persistence boundary in
+# `backend/app/api/templates.py` (create_template / update_template) when
+# an action_type arrives without an explicit payload_schema. This guarantees
+# that the action_planner's `_make_tool` builds a typed Pydantic model for
+# Gemini structured-output, rather than falling back to an untyped `dict`
+# annotation that ADK 1.18+ now rejects with "default value None of
+# parameter payload: dict is not compatible". The wizard's
+# `ActionDefinitionDraft` model cannot carry payload_schema directly
+# (Gemini structured-output rejects schemas with `additionalProperties`),
+# so the catalog is the single source of truth.
+
+_BOOKING_PAYLOAD_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "booking_date": {"type": "string", "description": "YYYY-MM-DD"},
+        "booking_time": {"type": "string", "description": "HH:MM (24h)"},
+        "party_size": {"type": "integer", "minimum": 1},
+        "name": {"type": "string", "description": "Caller display name"},
+        "phone_e164": {"type": "string", "description": "E.164 phone number"},
+        "notes": {"type": "string", "description": "Free-form notes from the call"},
+    },
+    "required": ["booking_date", "booking_time"],
+}
+
+_INSPECTION_PAYLOAD_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "booking_date": {"type": "string", "description": "YYYY-MM-DD"},
+        "booking_time": {"type": "string", "description": "HH:MM (24h)"},
+        "vehicle_plate": {"type": "string"},
+        "damage_summary": {"type": "string"},
+        "phone_e164": {"type": "string"},
+    },
+    "required": ["booking_date", "booking_time"],
+}
+
+_WHATSAPP_PAYLOAD_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "phone_e164": {"type": "string", "description": "E.164 phone number"},
+        "message": {"type": "string", "description": "Message body in caller's language"},
+    },
+    "required": ["phone_e164", "message"],
+}
+
+_SMS_PAYLOAD_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "phone_e164": {"type": "string"},
+        "message": {"type": "string"},
+    },
+    "required": ["phone_e164", "message"],
+}
+
+_EMAIL_PAYLOAD_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "to": {"type": "string", "description": "Recipient email address"},
+        "subject": {"type": "string"},
+        "body": {"type": "string"},
+    },
+    "required": ["to", "subject", "body"],
+}
+
+_CASE_PAYLOAD_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "case_type": {"type": "string", "description": "e.g. collision, theft"},
+        "notes": {"type": "string", "description": "Free-form context from the call"},
+        "phone_e164": {"type": "string"},
+    },
+    "required": ["notes"],
+}
+
+_BOOKING_CANCEL_PAYLOAD_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "booking_id": {"type": "string", "description": "Identifier of the booking to cancel"},
+        "reason": {"type": "string"},
+    },
+    "required": ["booking_id"],
+}
+
+
 CATALOG: dict[str, ActionCatalogEntry] = {
     "booking.create": ActionCatalogEntry(
         key="booking.create",
@@ -80,6 +164,7 @@ CATALOG: dict[str, ActionCatalogEntry] = {
         mock_target="booking",
         can_undo=True,
         mutates=True,
+        default_payload_schema=_BOOKING_PAYLOAD_SCHEMA,
         compatible_domains=["restaurant", "*"],
     ),
     "booking.cancel": ActionCatalogEntry(
@@ -90,6 +175,7 @@ CATALOG: dict[str, ActionCatalogEntry] = {
         mock_target="booking",
         can_undo=False,  # cancellation is the undo itself
         mutates=True,
+        default_payload_schema=_BOOKING_CANCEL_PAYLOAD_SCHEMA,
         compatible_domains=["restaurant", "*"],
     ),
     "appointment.create": ActionCatalogEntry(
@@ -100,6 +186,7 @@ CATALOG: dict[str, ActionCatalogEntry] = {
         mock_target="booking",
         can_undo=True,
         mutates=True,
+        default_payload_schema=_BOOKING_PAYLOAD_SCHEMA,
         compatible_domains=["dentist", "*"],
     ),
     "appointment.create_inspection": ActionCatalogEntry(
@@ -110,6 +197,7 @@ CATALOG: dict[str, ActionCatalogEntry] = {
         mock_target="booking",
         can_undo=True,
         mutates=True,
+        default_payload_schema=_INSPECTION_PAYLOAD_SCHEMA,
         compatible_domains=["bodyshop", "*"],
     ),
     "whatsapp.send_confirmation": ActionCatalogEntry(
@@ -119,6 +207,7 @@ CATALOG: dict[str, ActionCatalogEntry] = {
         integration_kind="mock_external",
         mock_target="whatsapp",
         can_undo=False,  # sent messages cannot be unsent
+        default_payload_schema=_WHATSAPP_PAYLOAD_SCHEMA,
     ),
     "whatsapp.request_photos": ActionCatalogEntry(
         key="whatsapp.request_photos",
@@ -127,6 +216,7 @@ CATALOG: dict[str, ActionCatalogEntry] = {
         integration_kind="mock_external",
         mock_target="whatsapp",
         can_undo=False,
+        default_payload_schema=_WHATSAPP_PAYLOAD_SCHEMA,
         compatible_domains=["bodyshop", "*"],
     ),
     "sms.send_reminder": ActionCatalogEntry(
@@ -136,6 +226,7 @@ CATALOG: dict[str, ActionCatalogEntry] = {
         integration_kind="mock_external",
         mock_target="whatsapp",
         can_undo=False,
+        default_payload_schema=_SMS_PAYLOAD_SCHEMA,
     ),
     "email.send": ActionCatalogEntry(
         key="email.send",
@@ -144,6 +235,7 @@ CATALOG: dict[str, ActionCatalogEntry] = {
         integration_kind="mock_external",
         mock_target="email",
         can_undo=False,
+        default_payload_schema=_EMAIL_PAYLOAD_SCHEMA,
     ),
     "customer.update_profile": ActionCatalogEntry(
         key="customer.update_profile",
@@ -180,6 +272,7 @@ CATALOG: dict[str, ActionCatalogEntry] = {
         mock_target="crm",
         can_undo=False,  # legal artefact — never auto-undone
         mutates=True,
+        default_payload_schema=_CASE_PAYLOAD_SCHEMA,
         compatible_domains=["bodyshop", "*"],
     ),
 }

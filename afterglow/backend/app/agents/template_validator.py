@@ -227,12 +227,12 @@ def _validate_prompt_hint_when_grammar(
             issues.append(
                 ValidationIssue(
                     field_path=f"prompt_hints[{i}].when",
-                    severity="warning",
+                    severity="error",
                     message=(
-                        f"`when` expression {when!r} is not in the supported "
-                        "grammar (`always`, `field.<key> == '<value>'`, "
-                        "`field.<key> is [not] null`); rule will be skipped "
-                        "at runtime."
+                        f"Prompt hint #{i + 1}: the rule \"when: {when}\" "
+                        "doesn't match a recognized condition. Use "
+                        "\"always\", \"field.<key> == 'value'\", or "
+                        "\"field.<key> is [not] null\"."
                     ),
                 )
             )
@@ -241,20 +241,35 @@ def _validate_prompt_hint_when_grammar(
 async def validate_template(
     template: TemplateWizardResponse,
 ) -> ValidationReport:
-    """Combine deterministic + Gemini semantic checks."""
+    """Return only deterministic hard issues to the caller.
+
+    The Gemini semantic review (`_semantic_review`) emits soft, narrative
+    feedback — `instruction ambiguous`, `label mismatch`, etc. Those
+    messages are useful for telemetry but confusing for an operator using
+    the wizard, who reads them as "Afterglow is broken". So we keep the
+    semantic review running (it also produces `proposed_mocks` we want to
+    surface), log its issues for debugging, and drop them from the
+    user-facing response.
+    """
     hard_issues = validate_template_deterministic(template)
 
-    soft_issues: list[ValidationIssue] = []
     proposed_mocks: list[ProposedMock] = []
     try:
         soft = await _semantic_review(template)
-        soft_issues = soft.issues
+        for issue in soft.issues:
+            logger.info(
+                "template_validator: soft issue suppressed (severity=%s "
+                "field=%s) %s",
+                issue.severity,
+                issue.field_path,
+                issue.message,
+            )
         proposed_mocks = soft.proposed_mocks
     except Exception as exc:  # noqa: BLE001
         logger.warning("template_validator: semantic review skipped (%s).", exc)
 
     return ValidationReport(
-        issues=hard_issues + soft_issues,
+        issues=hard_issues,
         proposed_mocks=proposed_mocks,
     )
 

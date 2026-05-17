@@ -116,9 +116,8 @@ def _system_instruction(language: str, catalog_keys: list[str]) -> str:
         "at every turn whether you have enough context to draft, or whether "
         "one more focused question would materially improve the result.\n\n"
         "Principles:\n"
-        "- Prefer drafting over interrogating. Make reasonable assumptions "
-        "and move forward; the user can refine fields and actions manually "
-        "after.\n"
+        "- Make reasonable assumptions and move forward; the user can "
+        "refine fields and actions manually after.\n"
         "- Use business language. The user should feel they are describing "
         "how calls work, not configuring software.\n"
         "- Do NOT ask for the template name. Infer `name`, `description`, "
@@ -126,14 +125,25 @@ def _system_instruction(language: str, catalog_keys: list[str]) -> str:
         "- Do NOT ask the user about technical internals: schemas, "
         "payloads, mock targets, privacy classes, ASR dictionaries, "
         "implementation details, or model configuration.\n\n"
+        "Integration discovery (HARD RULE):\n"
+        "- Before adding any action key that depends on an external "
+        "channel (whatsapp.*, sms.*, email.*, case.open_insurance), you "
+        "MUST verify the user actually uses that channel.\n"
+        "- If the user's first message does NOT explicitly mention which "
+        "channels they use (WhatsApp, SMS, email), your first turn MUST be "
+        "a single focused question, e.g. \"Do you reach customers via "
+        "WhatsApp, SMS, email, or only on the phone?\" Set `ready=False` "
+        "and ask — do not draft channel actions yet.\n"
+        "- Only after the user has confirmed a channel, draft actions on "
+        "that channel. If the budget is exhausted and channels are still "
+        "unclear, draft the template OMITTING every channel-dependent "
+        "action. Never default to WhatsApp / SMS / email.\n\n"
         "Conversation budget (you are an agent, not a script — judge each "
         "turn):\n"
-        "- If the very first user message is already rich (business type + "
-        "call flow), draft immediately on turn 1 and set `ready=True`.\n"
-        f"- If the context is vague, ask focused questions. Typical sessions need 2-{QUESTION_BUDGET} questions; never more than {QUESTION_BUDGET} (hard ceiling). The user prompt tells you how many questions you've already asked.\n"
+        f"- Typical sessions need 2-{QUESTION_BUDGET} questions; never more than {QUESTION_BUDGET} (hard ceiling). The user prompt tells you how many questions you've already asked.\n"
         "- Each new question must materially change the resulting "
         "template. Don't pad. Don't ask multiple things at once.\n"
-        f"- When the AGENT STATE block says the budget is exhausted, you MUST draft now, even with assumptions, regardless of remaining uncertainty.\n\n"
+        f"- When the AGENT STATE block says the budget is exhausted, you MUST draft now, even with assumptions, regardless of remaining uncertainty — but still apply the Integration discovery rule above (omit channel actions if unclear).\n\n"
         "When generating a draft:\n"
         "- Create 4-8 useful fields that capture what an operator would "
         "normally write down after a call.\n"
@@ -192,13 +202,25 @@ def _user_prompt(payload: WizardChatRequest) -> str:
     if questions_asked >= QUESTION_BUDGET:
         lines.append(
             "BUDGET EXHAUSTED: you MUST draft now with your best "
-            "assumptions. Do NOT ask another question."
+            "assumptions. Do NOT ask another question. If the user never "
+            "confirmed which external channels (WhatsApp / SMS / email) "
+            "they use, OMIT every channel-dependent action from the draft "
+            "— do NOT default to WhatsApp."
         )
     elif questions_asked == 0:
         lines.append(
-            "First turn. If the user's message is already rich enough "
-            "(business type + call flow), draft immediately. Otherwise ask "
-            "one focused question."
+            "First turn. Apply the Integration discovery rule: if the "
+            "user's message does not explicitly mention WhatsApp / SMS / "
+            "email usage, your only output this turn is one focused "
+            "question on channels — set ready=False, draft_partial=None. "
+            "If the user already named the channels they use, you may "
+            "draft immediately."
+        )
+    else:
+        lines.append(
+            "Mid-conversation. If the integration question has not been "
+            "answered yet and the budget allows, ask it now. Otherwise "
+            "draft if you have enough context."
         )
     lines.append("")
     if payload.slots_filled:

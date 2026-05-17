@@ -14,21 +14,51 @@ import {
 import { api, ApiError } from '../../lib/api';
 import { ContactAvatar } from '../../components/ContactAvatar';
 import { formatDateTime, formatRelativeTime } from '../../lib/dateFormat';
+import { flagFromE164 } from '../../lib/flagFromE164';
 import { useLocale } from '../../lib/LocaleContext';
+import { findMockContact } from '../../lib/mockContacts';
 import type { AppTheme } from '../../lib/paperTheme';
 import type { CallListItem, CustomerCard } from '../../lib/types';
 
-function statusChip(status: string, theme: AppTheme): {
-  bg: string;
-  fg: string;
-} {
-  if (status === 'completed') {
-    return { bg: theme.colors.successContainer, fg: theme.colors.onSuccessContainer };
+type CallStatusLabel = { label: string; bg: string; fg: string };
+
+function statusChipForCall(call: CallListItem, theme: AppTheme): CallStatusLabel {
+  if (call.status === 'completed') {
+    return {
+      label: 'Completed',
+      bg: theme.colors.successContainer,
+      fg: theme.colors.onSuccessContainer,
+    };
   }
-  if (status === 'failed') {
-    return { bg: theme.colors.errorContainer, fg: theme.colors.onErrorContainer };
+  if (call.status === 'failed') {
+    if (call.failure_kind === 'pipeline_error') {
+      return {
+        label: 'Pipeline error',
+        bg: theme.colors.errorContainer,
+        fg: theme.colors.onErrorContainer,
+      };
+    }
+    return {
+      label: 'Missed',
+      bg: theme.colors.secondaryContainer,
+      fg: theme.colors.onSecondaryContainer,
+    };
   }
-  return { bg: theme.colors.secondaryContainer, fg: theme.colors.onSecondaryContainer };
+  if (call.status === 'transcribing' || call.status === 'analyzing') {
+    return {
+      label: 'Analyzing…',
+      bg: theme.colors.secondaryContainer,
+      fg: theme.colors.onSecondaryContainer,
+    };
+  }
+  const label = call.status
+    ? call.status[0].toUpperCase() + call.status.slice(1)
+    : '';
+  return {
+    label,
+    bg: theme.colors.secondaryContainer,
+    fg: theme.colors.onSecondaryContainer,
+  };
 }
 
 export default function CustomerDetailScreen() {
@@ -83,13 +113,34 @@ export default function CustomerDetailScreen() {
     );
   }
 
+  const flag = flagFromE164(customer.phone_e164);
+  const mockAvatarUrl = findMockContact(customer.phone_e164)?.avatar_url ?? null;
+
   return (
     <ScrollView contentContainerStyle={styles.scroll}>
       <Card mode="elevated">
         <Card.Title
           title={display}
-          subtitle={`${customer.phone_e164} · ${customer.total_calls} calls`}
-          left={() => <ContactAvatar phone={customer.phone_e164} name={display} size={56} />}
+          subtitle={
+            <View style={styles.subtitleRow}>
+              <Text style={{ fontSize: 18 }}>{flag}</Text>
+              <Text variant="bodyMedium" style={{ color: theme.colors.onSurfaceVariant }}>
+                {customer.phone_e164}
+              </Text>
+              <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
+                · {customer.total_calls} calls
+              </Text>
+            </View>
+          }
+          left={() => (
+            <ContactAvatar
+              phone={customer.phone_e164}
+              name={display}
+              avatarUrl={mockAvatarUrl}
+              size={56}
+            />
+          )}
+          leftStyle={{ marginRight: 16 }}
           right={() =>
             customer.preferred_language ? (
               <Chip mode="flat" compact style={{ marginRight: 12 }}>
@@ -169,7 +220,7 @@ export default function CustomerDetailScreen() {
             </Text>
           ) : (
             calls.map((c) => {
-              const sc = statusChip(c.status, theme);
+              const sc = statusChipForCall(c, theme);
               return (
                 <List.Item
                   key={c.id}
@@ -178,7 +229,7 @@ export default function CustomerDetailScreen() {
                   left={() => <List.Icon icon="phone-incoming" />}
                   right={() => (
                     <Chip mode="flat" compact style={[{ marginRight: 8 }, { backgroundColor: sc.bg }]} textStyle={{ color: sc.fg }}>
-                      {c.status}
+                      {sc.label}
                     </Chip>
                   )}
                   onPress={() => router.push(`/call/${c.id}` as never)}
@@ -195,4 +246,11 @@ export default function CustomerDetailScreen() {
 const styles = StyleSheet.create({
   scroll: { padding: 16, gap: 16, paddingBottom: 48 },
   chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  subtitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flexWrap: 'wrap',
+    marginTop: 2,
+  },
 });

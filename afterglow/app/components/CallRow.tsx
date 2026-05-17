@@ -1,5 +1,5 @@
 import { View } from 'react-native';
-import { Chip, Icon, List, Text, useTheme } from 'react-native-paper';
+import { Chip, List, Text, useTheme, type MD3Theme } from 'react-native-paper';
 import { ContactAvatar } from './ContactAvatar';
 import { resolveFromCallItem } from '../lib/callerResolver';
 import { formatBookingSlot, formatRelativeTime } from '../lib/dateFormat';
@@ -15,9 +15,25 @@ type Props = {
   onPress: () => void;
 };
 
-function directionIcon(status: string): string {
-  if (status === 'failed') return 'phone-missed';
-  return 'phone-incoming';
+type StatusLabel = { text: string; color: string };
+
+// Inbound-only demo: every non-failed call is an "incoming" one. We surface a
+// semantic word rather than the phone icon (which previously misrendered on
+// completed rows) so missed/processing states are unambiguous at a glance.
+function statusLabel(call: CallListItem, theme: MD3Theme): StatusLabel {
+  if (call.status === 'failed') {
+    if (call.failure_kind === 'pipeline_error') {
+      return { text: 'Pipeline error', color: theme.colors.error };
+    }
+    return { text: 'Missed', color: theme.colors.error };
+  }
+  if (call.status === 'transcribing' || call.status === 'analyzing') {
+    return { text: 'Analyzing…', color: theme.colors.primary };
+  }
+  if (call.status === 'pending') {
+    return { text: 'Pending', color: theme.colors.onSurfaceVariant };
+  }
+  return { text: 'Incoming', color: theme.colors.onSurfaceVariant };
 }
 
 function BookingBadge({ booking }: { booking: BookingListItem }) {
@@ -49,7 +65,7 @@ export function CallRow({ call, booking, mode, onPress }: Props) {
   const theme = useTheme();
   const { locale } = useLocale();
   const caller = resolveFromCallItem(call);
-  const isMissed = call.status === 'failed';
+  const status = statusLabel(call, theme);
   const isBookingsMode = mode === 'bookings';
 
   return (
@@ -93,19 +109,9 @@ export function CallRow({ call, booking, mode, onPress }: Props) {
           );
         }
         return (
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-            <Icon
-              source={directionIcon(call.status)}
-              size={14}
-              color={isMissed ? theme.colors.error : theme.colors.onSurfaceVariant}
-            />
-            <Text
-              variant="bodySmall"
-              style={{ color: isMissed ? theme.colors.error : theme.colors.onSurfaceVariant }}
-            >
-              {caller.label} · {formatRelativeTime(call.created_at, locale)}
-            </Text>
-          </View>
+          <Text variant="bodySmall" style={{ color: status.color }}>
+            {status.text} · {formatRelativeTime(call.created_at, locale)}
+          </Text>
         );
       }}
       right={

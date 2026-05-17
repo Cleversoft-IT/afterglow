@@ -151,7 +151,7 @@ def _make_tool(action_def: dict[str, Any]):
             "return": dict,
         }
     else:
-        def tool(payload=None, confidence=0.9, evidence=[], tool_context=None):
+        def tool(payload: Optional[dict] = None, confidence=0.9, evidence=[], tool_context=None):
             if payload is None:
                 payload = {}
             # `payload` may arrive as a JSON string when Gemini regresses on
@@ -176,8 +176,16 @@ def _make_tool(action_def: dict[str, Any]):
                 mutates=mutates,
             )
 
+        # ADK 1.18 rejects `payload: dict = None` ("Default value None of
+        # parameter payload: dict is not compatible with the parameter
+        # annotation class dict"). Mirror the fix already applied to
+        # `evidence`: use `Optional[dict]` so the union legally admits the
+        # None default. The typed branch above is the preferred path —
+        # `_enrich_action_types_with_catalog_schemas` in api/templates.py
+        # ensures most actions land typed; this fallback covers legacy
+        # templates or actions with no catalog entry.
         tool.__annotations__ = {
-            "payload": dict,
+            "payload": Optional[dict],
             "confidence": float,
             "evidence": list[str],
             "tool_context": Any,

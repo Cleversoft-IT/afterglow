@@ -216,10 +216,12 @@ class CreateTemplateRequest(BaseModel):
 class UpdateTemplateRequest(BaseModel):
     """Body of PUT /api/v1/templates/{id} for the Refine post-persistence step.
 
-    Only the editable fields are accepted; `name` and `version` are not
-    re-bumped by an update (a new version is created via POST).
+    `name` is editable for non-seed templates (seed remain read-only at the
+    handler level and return 409). `version` is not re-bumped by an update —
+    a new version is created via POST.
     """
 
+    name: Optional[str] = None
     description: Optional[str] = None
     domain_hint: Optional[str] = None
     fields_schema: Optional[list[FieldDefinition]] = None

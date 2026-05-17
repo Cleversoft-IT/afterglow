@@ -14,6 +14,7 @@ import {
 import { api, ApiError } from '../../lib/api';
 import { ContactAvatar } from '../../components/ContactAvatar';
 import { TranscriptList } from '../../components/TranscriptList';
+import { resolveFromCallDetail } from '../../lib/callerResolver';
 import { formatDateTime } from '../../lib/dateFormat';
 import { flagFromE164 } from '../../lib/flagFromE164';
 import { useLocale } from '../../lib/LocaleContext';
@@ -31,29 +32,50 @@ const REAL_ON_DEVICE = new Set([
   'appointment.create_inspection',
 ]);
 
-function statusChip(status: string, theme: AppTheme): {
+function statusChip(call: CallDetailView, theme: AppTheme): {
   label: string;
   icon: string;
   style: { backgroundColor: string };
   textColor: string;
 } {
-  const label = status ? status[0].toUpperCase() + status.slice(1) : '';
-  if (status === 'completed') {
+  if (call.status === 'completed') {
     return {
-      label,
+      label: 'Completed',
       icon: 'check-circle-outline',
       style: { backgroundColor: theme.colors.successContainer },
       textColor: theme.colors.onSuccessContainer,
     };
   }
-  if (status === 'failed') {
+  if (call.status === 'failed') {
+    // `failure_kind` is server-computed (see backend/app/api/calls.py).
+    // We treat the legacy/null case as 'missed' so older fixture data
+    // keeps rendering with the friendlier label.
+    if (call.failure_kind === 'pipeline_error') {
+      return {
+        label: 'Pipeline error',
+        icon: 'alert-circle-outline',
+        style: { backgroundColor: theme.colors.errorContainer },
+        textColor: theme.colors.onErrorContainer,
+      };
+    }
     return {
-      label,
-      icon: 'alert-circle-outline',
-      style: { backgroundColor: theme.colors.errorContainer },
-      textColor: theme.colors.onErrorContainer,
+      label: 'Missed',
+      icon: 'phone-missed',
+      style: { backgroundColor: theme.colors.secondaryContainer },
+      textColor: theme.colors.onSecondaryContainer,
     };
   }
+  if (call.status === 'transcribing' || call.status === 'analyzing') {
+    return {
+      label: 'Analyzing…',
+      icon: 'progress-clock',
+      style: { backgroundColor: theme.colors.secondaryContainer },
+      textColor: theme.colors.onSecondaryContainer,
+    };
+  }
+  const label = call.status
+    ? call.status[0].toUpperCase() + call.status.slice(1)
+    : '';
   return {
     label,
     icon: 'progress-clock',
@@ -141,8 +163,9 @@ export default function CallDetailScreen() {
     );
   }
 
-  const callerDisplay = call.customer?.display_name ?? call.phone_e164;
-  const sc = statusChip(call.status, theme);
+  const resolvedCaller = resolveFromCallDetail(call);
+  const callerDisplay = resolvedCaller.display_name;
+  const sc = statusChip(call, theme);
   const extracted = call.extracted;
   const flag = flagFromE164(call.phone_e164);
 
@@ -152,9 +175,26 @@ export default function CallDetailScreen() {
         <Card.Title
           title={callerDisplay}
           titleVariant="titleMedium"
-          subtitle={`${flag} ${call.phone_e164}${call.detected_language ? ` · ${call.detected_language}` : ''}`}
-          left={() => <ContactAvatar phone={call.phone_e164} name={callerDisplay} size={56} />}
-          leftStyle={{ marginRight: 12 }}
+          subtitle={
+            <View style={styles.subtitleRow}>
+              <Text style={{ fontSize: 18 }}>{flag}</Text>
+              <Text variant="bodyMedium" style={{ color: theme.colors.onSurfaceVariant }}>
+                {call.phone_e164}
+              </Text>
+              {call.detected_language ? (
+                <Chip compact mode="outlined">{call.detected_language}</Chip>
+              ) : null}
+            </View>
+          }
+          left={() => (
+            <ContactAvatar
+              phone={call.phone_e164}
+              name={callerDisplay}
+              avatarUrl={resolvedCaller.avatar_url}
+              size={56}
+            />
+          )}
+          leftStyle={{ marginRight: 16 }}
           right={() => (
             <Chip
               mode="flat"
@@ -171,7 +211,7 @@ export default function CallDetailScreen() {
           <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
             {formatDateTime(call.created_at, locale)}
           </Text>
-          {call.error ? (
+          {call.error && call.failure_kind === 'pipeline_error' ? (
             <Text variant="bodySmall" style={{ color: theme.colors.error, marginTop: 8 }}>
               {call.error}
             </Text>
@@ -309,4 +349,11 @@ const styles = StyleSheet.create({
     gap: 16,
   },
   actionHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' },
+  subtitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flexWrap: 'wrap',
+    marginTop: 2,
+  },
 });

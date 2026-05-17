@@ -76,6 +76,7 @@ export default function TemplateDetailScreen() {
   const [catalog, setCatalog] = useState<ActionCatalogEntry[]>([]);
 
   // Editable working copies; `template` is the persisted truth from the API.
+  const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [domainHint, setDomainHint] = useState('');
   const [fields, setFields] = useState<FieldDefinition[]>([]);
@@ -88,6 +89,7 @@ export default function TemplateDetailScreen() {
       setError(null);
       const data = await api.getTemplate(id);
       setTemplate(data);
+      setName(data.name ?? '');
       setDescription(data.description ?? '');
       setDomainHint(data.domain_hint ?? '');
       setFields((data.fields_schema ?? []).map((f) => ({ ...f })));
@@ -117,6 +119,7 @@ export default function TemplateDetailScreen() {
     setError(null);
     try {
       const updated = await api.updateTemplate(template.id, {
+        name: name.trim(),
         description,
         domain_hint: domainHint,
         fields_schema: fields,
@@ -124,8 +127,16 @@ export default function TemplateDetailScreen() {
         prompt_hints: promptHints,
       });
       setTemplate(updated);
+      setName(updated.name ?? '');
+      router.replace('/(drawer)/templates' as never);
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : String(e));
+      if (e instanceof ApiError && e.status === 409) {
+        setError('A template with this name already exists.');
+      } else if (e instanceof ApiError && e.status === 422) {
+        setError('Template name cannot be empty.');
+      } else {
+        setError(e instanceof ApiError ? e.message : String(e));
+      }
     } finally {
       setSaving(false);
     }
@@ -221,6 +232,14 @@ export default function TemplateDetailScreen() {
             </View>
           ) : null}
 
+          <FormField label="Name">
+            <TextInput
+              mode="outlined"
+              value={name}
+              onChangeText={setName}
+              editable={!readOnly}
+            />
+          </FormField>
           <FormField label="Description">
             <TextInput
               mode="outlined"

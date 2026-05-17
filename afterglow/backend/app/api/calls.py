@@ -50,6 +50,25 @@ router = APIRouter(prefix="/api/v1/calls", tags=["calls"])
 
 settings = get_settings()
 
+
+# Failure-kind discriminator for `Call.status == "failed"`. The orchestrator
+# stamps `Call.error` with one of these codes when the pipeline skips a call
+# for non-technical reasons; any other error value is treated as a real
+# pipeline crash (Gemini / ADK / executor). The set must match the strings
+# the orchestrator writes — keep in sync with `app/agents/orchestrator.py`.
+_MISSED_ERROR_CODES: frozenset[str] = frozenset({
+    "empty_or_noise_audio",
+    "missed_call",
+})
+
+
+def _failure_kind(status: str, error: Optional[str]) -> Optional[str]:
+    if status != "failed":
+        return None
+    if error is None or error in _MISSED_ERROR_CODES:
+        return "missed"
+    return "pipeline_error"
+
 _SUPPORTED_AUDIO = {
     "audio/wav": "wav",
     "audio/x-wav": "wav",
@@ -298,6 +317,7 @@ async def get_call(
         raw_transcript=call.raw_transcript,
         status=call.status,
         error=call.error,
+        failure_kind=_failure_kind(call.status, call.error),
         started_at=call.started_at,
         completed_at=call.completed_at,
         created_at=call.created_at,
@@ -374,6 +394,7 @@ async def list_calls(
             customer_display_name=display_name,
             template_id=c.template_id,
             status=c.status,
+            failure_kind=_failure_kind(c.status, c.error),
             detected_language=c.detected_language,
             created_at=c.created_at,
         )

@@ -12,6 +12,7 @@ import {
   ActivityIndicator,
   Banner,
   Chip,
+  IconButton,
   Searchbar,
   Surface,
   Text,
@@ -53,6 +54,9 @@ export default function HomeScreen() {
   const [calls, setCalls] = useState<CallListItem[]>([]);
   const [bookings, setBookings] = useState<BookingListItem[]>([]);
   const [filter, setFilter] = useState<CallFilterKey>('all');
+  const [bookingsSortMode, setBookingsSortMode] = useState<'call_date' | 'booking_date'>(
+    'call_date',
+  );
   const [query, setQuery] = useState('');
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -143,7 +147,7 @@ export default function HomeScreen() {
       return haystack.includes(q);
     });
 
-    if (filter === 'bookings') {
+    if (filter === 'bookings' && bookingsSortMode === 'booking_date') {
       // Sort by the actual booking slot (date+time from payload), not the
       // call timestamp. Upcoming slots come first; past bookings sink
       // toward the end. Calls whose payload lacks a valid date land last.
@@ -171,19 +175,22 @@ export default function HomeScreen() {
     }
 
     return groupByDay(filtered, locale);
-  }, [calls, bookingByCallId, filter, query, locale]);
+  }, [calls, bookingByCallId, filter, bookingsSortMode, query, locale]);
 
   const styles = useMemo(
     () =>
       StyleSheet.create({
         container: { flex: 1, backgroundColor: theme.colors.background },
         header: {
-          paddingHorizontal: 16,
-          paddingTop: 12,
+          paddingHorizontal: 8,
+          paddingTop: 8,
           paddingBottom: 8,
           backgroundColor: theme.colors.background,
+          flexDirection: 'row',
+          alignItems: 'center',
+          gap: 4,
         },
-        searchbar: { backgroundColor: theme.colors.surfaceVariant },
+        searchbar: { backgroundColor: theme.colors.surfaceVariant, flex: 1 },
         chipsScroll: { flexGrow: 0, flexShrink: 0, backgroundColor: theme.colors.background },
         chipsRow: {
           paddingHorizontal: 16,
@@ -218,16 +225,25 @@ export default function HomeScreen() {
   return (
     <View style={styles.container}>
       <View style={styles.header}>
+        <IconButton
+          icon="menu"
+          accessibilityLabel="Open menu"
+          onPress={() => navigation.dispatch(DrawerActions.openDrawer())}
+        />
         <Searchbar
           placeholder="Search contacts and calls"
           value={query}
           onChangeText={setQuery}
-          icon="menu"
-          onIconPress={() => navigation.dispatch(DrawerActions.openDrawer())}
-          traileringIcon={query ? 'close' : 'microphone'}
+          icon="magnify"
+          traileringIcon={query ? 'close' : undefined}
           onTraileringIconPress={query ? () => setQuery('') : undefined}
           elevation={0}
           style={styles.searchbar}
+        />
+        <IconButton
+          icon="account-multiple-outline"
+          accessibilityLabel="Open contacts"
+          onPress={() => router.push('/(drawer)/contacts' as never)}
         />
       </View>
 
@@ -256,6 +272,39 @@ export default function HomeScreen() {
           </Chip>
         ))}
       </ScrollView>
+
+      {filter === 'bookings' ? (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={styles.chipsScroll}
+          contentContainerStyle={[styles.chipsRow, { paddingTop: 0 }]}
+        >
+          <Text variant="labelSmall" style={{ color: theme.colors.onSurfaceVariant, marginRight: 4 }}>
+            Sort by:
+          </Text>
+          {(['call_date', 'booking_date'] as const).map((mode) => (
+            <Chip
+              key={mode}
+              mode="outlined"
+              compact
+              selected={bookingsSortMode === mode}
+              onPress={() => setBookingsSortMode(mode)}
+              showSelectedCheck={false}
+              selectedColor={
+                bookingsSortMode === mode ? theme.colors.onSecondaryContainer : undefined
+              }
+              style={
+                bookingsSortMode === mode
+                  ? { backgroundColor: theme.colors.secondaryContainer }
+                  : undefined
+              }
+            >
+              {mode === 'call_date' ? 'By call date' : 'By booking date'}
+            </Chip>
+          ))}
+        </ScrollView>
+      ) : null}
 
       {toast ? (
         <Banner

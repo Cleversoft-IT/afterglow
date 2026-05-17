@@ -96,8 +96,11 @@ def test_make_tool_without_payload_schema_falls_back_to_dict():
         "evidence_required": False,
     }
     tool = _make_tool(action)
-    # No payload_schema → dict annotation
-    assert _get_payload_annotation(tool) is dict
+    # No payload_schema → Optional[dict] annotation (ADK 1.18+ rejects a
+    # `None` default on a bare `dict`-typed parameter, so the fallback
+    # branch uses an explicit union).
+    from typing import Optional
+    assert _get_payload_annotation(tool) == Optional[dict]
 
     state: dict[str, Any] = {}
     tool_context = SimpleNamespace(state=state)

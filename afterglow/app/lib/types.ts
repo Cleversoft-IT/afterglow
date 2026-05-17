@@ -134,6 +134,7 @@ export type CreateTemplateRequest = {
 };
 
 export type UpdateTemplateRequest = {
+  name?: string | null;
   description?: string | null;
   domain_hint?: string | null;
   fields_schema?: FieldDefinition[];
@@ -217,6 +218,11 @@ export type CallExtractedView = {
   field_definitions?: FieldDefinitionLite[];
 };
 
+// Server-computed discriminator for `status === 'failed'`. Distinguishes
+// a real missed/empty call from a technical pipeline crash. Mirrors
+// `backend/app/schemas/calls.py:FailureKind`.
+export type FailureKind = 'missed' | 'pipeline_error';
+
 export type CallDetailView = {
   id: string;
   customer_id?: string | null;
@@ -227,6 +233,7 @@ export type CallDetailView = {
   raw_transcript?: { text: string; speakers?: unknown[]; language?: string } | null;
   status: 'pending' | 'transcribing' | 'analyzing' | 'completed' | 'failed' | string;
   error?: string | null;
+  failure_kind?: FailureKind | null;
   started_at?: string | null;
   completed_at?: string | null;
   created_at: string;
@@ -241,6 +248,7 @@ export type CallListItem = {
   customer_display_name?: string | null;
   template_id: string;
   status: string;
+  failure_kind?: FailureKind | null;
   detected_language?: string | null;
   created_at: string;
 };

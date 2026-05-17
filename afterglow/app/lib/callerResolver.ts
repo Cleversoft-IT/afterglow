@@ -1,4 +1,4 @@
-import type { CallListItem } from './types';
+import type { CallDetailView, CallListItem } from './types';
 import { findMockContact } from './mockContacts';
 
 export type ResolvedCaller = {
@@ -7,6 +7,32 @@ export type ResolvedCaller = {
   is_customer: boolean;
   avatar_url?: string | null;
 };
+
+export function resolveFromCallDetail(call: CallDetailView): ResolvedCaller {
+  if (call.customer?.display_name) {
+    return {
+      display_name: call.customer.display_name,
+      label: 'Client',
+      is_customer: true,
+      avatar_url: null,
+    };
+  }
+  const mock = findMockContact(call.phone_e164);
+  if (mock) {
+    return {
+      display_name: mock.display_name,
+      label: mock.label,
+      is_customer: false,
+      avatar_url: mock.avatar_url ?? null,
+    };
+  }
+  return {
+    display_name: call.phone_e164,
+    label: 'Unknown',
+    is_customer: false,
+    avatar_url: null,
+  };
+}
 
 export function resolveFromCallItem(call: CallListItem): ResolvedCaller {
   if (call.customer_display_name) {

@@ -210,12 +210,18 @@ function DemoSection() {
                 our backend on Vultr.
               </p>
               <p>
-                You'll land on{' '}
-                <span className="text-foreground font-medium">Templates</span> first.
-                Pick one of the three seed presets — restaurant, dentist, body shop —
-                or run the wizard to co-design your own vertical with the AI agent.
-                Selecting a template drops you on Home with seeded call history;
-                from there, hit the blue button.
+                Your first visit opens a{' '}
+                <span className="text-foreground font-medium">welcome dialog</span>{' '}
+                on Templates: pick one of the three seed presets — restaurant,
+                dentist, body shop — for the fastest demo path, or describe your
+                own business and let the wizard agent draft a template with you.
+              </p>
+              <p>
+                Activating a template lands you on Home with seeded call history.
+                From there, open <span className="text-foreground font-medium">
+                Test simulator</span> in the drawer to run an incoming call,
+                watch Afterglow analyze it, and inspect the extracted fields and
+                actions in the call detail.
               </p>
             </div>
           </div>

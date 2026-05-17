@@ -1,11 +1,14 @@
 """Pydantic schemas for the calls API."""
 from datetime import datetime
-from typing import Any, Optional
+from typing import Any, Literal, Optional
 from uuid import UUID
 
 from pydantic import BaseModel, Field
 
 from app.schemas.customers import CustomerCard
+
+
+FailureKind = Literal["missed", "pipeline_error"]
 
 
 class CallSubmittedResponse(BaseModel):
@@ -65,6 +68,11 @@ class CallDetailView(BaseModel):
     raw_transcript: Optional[dict[str, Any]] = None
     status: str
     error: Optional[str] = None
+    # Server-computed discriminator for `status == "failed"`. Distinguishes
+    # a real missed/empty call (audio was empty or pre-classifier skipped
+    # it) from a technical pipeline crash (Gemini / ADK / executor error).
+    # Drives the call detail badge + CallRow label in the UI.
+    failure_kind: Optional[FailureKind] = None
     started_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None
     created_at: datetime
@@ -79,5 +87,6 @@ class CallListItem(BaseModel):
     customer_display_name: Optional[str] = None
     template_id: UUID
     status: str
+    failure_kind: Optional[FailureKind] = None
     detected_language: Optional[str] = None
     created_at: datetime

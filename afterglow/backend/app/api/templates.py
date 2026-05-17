@@ -36,7 +36,7 @@ from app.api.session_context import (
 from app.config import get_settings
 from app.db.engine import get_session
 from app.db.models import DemoSession, Template
-from app.integrations import speechmatics_tts
+from app.integrations import action_catalog, speechmatics_tts
 from app.integrations.speechmatics_tts import TtsError
 from app.schemas import (
     CreateTemplateRequest,
@@ -422,6 +422,30 @@ async def get_simulation_audio(
     return FileResponse(path, media_type=media_type, filename=path.name)
 
 
+def _enrich_action_types_with_catalog_schemas(
+    action_types: list[dict[str, object]],
+) -> list[dict[str, object]]:
+    """Merge `default_payload_schema` from the action catalog into any
+    action_type dict that does not already carry an explicit `payload_schema`.
+
+    Run this at the persistence boundary (create_template / update_template)
+    so the wizard's `ActionDefinitionDraft` (which cannot expose
+    `payload_schema` because Gemini structured-output rejects
+    `additionalProperties`) still lands typed in the database. The
+    action_planner then builds a typed Pydantic model for Gemini, instead of
+    falling back to the untyped `dict` annotation that ADK 1.18+ rejects.
+    """
+    enriched: list[dict[str, object]] = []
+    for data in action_types:
+        if not data.get("payload_schema"):
+            key = data.get("key")
+            entry = action_catalog.get(key) if isinstance(key, str) else None
+            if entry is not None and entry.default_payload_schema is not None:
+                data = {**data, "payload_schema": entry.default_payload_schema}
+        enriched.append(data)
+    return enriched
+
+
 @router.post("", response_model=TemplateView, status_code=201)
 async def create_template(
     payload: CreateTemplateRequest,
@@ -432,6 +456,10 @@ async def create_template(
     target_session_id = ctx.session_id if ctx.is_demo else None
     version = await _next_version_for(session, tpl.name, target_session_id)
 
+    action_types_data = _enrich_action_types_with_catalog_schemas(
+        [a.model_dump() for a in tpl.action_types]
+    )
+
     row = Template(
         id=uuid.uuid4(),
         name=tpl.name,
@@ -439,7 +467,7 @@ async def create_template(
         description=tpl.description,
         domain_hint=tpl.domain_hint,
         fields_schema=[f.model_dump() for f in tpl.fields_schema],
-        action_types=[a.model_dump() for a in tpl.action_types],
+        action_types=action_types_data,
         prompt_hints=[r.model_dump() for r in tpl.prompt_hints],
         is_active=False,
         session_id=target_session_id,
@@ -503,6 +531,30 @@ async def update_template(
     if not ctx.is_demo and row.session_id is not None:
         raise HTTPException(status_code=403, detail="Template is a session-owned draft")
 
+    if payload.name is not None:
+        new_name = payload.name.strip()
+        if not new_name:
+            raise HTTPException(status_code=422, detail="Template name cannot be empty")
+        # Uniqueness scope: every template visible to this session (seed +
+        # session-owned). Keeps the list view free of homonyms across the
+        # seed/custom split.
+        clash = (
+            await session.execute(
+                select(Template.id).where(
+                    Template.name == new_name,
+                    Template.id != template_id,
+                    visibility_filter_seedable(
+                        Template.session_id, Template.is_seed, ctx
+                    ),
+                )
+            )
+        ).scalar_one_or_none()
+        if clash is not None:
+            raise HTTPException(
+                status_code=409,
+                detail="A template with this name already exists",
+            )
+        row.name = new_name
     if payload.description is not None:
         row.description = payload.description
     if payload.domain_hint is not None:
@@ -510,7 +562,9 @@ async def update_template(
     if payload.fields_schema is not None:
         row.fields_schema = [f.model_dump() for f in payload.fields_schema]
     if payload.action_types is not None:
-        row.action_types = [a.model_dump() for a in payload.action_types]
+        row.action_types = _enrich_action_types_with_catalog_schemas(
+            [a.model_dump() for a in payload.action_types]
+        )
     if payload.prompt_hints is not None:
         row.prompt_hints = [r.model_dump() for r in payload.prompt_hints]
 

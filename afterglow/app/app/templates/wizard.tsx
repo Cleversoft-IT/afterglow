@@ -95,13 +95,17 @@ export default function TemplateWizardScreen() {
     setSaving(true);
     setError(null);
     try {
-      const created = await api.createTemplate({ template: draft, set_active: setActive });
-      router.replace(`/templates/${created.id}` as never);
+      await api.createTemplate({ template: draft, set_active: setActive });
+      router.replace('/(drawer)/templates' as never);
     } catch (e) {
       setError(e instanceof ApiError ? e.message : String(e));
     } finally {
       setSaving(false);
     }
+  };
+
+  const renameDraft = (next: string) => {
+    setDraft((current) => (current ? { ...current, name: next } : current));
   };
 
   return (
@@ -147,6 +151,7 @@ export default function TemplateWizardScreen() {
           draft={draft}
           validation={validation}
           proposedKeys={proposedKeys}
+          onRename={renameDraft}
         />
 
         {error ? (
@@ -232,6 +237,7 @@ function DraftSidebar({
   draft,
   validation,
   proposedKeys,
+  onRename,
 }: {
   slots: Record<string, unknown>;
   confidence: number;
@@ -239,6 +245,7 @@ function DraftSidebar({
   draft: TemplateWizardResponse | null;
   validation: ValidationReport | null;
   proposedKeys: string[];
+  onRename: (next: string) => void;
 }) {
   const theme = useTheme();
   const hasContent =
@@ -256,6 +263,18 @@ function DraftSidebar({
         )}
       />
       <Card.Content>
+        {draft ? (
+          <View style={{ marginBottom: 12 }}>
+            <TextInput
+              mode="outlined"
+              label="Template name"
+              value={draft.name}
+              onChangeText={onRename}
+              dense
+            />
+          </View>
+        ) : null}
+
         {Object.keys(slots).length > 0 ? (
           <View style={{ gap: 4 }}>
             {Object.entries(slots).map(([k, v]) => {

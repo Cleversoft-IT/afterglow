@@ -125,10 +125,22 @@ def test_system_instruction_drops_obsolete_fields():
 
 def test_system_instruction_mentions_agentic_draft_first():
     instruction = _instruction()
-    assert "Prefer drafting over interrogating" in instruction
+    # The "Prefer drafting over interrogating" line was replaced by an
+    # explicit Integration discovery rule that gates channel actions
+    # behind a clarification turn. The agentic framing and budget ceiling
+    # are still there.
+    assert "Integration discovery" in instruction
     assert "agent, not a form" in instruction
     assert "ready=True" in instruction
     assert "5" in instruction  # question budget ceiling
+
+
+def test_system_instruction_forces_integration_discovery():
+    instruction = _instruction()
+    # Channel-dependent actions must not be drafted without an explicit
+    # user confirmation about the channels in use.
+    assert "whatsapp" in instruction.lower()
+    assert "Never default to WhatsApp" in instruction
 
 
 # ---------------------------------------------------------------------------

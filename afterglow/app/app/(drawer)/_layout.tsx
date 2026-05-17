@@ -49,19 +49,7 @@ function DrawerContent(props: DrawerContentComponentProps) {
   const isOnCalls = activeRouteName === '(tabs)';
 
   return (
-    <DrawerContentScrollView {...props} contentContainerStyle={{ paddingTop: 0 }}>
-      <View style={{ paddingHorizontal: 24, paddingTop: 32, paddingBottom: 16, gap: 4 }}>
-        {/* Wordmark replicates the demo site: bold "after" in onSurface,
-            "glow" in primary — see afterglow/demo-site/src/App.tsx:129-130. */}
-        <Text style={{ fontSize: 22, fontWeight: '800', letterSpacing: -0.3 }}>
-          <Text style={{ color: theme.colors.onSurface }}>after</Text>
-          <Text style={{ color: theme.colors.primary }}>glow</Text>
-        </Text>
-        <Text variant="bodyMedium" style={{ color: theme.colors.onSurfaceVariant }}>
-          AI dialer
-        </Text>
-      </View>
-      <Divider />
+    <DrawerContentScrollView {...props} contentContainerStyle={{ paddingTop: 8 }}>
       <DrawerItem
         label="Calls"
         focused={isOnCalls}
@@ -72,14 +60,6 @@ function DrawerContent(props: DrawerContentComponentProps) {
         )}
         labelStyle={{ color: isOnCalls ? theme.colors.primary : theme.colors.onSurface, fontWeight: '500' }}
         onPress={() => router.navigate('/(drawer)/(tabs)' as never)}
-      />
-      <DrawerItem
-        label="Contacts"
-        icon={({ focused, color, size }: IconRenderProps) => (
-          <Icon source="account-multiple-outline" size={size} color={iconColor(focused, color)} />
-        )}
-        labelStyle={{ color: theme.colors.onSurface, fontWeight: '500' }}
-        onPress={() => router.push('/(drawer)/contacts' as never)}
       />
       <DrawerItem
         label="Templates"
@@ -97,6 +77,7 @@ function DrawerContent(props: DrawerContentComponentProps) {
         labelStyle={{ color: theme.colors.onSurface, fontWeight: '500' }}
         onPress={() => router.push('/(drawer)/audit' as never)}
       />
+      <Divider style={{ marginVertical: 8 }} />
       <DrawerItem
         label="Test simulator"
         icon={({ focused, color, size }: IconRenderProps) => (

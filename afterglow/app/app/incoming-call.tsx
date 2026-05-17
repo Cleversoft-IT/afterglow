@@ -1,6 +1,6 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Animated, Easing, StyleSheet, View } from 'react-native';
+import { Animated, Easing, ScrollView, StyleSheet, View } from 'react-native';
 import {
   ActivityIndicator,
   Avatar,
@@ -369,9 +369,9 @@ export default function IncomingCallScreen() {
           {displayName}
         </Text>
         <Text
-          variant="titleMedium"
+          variant="bodyMedium"
           numberOfLines={1}
-          style={{ color: theme.colors.onSurfaceVariant, marginTop: 6 }}
+          style={{ color: theme.colors.onSurfaceVariant, marginTop: 12 }}
         >
           {fallbackDisplayPhone}
         </Text>
@@ -386,18 +386,25 @@ export default function IncomingCallScreen() {
         )}
       </View>
 
-      {/* Avatar zone */}
+      {/* Avatar + context zone. The context scrolls so existing-caller
+          briefings don't push the FAB row off-screen. */}
       <View style={styles.avatarZone}>
         <Animated.View style={{ transform: [{ scale: phase === 'ringing' ? pulse : 1 }] }}>
           <Avatar.Text
-            size={phase === 'ringing' ? 128 : 160}
+            size={phase === 'ringing' ? 96 : 112}
             label={initials || '?'}
             color="#FFFFFF"
-            style={{ backgroundColor: callGreen }}
+            style={{ backgroundColor: callGreen, marginBottom: 16 }}
           />
         </Animated.View>
         {phase === 'ringing' ? (
-          <CallerContext customer={customer} recentCalls={recentCalls} callerMode={callerMode} />
+          <ScrollView
+            style={{ alignSelf: 'stretch' }}
+            contentContainerStyle={{ paddingBottom: 24, gap: 16 }}
+            showsVerticalScrollIndicator={false}
+          >
+            <CallerContext customer={customer} recentCalls={recentCalls} callerMode={callerMode} />
+          </ScrollView>
         ) : null}
       </View>
 
@@ -576,16 +583,17 @@ const styles = StyleSheet.create({
   avatarZone: {
     flex: 1,
     alignItems: 'center',
-    justifyContent: 'center',
+    justifyContent: 'flex-start',
     paddingHorizontal: 24,
-    gap: 28,
+    paddingTop: 8,
+    gap: 16,
   },
   footer: {
-    paddingTop: 24,
-    paddingBottom: 32,
+    paddingTop: 16,
+    paddingBottom: 24,
     paddingHorizontal: 24,
     borderTopWidth: StyleSheet.hairlineWidth,
-    gap: 24,
+    gap: 20,
   },
   controlsRow: {
     flexDirection: 'row',
@@ -594,11 +602,11 @@ const styles = StyleSheet.create({
   },
   fabRow: {
     flexDirection: 'row',
-    justifyContent: 'space-evenly',
+    justifyContent: 'center',
     alignItems: 'flex-start',
-    gap: 8,
+    gap: 40,
   },
-  fabCol: { alignItems: 'center', gap: 8, minWidth: 72 },
+  fabCol: { alignItems: 'center', gap: 8 },
   actionFab: { width: 64, height: 64, borderRadius: 32 },
   fabLabel: { fontWeight: '500', textAlign: 'center' },
   hangupCenter: { alignItems: 'center' },

@@ -92,27 +92,6 @@ export default function SettingsScreen() {
           </View>
         </List.Section>
 
-        <List.Section>
-          <List.Subheader>About</List.Subheader>
-          <List.Item
-            title="What is Afterglow"
-            description="Afterglow turns the seconds after a phone call into structured data, customer memory, and autonomously executed actions."
-            descriptionNumberOfLines={4}
-            left={(p) => <List.Icon {...p} icon="information-outline" />}
-          />
-        </List.Section>
-
-        <List.Section>
-          <List.Subheader>Diagnostics</List.Subheader>
-          <List.Item
-            title="Audit log"
-            description="Full trace of every pipeline step — agents, tokens, errors."
-            left={(p) => <List.Icon {...p} icon="text-box-search-outline" />}
-            right={(p) => <List.Icon {...p} icon="chevron-right" />}
-            onPress={() => router.push('/(drawer)/audit' as never)}
-          />
-        </List.Section>
-
         {isDemoMode() ? (
           <List.Section>
             <List.Subheader>Demo controls</List.Subheader>
@@ -132,6 +111,16 @@ export default function SettingsScreen() {
             ) : null}
           </List.Section>
         ) : null}
+
+        <List.Section>
+          <List.Subheader>About</List.Subheader>
+          <List.Item
+            title="What is Afterglow"
+            description="Afterglow turns the seconds after a phone call into structured data, customer memory, and autonomously executed actions."
+            descriptionNumberOfLines={4}
+            left={(p) => <List.Icon {...p} icon="information-outline" />}
+          />
+        </List.Section>
       </ScrollView>
 
       <Portal>

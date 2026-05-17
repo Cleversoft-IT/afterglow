@@ -141,7 +141,15 @@ def test_unsupported_when_grammar_warned():
         ]
     )
     issues = validate_template_deterministic(d)
-    assert any("supported grammar" in i.message for i in issues)
+    # The message was rewritten in business-friendly form. It now names
+    # the hint by its 1-based index and quotes the offending rule.
+    assert any(
+        "Prompt hint #1" in i.message
+        and "doesn't match a recognized condition" in i.message
+        for i in issues
+    )
+    # All grammar issues are now severity=error (they're blocking).
+    assert all(i.severity == "error" for i in issues if "Prompt hint" in i.message)
 
 
 def test_clean_template_produces_no_errors():
