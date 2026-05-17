@@ -227,22 +227,7 @@ function DemoSection() {
                 <ExternalLink className="w-4 h-4" />
               </a>
             </Button>
-            <span className="phone-hint" aria-hidden="true">
-              <span className="phone-hint-dot" />
-              Click anywhere to interact
-            </span>
           </div>
-
-          {/* Scale indicator — only when the phone is downscaled */}
-          {scaledDown && (
-            <p
-              className="hidden md:flex items-center gap-2 text-[11px] text-muted-foreground/80"
-              aria-live="polite"
-            >
-              <Maximize2 className="w-3 h-3" aria-hidden="true" />
-              Scaled to {pct}% — open in a new tab for full size.
-            </p>
-          )}
 
           {/* Mobile: single CTA, no iframe-in-phone-in-phone */}
           <div className="md:hidden flex flex-col items-center gap-4 rounded-2xl border border-border/60 bg-card/60 p-8 mt-2">
@@ -262,6 +247,12 @@ function DemoSection() {
         <div className="hidden md:flex justify-center md:justify-end">
           <div className="phone-stage">
             <div className="demo-phone-glow" aria-hidden="true" />
+            {scaledDown && (
+              <div className="phone-scale-badge" aria-live="polite" title="The embedded phone is scaled to fit your viewport. Open in a new tab for full size.">
+                <Maximize2 className="w-3 h-3" aria-hidden="true" />
+                Scaled · {pct}%
+              </div>
+            )}
             <div className="phone-frame">
               <iframe
                 title="Afterglow live demo"

@@ -258,35 +258,60 @@ html, body, #root {
   inset: calc(-60px * var(--phone-scale));
 }
 
-/* ── Phone hint (subtle "click to interact" below the phone) ── */
-.phone-hint {
+/* ── Phone scale badge — soft "scaled to N%" warning ──────
+   Floats at the top-right of the phone stage. Only rendered
+   when the phone is downscaled to fit the viewport; hidden at
+   full size. Amber palette, subtle backdrop blur, never loud. */
+.phone-scale-badge {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 5;
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  font-size: 12px;
+  gap: 6px;
+  padding: 4px 10px 4px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
   letter-spacing: 0.02em;
-  color: var(--muted-foreground);
+  line-height: 1;
+  white-space: nowrap;
   user-select: none;
+  background: oklch(0.92 0.10 75 / 0.85);
+  color: oklch(0.40 0.13 60);
+  border: 1px solid oklch(0.78 0.13 70 / 0.6);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  box-shadow: 0 4px 12px -4px oklch(0.5 0.13 65 / 0.25);
+}
+.dark .phone-scale-badge {
+  background: oklch(0.32 0.10 65 / 0.6);
+  color: oklch(0.88 0.13 80);
+  border-color: oklch(0.55 0.13 70 / 0.5);
+  box-shadow: 0 4px 14px -4px oklch(0.15 0.05 65 / 0.5);
 }
 
-.phone-hint-dot {
-  position: relative;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--primary);
-  box-shadow: 0 0 0 0 oklch(0.56 0.20 260 / 0.6);
-  animation: phone-hint-pulse 2s ease-out infinite;
+/* ── Phone frame — touch-ring cursor (Chrome DevTools mobile vibe)
+   Mimics the device-emulation cursor: a soft circle the size of a
+   fingertip with a centre dot. CSS `cursor` does not penetrate a
+   cross-origin iframe, so the simulated cursor is only visible on
+   the bezel area; inside the iframe the embedded app's own cursor
+   takes over. Applied here and on the iframe element itself in
+   case the browser honours it on the iframe chrome. */
+.phone-frame,
+.phone-frame iframe {
+  cursor:
+    url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='38' height='38' viewBox='0 0 38 38'%3E%3Ccircle cx='19' cy='19' r='16' fill='rgba(15,23,42,0.10)' stroke='rgba(15,23,42,0.55)' stroke-width='1.5'/%3E%3Ccircle cx='19' cy='19' r='2.5' fill='rgba(15,23,42,0.70)'/%3E%3C/svg%3E")
+    19 19,
+    pointer;
 }
-
-@keyframes phone-hint-pulse {
-  0%   { box-shadow: 0 0 0 0   oklch(0.56 0.20 260 / 0.5); }
-  70%  { box-shadow: 0 0 0 10px oklch(0.56 0.20 260 / 0); }
-  100% { box-shadow: 0 0 0 0   oklch(0.56 0.20 260 / 0); }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .phone-hint-dot { animation: none; }
+.dark .phone-frame,
+.dark .phone-frame iframe {
+  cursor:
+    url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='38' height='38' viewBox='0 0 38 38'%3E%3Ccircle cx='19' cy='19' r='16' fill='rgba(255,255,255,0.10)' stroke='rgba(255,255,255,0.60)' stroke-width='1.5'/%3E%3Ccircle cx='19' cy='19' r='2.5' fill='rgba(255,255,255,0.75)'/%3E%3C/svg%3E")
+    19 19,
+    pointer;
 }
 
 /* ── Video placeholder ────────────────────────────────── */
