@@ -95,11 +95,6 @@ export type ValidationReport = {
   proposed_mocks: ProposedMock[];
 };
 
-export type TemplateWizardRequest = {
-  description: string;
-  language?: string;
-};
-
 export type WizardChatTurn = {
   role: 'user' | 'assistant';
   content: string;

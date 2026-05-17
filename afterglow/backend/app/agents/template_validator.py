@@ -1,7 +1,8 @@
 """Template Validator Agent — deterministic checks + Gemini semantic pass.
 
-Runs after `template_builder.build_template` (and again from the refine UI
-through `POST /templates/validate`). Returns a `ValidationReport`:
+Invoked from `wizard_chat.run_wizard_chat` once a candidate draft is ready,
+and from the refine UI through `POST /templates/validate`. Returns a
+`ValidationReport`:
 
   - `issues`: list of `{field_path, severity, message}`. Hard issues are
     produced deterministically (snake_case key violations, depends_on

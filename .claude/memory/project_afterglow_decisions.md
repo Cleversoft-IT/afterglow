@@ -1,6 +1,6 @@
 ---
 name: project-afterglow-decisions
-description: Decisioni di prodotto/architettura di Afterglow. Pivot da non rinegoziare senza ridiscutere. Aggiornato 2026-05-17 (template simplification) — schema Template ridotto al solo product surface: pii_class/sensitive/mock_target/mutates/custom_dictionary rimossi; pii_sanitizer cancellato; mock_target/mutates spostati nel catalog. 2026-05-17 (notte) — simulator dei custom template wizard-built: solo bottone "new" + audio cross-origin via blob URL. 2026-05-17 (sera) — round 3 UI audit (drawer "Calls" voice, locale IT/EN via Intl.DateTimeFormat, BookingBadge inline, TranscriptList accordion, REAL_ON_DEVICE whitelist UI-only, randomuser.me portraits hard-coded, web first-paint sync, drawer reset via Paper Dialog, eager customer FK al submit). 2026-05-17 — frontend Material 3 rewrite + UI bug cluster post-rewrite. 2026-05-16 — feedback round 2 (action catalog, dialer non bloccante, Undo/Redo flip-only, simulator 2-mode con MP3 distinti existing/new e 4 customer seedati).
+description: Decisioni di prodotto/architettura di Afterglow. Pivot da non rinegoziare senza ridiscutere. Aggiornato 2026-05-17 (legacy cleanup) — wizard one-shot rimosso, conversational wizard chat unica via; residui PII/sanitizer ripuliti da docstring/prompts. 2026-05-17 (template simplification) — schema Template ridotto al solo product surface; mock_target/mutates spostati nel catalog. 2026-05-17 (notte) — simulator dei custom template wizard-built: solo bottone "new" + audio cross-origin via blob URL. 2026-05-17 (sera) — round 3 UI audit (drawer "Calls" voice, locale IT/EN via Intl.DateTimeFormat, BookingBadge inline, TranscriptList accordion, REAL_ON_DEVICE whitelist UI-only, randomuser.me portraits hard-coded, web first-paint sync, drawer reset via Paper Dialog, eager customer FK al submit). 2026-05-17 — frontend Material 3 rewrite + UI bug cluster post-rewrite. 2026-05-16 — feedback round 2 (action catalog, dialer non bloccante, Undo/Redo flip-only, simulator 2-mode con MP3 distinti existing/new e 4 customer seedati).
 metadata:
   type: project
 ---
@@ -39,12 +39,13 @@ L'app è caricata in iframe da `demo.95...` durante la judging window; più giud
 
 **How to apply:** ogni nuovo endpoint deve aggiungere `ctx: SessionContext = Depends(get_session_context)` e usare `visibility_filter(Model.session_id, ctx)` per le letture, e impostare `session_id=ctx.session_id` sulle scritture. Ogni `audit_step(...)` deve ricevere `session_id=call.session_id` (o l'equivalente). Schema/migration: `0003_demo_sandbox_session.py`. Coordinate vive: `afterglow/backend/app/api/session_context.py`, `afterglow/backend/app/tasks/session_cleanup.py`.
 
-### 1.ter. Pipeline post-call: Gemini analyzer + ADK action planner (revisione 2026-05-16)
-**Architettura attuale:** zero AI durante la chiamata; tutta l'analisi gira **dopo** la fine call. La pipeline è in due stadi consecutivi, entrambi loggati nello stesso `audit_log`:
+### 1.ter. Pipeline post-call: Gemini analyzer + ADK action planner (revisione 2026-05-16, semplificata 2026-05-17)
+**Architettura attuale:** zero AI durante la chiamata; tutta l'analisi gira **dopo** la fine call. La pipeline post-call è **4 step**: `call_analyzer` → `action_planner` → `action_executor` → `_persist_memory`. Tutti loggati nello stesso `audit_log`:
 
-1. **`agents/call_analyzer.py`** — singolo Gemini structured-output call. Lo schema Pydantic `CallAnalysis` produce in un colpo: fields/confidence/evidence, intent/sentiment/language/urgency, `planned_actions[]` (con `payload: dict[str, Any]` tipato, niente più `payload_json: str`) e `next_call_briefing` (paragrafo in linguaggio naturale per l'operatore della prossima call). Il prompt cita le soglie di confidence per-`pii_class`, i `depends_on` per-field, e le `preconditions` / `confidence_threshold` / `mutates` / `evidence_required` per-action. Le `prompt_hints` (struttura `list[{when, then}]` dopo migration 0006) vengono valutate deterministicamente in Python contro `memory_retrieval.retrieve_structured_facts` PRIMA di costruire il prompt e prependute al system instruction quando matchano.
-2. **`agents/pii_sanitizer.py`** — pure-Python, gira **subito** dopo il `call_analyzer` e prima di qualunque persist/audit. Redige `next_call_briefing` e le `evidence` dei `planned_actions[]` secondo la policy in `agents/pii_policy.py` (`contact=0.80, identity=0.85, financial=0.90, health=0.90`, strategie per-classe). I `fields[]` raw restano intatti perché servono al persist (UI review) e ai mock target (`booking.create` deve ricevere il nome reale). Audit step `pii_policy_applied` registra esattamente cosa è stato redatto, con quale soglia.
-3. **`agents/action_planner.py`** — agentic loop via Google ADK (`integrations/gemini_adk.py`) che rilegge l'analisi SANITIZZATA del passo 1 e emette le tool call per le sole azioni `execution_mode=auto`. Ogni tool ha un parametro `payload` con annotation Pydantic dinamica costruita da `ActionDefinition.payload_schema` via `integrations/jsonschema_to_pydantic.py` (FunctionDeclaration tipizzata per Gemini). L'`executors/action_executor.py` ri-valida il payload con `jsonschema.validate` prima di MOCK_REGISTRY, rifiuta azioni con `evidence_required=True` ed evidence vuota, e propaga `mutates=True` nell'audit + `ExecutedAction.result`. `memory_summarizer_bilingual` è un piccolo Gemini call extra (~120 token) che genera l'EN summary del briefing quando la lingua detected non è EN (solo in prod), poi il chunk del Vector Store contiene native + EN.
+1. **`agents/call_analyzer.py`** — singolo Gemini structured-output call. Lo schema Pydantic `CallAnalysis` produce in un colpo: fields/confidence/evidence, intent/sentiment/language/urgency, `planned_actions[]` (con `payload: dict[str, Any]` tipato, niente più `payload_json: str`) e `next_call_briefing` (paragrafo in linguaggio naturale per l'operatore della prossima call). Il prompt cita i `depends_on` per-field, e le `preconditions` / `confidence_threshold` / `evidence_required` per-action. Le `prompt_hints` (struttura `list[{when, then}]` dopo migration 0006) vengono valutate deterministicamente in Python contro `memory_retrieval.retrieve_structured_facts` PRIMA di costruire il prompt e prependute al system instruction quando matchano.
+2. **`agents/action_planner.py`** — agentic loop via Google ADK (`integrations/gemini_adk.py`) che rilegge l'analisi del passo 1 e emette le tool call per le sole azioni `execution_mode=auto`. Ogni tool ha un parametro `payload` con annotation Pydantic dinamica costruita da `ActionDefinition.payload_schema` via `integrations/jsonschema_to_pydantic.py` (FunctionDeclaration tipizzata per Gemini). L'`executors/action_executor.py` ri-valida il payload con `jsonschema.validate` prima di MOCK_REGISTRY, rifiuta azioni con `evidence_required=True` ed evidence vuota, e legge `mutates` dal `action_catalog` propagandolo nell'audit + `ExecutedAction.result`. `_summarize_to_english` è un piccolo Gemini call extra (~120 token, dentro `orchestrator._persist_memory`) che genera l'EN summary del briefing quando la lingua detected non è EN (solo in prod), poi il chunk del Vector Store contiene native + EN.
+
+PII/privacy classification e sanitizer sono **out of scope** (vedi `afterglow/docs/future-ideas.md` §4 + sezione 1.nove qui sotto).
 
 **Fail-fast esplicito, niente fallback silenziosi (deciso 2026-05-16):** se manca `GOOGLE_API_KEY`, se Gemini fa raise/empty/JSON malformato, se l'ADK runner fallisce, la `Call` va in stato `failed` con `failure_reason` leggibile + audit row con `status="error"`. La UI mostra un banner rosso con la ragione. **Nessun stub deterministico, nessun "_fallback_planner".** Un demo che inventa "Marco in 4 alle 20:30" per ogni MP3 è una bugia che inquina la judging window; meglio mostrare l'errore vero e dimostrare che la pipeline è davvero AI-driven.
 
@@ -58,22 +59,22 @@ Cancellati (e tuttora assenti): `agents/extraction.py`, `agents/classification.p
 
 **Why:** AI a fine call è il modello giusto per *human-first AI dialer*. L'operatore vede il `customer.memory_summary` da Postgres istantaneamente. Il double-step (analizzatore structured + planner agentico) tiene il pitch agentic; il fail-fast esplicito sostituisce la falsa robustezza del fallback con audit reale e UI onesta.
 
-**How to apply:** `customer.memory_summary` è il "next-call briefing" Gemini-generated **sanitizzato** nella lingua detected. La tabella `extracted_fields.briefing_snapshot` (migration 0005) preserva la briefing storica per-call anche dopo overwrite di `memory_summary`. Quando si tocca la pipeline modifica `call_analyzer.py` per scope/prompt, `pii_sanitizer.py` per la policy PII, `action_planner.py` per il tool registry / loop ADK, `action_executor.py` per la validation deterministica, `orchestrator.py` per glue/persistence + error state — non aggiungere altri sub-agent (l'unica eccezione è il `template_validator.py` del wizard, che è scope wizard, NON pipeline post-call), non re-introdurre fallback "per sicurezza".
+**How to apply:** `customer.memory_summary` è il "next-call briefing" Gemini-generated nella lingua detected. La tabella `extracted_fields.briefing_snapshot` (migration 0005) preserva la briefing storica per-call anche dopo overwrite di `memory_summary`. Quando si tocca la pipeline modifica `call_analyzer.py` per scope/prompt, `action_planner.py` per il tool registry / loop ADK, `action_executor.py` per la validation deterministica, `orchestrator.py` per glue/persistence + error state — non aggiungere altri sub-agent (l'unica eccezione è il `template_validator.py` del wizard, che è scope wizard, NON pipeline post-call), non re-introdurre fallback "per sicurezza".
 
 ### 1.cinque. Templates v2 — schema strutturato + wizard 4-step (2026-05-16)
 Estensione completa del `Template` landata con migration `0006_templates_v2.py`. Tutta v2 è additive a livello di codice ma cancella i dati esistenti (vedi [[feedback-db-disposable]]) per riallineare la shape.
 
-**Schema esteso:**
-- `FieldDefinition` ora include `pii_class` (`none|contact|health|financial|identity`), `confidence_threshold` opzionale per-field, `extractor_hint` (`regex|freeform|enum|llm_only`), `depends_on: list[str]`.
-- `ActionDefinition` ora include `preconditions: list[str]`, `confidence_threshold: float`, `mutates: bool`, `evidence_required: bool`, `payload_schema: dict | None` (JSONSchema). Il payload_schema serve sia al planner (FunctionDeclaration tipizzata) sia all'executor (`jsonschema.validate`).
+**Schema esteso (vedi 1.nove per la simplification 2026-05-17):**
+- `FieldDefinition` ha `confidence_threshold` opzionale per-field, `extractor_hint` (`regex|freeform|enum|llm_only`), `depends_on: list[str]`, `options`, `required`.
+- `ActionDefinition` ha `preconditions: list[str]`, `confidence_threshold: float`, `evidence_required: bool`, `payload_schema: dict | None` (JSONSchema). Il payload_schema serve sia al planner (FunctionDeclaration tipizzata) sia all'executor (`jsonschema.validate`).
 - `Template.prompt_hints` da `Text` a `JSONB` (`list[PromptHintRule]` con grammatica `always | field.<key> == '<value>' | field.<key> is [not] null`).
 - Unique `(name, version)` espressa come **due partial unique index** (`session_id IS NULL` vs `IS NOT NULL`) per evitare la trappola Postgres "NULL distinct". POST `/templates` auto-bumpa la `version` per `(name, session_id)`.
 
-**Wizard 4-step:** `Generate` (template_builder.py) → `Validate` (template_validator.py: hard deterministic + soft Gemini semantic, restituisce `ValidationReport`) → `Refine` (UI Expo `app/templates/wizard.tsx` + `[id].tsx`) → `Persist` (POST `/templates`, scrive con `session_id=ctx.session_id` in demo o `NULL` in prod, set_active opzionale nella stessa transazione).
+**Wizard conversazionale (revisione 2026-05-17):** `POST /api/v1/templates/wizard/chat` (`agents/wizard_chat.py`) gestisce un dialogo stateless multi-turn. Il client tiene history + `slots_filled` + `draft_partial`; il server ritorna il prossimo turno + draft aggiornato + `ValidationReport` (`agents/template_validator.py` runs deterministic + small Gemini semantic). Quando `ready=true`, UI Expo `app/templates/wizard.tsx` espone "Save draft / Save & activate" → `POST /api/v1/templates` (scrive con `session_id=ctx.session_id` in demo o `NULL` in prod, `set_active` opzionale nella stessa transazione). Il vecchio endpoint one-shot `POST /api/v1/templates/wizard` + `template_builder.py` sono stati **rimossi il 2026-05-17**.
 
-**PII policy:** `agents/pii_policy.py` codifica soglie per-classe (`contact 0.80, identity 0.85, financial 0.90, health 0.90`) + strategie di redaction (`passthrough | [redacted: <class>] | hash | first2+***+last2`). `agents/pii_sanitizer.py` la applica **subito** dopo il `call_analyzer`, prima di ogni persist/audit (vedi 1.ter sopra).
+**PII/privacy gating:** rimosso 2026-05-17 — vedi 1.nove + `afterglow/docs/future-ideas.md` §4.
 
-**Bilingual briefing:** in prod, se `transcript.language != "en"`, `_summarize_to_english` produce un EN summary del briefing sanitizzato; il chunk del Vector Store contiene `native\n\n[EN] <en>` + metadata `language` + `briefing_en` + `pii_redactions_applied`. In demo è skipped.
+**Bilingual briefing:** in prod, se `transcript.language != "en"`, `_summarize_to_english` produce un EN summary del briefing; il chunk del Vector Store contiene `native\n\n[EN] <en>` + metadata `language` + `briefing_en`. In demo è skipped.
 
 **Why:** la sfida judging "Application of Technology" + "Agentic Workflows" premia template tipati end-to-end (FunctionDeclaration → executor validation) + un wizard che si valida da sé più di quanto premi un'UI di tuning. Le 3 idee scartate (parent_id lineage, status tri-state, learning loop) sono documentate in [`afterglow/docs/future-ideas.md`](../../afterglow/docs/future-ideas.md) come material per la slide "future work".
 
@@ -102,8 +103,8 @@ Target: tutte le feature del prompt originale. Strategia: sviluppo a priorità t
 1. PWA dialer con cornetta blu + incoming-call UI ✅
 2. Pipeline reale: audio → Speechmatics → Gemini analisi → executed actions ⚠️ (Gemini live, Speechmatics ancora stub)
 3. Caller memory card alla seconda chiamata ✅ (briefing Gemini-generated)
-4. Dashboard web: call log + action history (con revert) + customer profile + privacy settings ✅
-5. Prompt-to-template wizard 4-step (Generate → Validate → Refine → Persist) ✅ — `template_builder` chiama `gemini-3.1-flash-lite` con structured output, `template_validator` runs deterministic + Gemini semantic, UI `app/templates/wizard.tsx` editora inline e POST `/templates` persiste con session_id corretto + version auto-bump. Vedi sub-decisione 1.cinque.
+4. Dashboard web: call log + action history (con revert) + customer profile ✅
+5. Prompt-to-template wizard conversazionale (`POST /api/v1/templates/wizard/chat`) ✅ — `wizard_chat.py` chiama `gemini-3.1-flash-lite` multi-turn, `template_validator.py` runs deterministic + Gemini semantic, UI `app/templates/wizard.tsx` espone chat + draft sidebar e POST `/templates` persiste con session_id corretto + version auto-bump. Vedi sub-decisione 1.cinque.
 6. Template library con 3 voci ✅ (seed)
 7. Test/simulator template (nice-to-have)
 8. Manual template builder pieno (nice-to-have)
@@ -161,7 +162,7 @@ Default esplicito per backend e wizard: `GEMINI_DEFAULT_MODEL=gemini-3.1-flash-l
 
 Dopo il primo giro di test su installazione fresh (Mark Ross / Julia White) sono emerse 7 famiglie di problemi che alterano la forma del prodotto. Decisioni bloccate qui per non ridiscuterle:
 
-**A. PII redaction sul briefing → disabilitata.** `agents/pii_sanitizer.py` è ora **observe-only**: lascia briefing e evidence verbatim e registra solo `pii_classes_present` nell'audit log come `pii_policy_applied` con `mode="observe_only"`. Motivo: l'operatore deve sapere che il cliente è celiaco; `[redacted: health]` è inutile. La utility `redact_for_briefing` resta in `pii_policy.py` per usi futuri ma non viene chiamata dalla pipeline runtime. Test riscritti in `tests/test_pii_sanitizer.py`.
+**A. PII redaction → out of scope** (decisa qui, completata 2026-05-17 con la cancellazione di `pii_sanitizer.py` / `pii_policy.py`). Motivo originale: l'operatore deve sapere che il cliente è celiaco; redazioni `[redacted: health]` sono inutili. Vedi sezione 1.nove + `afterglow/docs/future-ideas.md` §4 per il design archiviato.
 
 **B. Dialer fire-and-forget.** `app/app/incoming-call.tsx` non polla più la pipeline: dopo che l'audio finisce, submit + `router.replace('/(tabs)')` + toast pubblicato via `app/lib/pipelineToast.ts`. La tab Calls (`app/app/(tabs)/index.tsx`) ha un banner "Analysis in progress" e auto-refresh ogni 2s finché ci sono call non-terminali. NESSUN auto-redirect a Card Detail quando la call completa: l'utente può cliccare quando vuole. Sostituisce la vecchia logica `phase='analyzing'` con polling bloccante (rimossa).
 
@@ -177,15 +178,15 @@ Dopo il primo giro di test su installazione fresh (Mark Ross / Julia White) sono
 
 **H. Endpoint nuovo `GET /api/v1/actions/catalog`.** Restituisce ogni entry per il wizard chat (Fase 8 in arrivo) e per il template editor (Fase 7). Sostituirà l'attuale `Template.action_types[].mock_target` come fonte di verità nel template builder.
 
-**I. UI label.** "Memory summary" → "Next-call briefing" in customer profile + dialer caller card. "Re-validate" → "Check draft" nel wizard. Field UI in Call Detail mostra `FieldDefinition.label` come primario e `key` come stringa monospace piccola sotto (`CallExtractedView.field_definitions` espone label+pii_class server-side). Settings tab non mostra più l'API base.
+**I. UI label.** "Memory summary" → "Next-call briefing" in customer profile + dialer caller card. "Re-validate" → "Check draft" nel wizard. Field UI in Call Detail mostra `FieldDefinition.label` come primario e `key` come stringa monospace piccola sotto (`CallExtractedView.field_definitions` espone label server-side). Settings tab non mostra più l'API base.
 
 **J. Prompt analyzer briefing style.** `agents/call_analyzer.py` ora chiede esplicitamente "1-2 short sentences, operator-actionable" invece di "1-3 sentences" generici. Esempio target: *"Mark prefers a quiet table and is gluten-intolerant. Last booked party of 4 on 9 May — confirm the same setup if he calls again."*
 
-**Why:** il primo test reale ha mostrato che la pipeline e l'UI sono corrette ma vivono in mondi separati: l'operatore vedeva `[redacted: health]` e non sapeva cosa cucinare, vedeva il dialer bloccato in `preparing/processing` mentre la pipeline girava, vedeva action senza badge Simulated e senza poter undo, e si trovava in Card Detail teletrasportato senza averlo chiesto. Queste decisioni allineano l'UX al modello mentale dell'operatore.
+**Why:** il primo test reale ha mostrato che la pipeline e l'UI sono corrette ma vivono in mondi separati: l'operatore non sapeva interpretare placeholder di redazione, vedeva il dialer bloccato in `preparing/processing` mentre la pipeline girava, vedeva action senza badge Simulated e senza poter undo, e si trovava in Card Detail teletrasportato senza averlo chiesto. Queste decisioni allineano l'UX al modello mentale dell'operatore.
 
 **How to apply:**
 - Quando aggiungi una nuova action key, **deve** apparire in `action_catalog.CATALOG` con `integration_kind` esplicito. Se è `internal_real`, registra anche un handler in `INTERNAL_HANDLERS` e (se è undoable) un reverter in `INTERNAL_REVERTERS`. Aggiorna `tests/test_action_catalog.py` se serve.
-- NON ri-introdurre la redaction del briefing senza ridiscutere — i test in `test_pii_sanitizer.py` lockano la semantica observe-only.
+- NON ri-introdurre PII redaction/sanitizer senza ridiscutere — la pipeline runtime è 4-step volutamente senza policy gate (vedi 1.nove + `future-ideas.md` §4).
 - NON toccare il polling bloccante dentro al dialer: la fase `analyzing` locale è morta apposta.
 - Quando aggiungi un campo a `ExecutedAction.result`, valutare se modificarne anche la shape che la UI usa per `is_simulated` / `can_undo` (ora vengono SERVER-side dal catalog, non dal result).
 
@@ -330,24 +331,24 @@ Secondo giro di test su `app.95-179-245-107.sslip.io` post-rewrite ha esposto bu
 - Quando aggiungi una guardia di "primo accesso", usa `markFreshSession()`/`consumeFreshSession()` da `app/lib/freshSession.ts` — non re-implementare flag custom.
 - Quando devi un Dialog di conferma da un DrawerItem, usa **sempre** Paper `<Portal><Dialog>`, mai `window.confirm`.
 
-### 1.nove. Template simplification — solo product surface (2026-05-17)
+### 1.nove. Template simplification + legacy wizard cleanup (2026-05-17)
 
-Sfoltimento del `Template` model che mescolava prodotto (`fields_schema` / `action_types` / `prompt_hints`), governance (`pii_class` / `sensitive`), routing (`mock_target`), runtime flags (`mutates`), e detail ASR (`custom_dictionary`). Solo il primo piano è davvero "del business"; il resto è scope sistema o future work. Decisione e dettagli di esecuzione in [[project-template-simplified-2026-05-17]].
+Sfoltimento del `Template` model + del wizard surface. La prima ondata (mattino 2026-05-17) ha tolto governance/routing dal template; la seconda (sera 2026-05-17, ticket `ticket-remove-legacy-compressed-pie`) ha completato la pulizia rimuovendo il wizard one-shot e i residui PII testuali. Solo il "product surface" e il wizard conversazionale sopravvivono. Decisione e dettagli di esecuzione in [[project-template-simplified-2026-05-17]].
 
 **Cosa è cambiato (riferimento veloce — la memory dedicata ha la mappa file completa):**
 
 - `FieldDefinition` non porta più `pii_class` / `sensitive`. Restano `confidence_threshold`, `extractor_hint`, `depends_on`, `options`, `required`.
 - `ActionDefinition` non porta più `mock_target` / `mutates`. Restano `preconditions`, `confidence_threshold`, `evidence_required`, `payload_schema`.
 - `mock_target` (era già nel catalog) e **`mutates`** (campo nuovo di `ActionCatalogEntry`) sono ora source-of-truth in `app/integrations/action_catalog.py`. `action_executor` e `action_planner` fanno lookup-by-key (`action_catalog.mutates(key)`).
-- `pii_sanitizer.py` e `pii_policy.py` **cancellati**. La pipeline non emette più audit step `pii_policy_applied`. La frase 1.ter punto 2 ("`pii_sanitizer.py` osserva pii_class") è obsoleta — la pipeline post-call è ora 4 step: `call_analyzer` → `action_planner` → `action_executor` → `_persist_memory`.
+- `pii_sanitizer.py` e `pii_policy.py` **cancellati**. La pipeline non emette più audit step `pii_policy_applied`. Pipeline post-call ora 4 step: `call_analyzer` → `action_planner` → `action_executor` → `_persist_memory`.
 - `Template.custom_dictionary` **droppato** (migration `0012_drop_template_custom_dictionary.py`). Speechmatics gira senza `additional_vocab`.
 - `simulation_config` resta nel modello DB perché serve al Simulator, ma **non** compare nell'editor utente.
-- Wizard: `template_builder` system instruction non chiede più `custom_dictionary` / `pii_class` / `mutates` / `mock_target`. `template_validator` rimuove la regola domain_hint↔dictionary.
-- Test cancellati: `tests/test_pii_sanitizer.py`, `tests/test_pii_policy.py`.
+- **Wizard one-shot rimosso (sera 2026-05-17):** `agents/template_builder.py`, `agents/prompts/template_builder.md` e l'endpoint `POST /api/v1/templates/wizard` (senza `/chat`) sono stati cancellati. `TemplateWizardRequest` rimosso dagli schemas e dal frontend (`runWizard()` in `app/lib/api.ts`). Resta solo il wizard conversazionale `POST /api/v1/templates/wizard/chat` (`agents/wizard_chat.py`).
+- Test storicamente cancellati: `tests/test_pii_sanitizer.py`, `tests/test_pii_policy.py`. Nessun test esercitava l'endpoint one-shot, quindi niente da rimuovere lì.
 
-**Why:** ticket "simplify template model" — l'editor era diventato un wizard "PII + ASR + mock routing" mentre il valore di hackathon è la pipeline post-call + esecuzione tipata. Il piano si chiama `ticket-simplify-template-fuzzy-forest`.
+**Why:** ticket "simplify template model" + follow-up `ticket-remove-legacy-compressed-pie` — l'editor era diventato un wizard "PII + ASR + mock routing" mentre il valore di hackathon è la pipeline post-call + esecuzione tipata. Il flusso conversazionale è anche il pitch agentico (più Gemini interaction visibile al giudice). Piani originari: `ticket-simplify-template-fuzzy-forest` (mattino) + `ticket-remove-legacy-compressed-pie` (sera).
 
-**How to apply:** prima di rimettere un campo cancellato nel template Pydantic, leggere il ticket: il piano corretto è arricchire il catalog (o aggiungere uno step di policy esterno al template), non il template. Per nuovi campi di runtime safety (es. retry policy, rate limit), il posto è `ActionCatalogEntry`, non `ActionDefinition`.
+**How to apply:** prima di rimettere un campo cancellato nel template Pydantic, leggere il ticket: il piano corretto è arricchire il catalog (o aggiungere uno step di policy esterno al template), non il template. Per nuovi campi di runtime safety (es. retry policy, rate limit), il posto è `ActionCatalogEntry`, non `ActionDefinition`. Per cambiare il flusso wizard, lavorare in `agents/wizard_chat.py` (system instruction, slot model) e nel frontend `app/templates/wizard.tsx`; **non** ri-introdurre un endpoint one-shot stateless — la conversazione è feature.
 
 ### 9. Stato env in produzione (volatile, 2026-05-15)
 Sezione "what's live right now" — da rileggere prima di pushare grossi cambi al backend.

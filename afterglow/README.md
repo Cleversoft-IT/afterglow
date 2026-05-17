@@ -247,21 +247,24 @@ as a `Blob` and feeds the audio element an
 
 ### Prompt-to-template wizard
 
-`POST /api/v1/templates/wizard` runs a four-step loop:
+`POST /api/v1/templates/wizard/chat` (`agents/wizard_chat.py`) drives a
+**stateless multi-turn conversation**. The client owns the message
+history + running draft; each turn the server returns the next assistant
+message, updated `slots_filled`, a candidate `TemplateWizardResponse`
+and a `ValidationReport` (`agents/template_validator.py` runs
+deterministic checks — snake_case keys, depends_on cycles, JSONSchema
+validity, actions missing from the action catalog — plus a small Gemini
+semantic pass).
 
-1. **Generate** — `agents/template_builder.py` calls Gemini with
-   `response_schema=TemplateWizardResponse` (fail-fast on any error).
-2. **Validate** — `agents/template_validator.py` runs deterministic
-   checks (snake_case keys, depends_on cycles, JSONSchema validity,
-   actions missing from `MOCK_REGISTRY`) plus a small Gemini semantic
-   pass; the report is embedded as `response.validation`.
-3. **Refine** — the Expo screen at `app/templates/wizard.tsx` lets the
-   operator edit name / description / domain_hint inline and re-run
-   `POST /api/v1/templates/validate`.
-4. **Persist** — `POST /api/v1/templates` writes the draft with
-   `session_id=ctx.session_id` (demo) or `NULL` (prod); `version` is
-   auto-bumped per `(name, session_id)`. `set_active=true` switches the
-   active template in the same transaction.
+When `ready=true` the Expo screen `app/templates/wizard.tsx` lets the
+operator refine inline and re-trigger `POST /api/v1/templates/validate`
+if needed, then persist via `POST /api/v1/templates` (writes the draft
+with `session_id=ctx.session_id` for demo or `NULL` for prod;
+`version` is auto-bumped per `(name, session_id)`; `set_active=true`
+switches the active template in the same transaction).
+
+Fail-fast on missing key / Gemini error → HTTP 502. The legacy one-shot
+endpoint `POST /api/v1/templates/wizard` was removed on 2026-05-17.
 
 ### Known caveats
 

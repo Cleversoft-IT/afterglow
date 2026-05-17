@@ -1,8 +1,8 @@
 """Gemini ADK runner factory.
 
 Wraps `google.adk.runners.InMemoryRunner` with a per-agent factory so we can spin
-up specialized sub-agents (extraction, action_planner, memory_updater,
-template_builder) sharing one Gemini client + thought signatures.
+up specialized sub-agents (extraction, action_planner, memory_updater)
+sharing one Gemini client + thought signatures.
 
 Pattern derived from the lablab baseline (Stephen-Kimoi/gemini-multimodal-document-agent),
 adapted for Afterglow's multi-agent layout.

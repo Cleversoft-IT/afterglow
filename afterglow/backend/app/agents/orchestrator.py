@@ -687,8 +687,8 @@ async def _summarize_to_english(briefing: str) -> tuple[str, call_analyzer.Token
         config=genai_types.GenerateContentConfig(
             system_instruction=(
                 "Translate the following next-call briefing into one short "
-                "English sentence (max 30 words). Preserve any [redacted: …] "
-                "placeholders verbatim. Output the sentence only, no prefix."
+                "English sentence (max 30 words). Output the sentence only, "
+                "no prefix."
             ),
             temperature=0.1,
             max_output_tokens=120,

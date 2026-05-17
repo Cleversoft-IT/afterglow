@@ -18,8 +18,8 @@ Architecture choice (revised from the day-1 multi-agent pipeline):
 - The briefing is persisted on the customer row (UI-visible) and pushed as a
   new chunk into the Vector Store (semantic memory for future calls).
 
-If GOOGLE_API_KEY is missing the analyzer falls back to a heuristic stub so
-the demo still produces visible structured output offline.
+Fail-fast on missing key / Gemini error / schema mismatch — no heuristic
+fallback (see CLAUDE.md: "No deterministic stub / fallback").
 """
 from __future__ import annotations
 

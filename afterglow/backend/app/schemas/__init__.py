@@ -12,7 +12,6 @@ from app.schemas.customers import CustomerCard, CustomerProfileView
 from app.schemas.templates import (
     CreateTemplateRequest,
     TemplateView,
-    TemplateWizardRequest,
     TemplateWizardResponse,
     UpdateTemplateRequest,
     ValidateDraftRequest,
@@ -35,7 +34,6 @@ __all__ = [
     'CreateTemplateRequest',
     'FieldDefinitionLite',
     'TemplateView',
-    'TemplateWizardRequest',
     'TemplateWizardResponse',
     'UpdateTemplateRequest',
     'ValidateDraftRequest',

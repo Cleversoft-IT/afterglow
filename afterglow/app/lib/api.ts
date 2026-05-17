@@ -11,7 +11,6 @@ import type {
   CreateTemplateRequest,
   CustomerCard,
   TemplateView,
-  TemplateWizardRequest,
   TemplateWizardResponse,
   UpdateTemplateRequest,
   ValidationReport,
@@ -199,11 +198,6 @@ export const api = {
     request<TemplateView>('/api/v1/templates/active', {
       method: 'PUT',
       body: JSON.stringify({ template_id }),
-    }),
-  runWizard: (payload: TemplateWizardRequest) =>
-    request<TemplateWizardResponse>('/api/v1/templates/wizard', {
-      method: 'POST',
-      body: JSON.stringify(payload),
     }),
   runWizardChat: (payload: WizardChatRequest) =>
     request<WizardChatResponse>('/api/v1/templates/wizard/chat', {

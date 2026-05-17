@@ -1,10 +1,10 @@
 """Wizard chat — multi-turn slot-filling for the template builder.
 
-Replaces the one-shot textarea flow with a friendly conversation. The agent
-asks one focused question per turn ("What kind of business?", "What facts
-do you need to capture from each call?", ...), maintains a `slots_filled`
-dictionary, and emits a candidate `TemplateWizardResponse` only once the
-slots are complete enough.
+The single template-builder surface (the legacy one-shot textarea flow was
+removed on 2026-05-17). The agent asks one focused question per turn
+("What kind of business?", "What facts do you need to capture from each
+call?", ...), maintains a `slots_filled` dictionary, and emits a candidate
+`TemplateWizardResponse` only once the slots are complete enough.
 
 Stateless: the client owns the conversation history and the running draft.
 Each request carries `messages[]` (full history), `slots_filled` (server's

@@ -1,5 +1,5 @@
-"""Templates API — list/view, active template switching, prompt-to-template
-wizard with persistence + refine endpoints.
+"""Templates API — list/view, active template switching, conversational
+wizard chat, draft validation, persistence + refine endpoints.
 
 Session-aware:
 - production tenant (no `X-Demo-Session`) reads `Template.is_active`, writes
@@ -23,12 +23,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agents import (
     simulation_script,
-    template_builder,
     template_validator,
     wizard_chat,
 )
 from app.agents.simulation_script import ScriptBuilderError
-from app.agents.template_builder import TemplateBuilderError
 from app.agents.wizard_chat import WizardChatError
 from app.api.session_context import (
     SessionContext,
@@ -43,8 +41,6 @@ from app.integrations.speechmatics_tts import TtsError
 from app.schemas import (
     CreateTemplateRequest,
     TemplateView,
-    TemplateWizardRequest,
-    TemplateWizardResponse,
     UpdateTemplateRequest,
     ValidateDraftRequest,
     ValidationReport,
@@ -227,27 +223,6 @@ async def set_active_template(
     await session.commit()
     await session.refresh(target)
     return _project_active(target, target.id)
-
-
-@router.post("/wizard", response_model=TemplateWizardResponse)
-async def template_wizard(
-    payload: TemplateWizardRequest,
-    ctx: SessionContext = Depends(get_session_context),
-) -> TemplateWizardResponse:
-    """Run the prompt-to-template Generate step + an initial Validate pass.
-
-    The wizard does NOT persist anything; the refine UI calls POST /templates
-    when the operator is happy with the draft.
-    """
-    try:
-        draft = await template_builder.build_template(
-            payload.description, payload.language
-        )
-    except TemplateBuilderError as exc:
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
-
-    draft.validation = await template_validator.validate_template(draft)
-    return draft
 
 
 @router.post("/validate", response_model=ValidationReport)

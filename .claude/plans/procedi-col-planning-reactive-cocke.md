@@ -21,6 +21,15 @@
 > - Route Next.js (`/dialer/incoming/[callId]`, `/dashboard/calls`, ecc.) —
 >   non esistono. Le route attuali stanno in `afterglow/app/app/`
 >   (expo-router file-based).
+> - **PII / Privacy panel (2026-05-17):** sezioni come
+>   `/dashboard/settings/privacy`, "Privacy panel", e i marker
+>   `redacted input/output` su `audit_log` sono **out of scope** per
+>   l'hackathon. La PII runtime è stata rimossa il 2026-05-17 (vedi
+>   `project_template_simplified_2026_05_17.md` + `future-ideas.md` §4).
+> - **Wizard "Generate → Validate → Refine → Persist" four-step (2026-05-17):**
+>   sostituito dal wizard conversazionale `POST /api/v1/templates/wizard/chat`
+>   (`agents/wizard_chat.py`). Il vecchio `template_builder.py` + endpoint
+>   one-shot `POST /api/v1/templates/wizard` sono stati cancellati.
 >
 > Stato attuale → vedi `.claude/memory/project_afterglow_decisions.md`,
 > `afterglow/docs/ARCHITECTURE.md`, `afterglow/README.md`.

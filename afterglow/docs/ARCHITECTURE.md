@@ -500,21 +500,14 @@ ships with a working default until the admin chooses.
 
 ## PII handling
 
-PII classification and the post-call PII observer were removed from the
-runtime on 2026-05-17 — see
-`.claude/memory/project_template_simplified_2026_05_17.md`. The hackathon
-scope does not include a privacy gate; the template editor would have
-made it look like a feature in development, which the ticket explicitly
-calls out as misleading. `FieldDefinition` no longer carries `pii_class`
-or `sensitive`; `backend/app/agents/pii_sanitizer.py` and
-`backend/app/agents/pii_policy.py` were deleted along with their tests;
-the orchestrator no longer emits the `pii_policy_applied` audit step.
-Vector Store chunk metadata no longer carries `pii_classes_present`.
+PII/privacy classification is **out of scope for the hackathon demo** —
+`FieldDefinition` carries no privacy metadata and the post-call pipeline
+runs four steps (`call_analyzer` → `action_planner` → `action_executor`
+→ `_persist_memory`) with no sanitizer or redaction step. The original
+design and the rationale for removal live in `afterglow/docs/future-ideas.md` §4.
 
 `FieldDefinition.confidence_threshold` (per-field, 0.0–1.0) is kept and
-gates `depends_on` propagation in `orchestrator._coerce_extractions`. A
-proper privacy/retention story belongs to a future iteration (see
-`afterglow/docs/future-ideas.md`).
+gates `depends_on` propagation in `orchestrator._coerce_extractions`.
 
 ## Bilingual briefing
 
@@ -539,5 +532,5 @@ into `audit_log.input_tokens` / `audit_log.output_tokens`:
 - `memory_lookup.rag_semantic` — Vultr RAG's `usage.prompt_tokens` /
   `usage.completion_tokens` from the JSON response body.
 
-The wizard surface (`template_builder`, `template_validator`) is not in
-the post-call path and is not audited per token today.
+The wizard surface (`wizard_chat`, `template_validator`) is not in the
+post-call path and is not audited per token today.

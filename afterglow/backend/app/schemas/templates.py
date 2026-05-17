@@ -147,11 +147,6 @@ class TemplateView(BaseModel):
 # --- Wizard ---------------------------------------------------------------
 
 
-class TemplateWizardRequest(BaseModel):
-    description: str = Field(min_length=20)
-    language: str = "it"
-
-
 class ValidationIssue(BaseModel):
     field_path: str
     severity: Literal["error", "warning", "info"]
