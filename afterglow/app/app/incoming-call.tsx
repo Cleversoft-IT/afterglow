@@ -431,6 +431,7 @@ export default function IncomingCallScreen() {
               <FAB
                 icon="phone-hangup"
                 color="#FFFFFF"
+                customSize={64}
                 style={[styles.actionFab, { backgroundColor: callRed }]}
                 onPress={hangUp}
               />
@@ -442,6 +443,7 @@ export default function IncomingCallScreen() {
               <FAB
                 icon="creation"
                 color="#FFFFFF"
+                customSize={64}
                 style={[styles.actionFab, { backgroundColor: theme.colors.primary }]}
                 onPress={acceptAi}
               />
@@ -453,6 +455,7 @@ export default function IncomingCallScreen() {
               <FAB
                 icon="phone"
                 color="#FFFFFF"
+                customSize={64}
                 style={[styles.actionFab, { backgroundColor: callGreen }]}
                 onPress={acceptHuman}
               />
