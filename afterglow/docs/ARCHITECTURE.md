@@ -131,18 +131,30 @@ tracks lean pinkish off a blue seed, so on top of the generated scheme we:
   dark — and export an `AppTheme` type that extends `MD3Theme` with
   those four keys. Screens that show "success" / "completed" status
   (audit log avatars, call-detail status chip, customer-detail call
-  rows, the `Badge tone="success"` component) call
+  rows and template-editor chips) call
   `useTheme<AppTheme>()` and read `theme.colors.successContainer`
   instead of the generator's `tertiaryContainer` (which is pink in
   light and purple in dark — semantically wrong for success).
 
 `PaperProvider` is wired **inside** `RootLayoutInner` because the Paper
-theme depends on the `useTheme()` hook from our custom `ThemeContext`
-(the mode toggle in Settings flips Paper's light/dark scheme via the
-same hook). Two colors are hardcoded outside the generated palette and
-survive any brand-color change because they are phone-app semantics,
-not branding: `callGreen = '#26B31E'` (accept / in-call avatar) and
+theme depends on the resolved value from our lightweight
+`ThemeContext`. That context stores only the appearance preference
+(`auto | light | dark`) and its resolved mode; all visual colors,
+typography and component state now come from Paper's MD3 theme. The
+Settings screen flips Paper's light/dark scheme through that preference
+context. Two colors are hardcoded outside the generated palette and
+survive any brand-color change because they are phone-app semantics, not
+branding: `callGreen = '#26B31E'` (accept / in-call avatar) and
 `callRed = '#B3261E'` (decline / end).
+
+**Template editor.** `app/templates/[id].tsx` is fully on
+`react-native-paper` primitives. Cards, text fields, segmented buttons,
+menus, checkboxes, chips, icon buttons and ripple headers are Paper
+components wired to `AppTheme`; the old local UI wrappers
+(`Button`, `Card`, `Input`, `Textarea`, `Select`, `Checkbox`,
+`FormField`, `Badge`) and the pre-MD3 `app/lib/theme.ts` token file were
+removed. The only custom theme context left is the appearance preference
+provider described above.
 
 **Drawer theme propagation.** `@react-navigation/drawer` does not pick
 up the Paper theme on its own — it uses its own `DefaultTheme` (always

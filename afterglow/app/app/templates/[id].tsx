@@ -1,25 +1,24 @@
-import { Ionicons } from '@expo/vector-icons';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { ScrollView, StyleSheet, View } from 'react-native';
 import {
   ActivityIndicator,
-  Pressable,
-  ScrollView,
-  StyleSheet,
+  Button,
+  Card,
+  Checkbox,
+  Chip,
+  HelperText,
+  Icon,
+  IconButton,
+  Menu,
+  SegmentedButtons,
   Text,
-  View,
-} from 'react-native';
-import { Badge } from '../../components/Badge';
-import { Button } from '../../components/Button';
-import { Card } from '../../components/Card';
-import { Checkbox } from '../../components/Checkbox';
-import { FormField } from '../../components/FormField';
-import { Input } from '../../components/Input';
-import { Select } from '../../components/Select';
-import { Textarea } from '../../components/Textarea';
+  TextInput,
+  TouchableRipple,
+  useTheme,
+} from 'react-native-paper';
 import { api, ApiError } from '../../lib/api';
-import { useTheme } from '../../lib/ThemeContext';
-import { radius, spacing, type ColorPalette } from '../../lib/theme';
+import type { AppTheme } from '../../lib/paperTheme';
 import type {
   ActionCatalogEntry,
   ActionDefinition,
@@ -30,6 +29,15 @@ import type {
   PromptHintRule,
   TemplateView,
 } from '../../lib/types';
+
+const spacing = {
+  xs: 4,
+  sm: 8,
+  md: 12,
+  lg: 16,
+  xl: 24,
+  xxl: 32,
+} as const;
 
 const FIELD_TYPES = [
   { value: 'string', label: 'string' },
@@ -61,8 +69,10 @@ const EXECUTION_MODES: { value: ExecutionMode; label: string }[] = [
   { value: 'manual-only', label: 'manual-only' },
 ];
 
+type Option = { label: string; value: string };
+
 export default function TemplateDetailScreen() {
-  const { colors } = useTheme();
+  const theme = useTheme<AppTheme>();
   const styles = useTemplateDetailStyles();
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
@@ -150,7 +160,6 @@ export default function TemplateDetailScreen() {
     }
   };
 
-  // Clone seed → editable copy in the same session.
   const cloneAndEdit = async () => {
     if (!template) return;
     setCloning(true);
@@ -179,12 +188,14 @@ export default function TemplateDetailScreen() {
   const fieldKeys = useMemo(() => fields.map((f) => f.key).filter(Boolean), [fields]);
 
   if (loading) {
-    return <ActivityIndicator color={colors.brand} style={{ marginTop: spacing.xxl }} />;
+    return <ActivityIndicator color={theme.colors.primary} style={{ marginTop: spacing.xxl }} />;
   }
   if (!template) {
     return (
       <View style={styles.container}>
-        <Text style={styles.error}>{error ?? 'Not found'}</Text>
+        <Text variant="bodyMedium" style={{ color: theme.colors.error }}>
+          {error ?? 'Not found'}
+        </Text>
       </View>
     );
   }
@@ -195,188 +206,229 @@ export default function TemplateDetailScreen() {
     <ScrollView contentContainerStyle={styles.container}>
       <Stack.Screen options={{ title: template.name }} />
 
-      <Card>
-        <View style={styles.headerRow}>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.title}>{template.name}</Text>
-            <Text style={styles.meta}>
-              v{template.version} · {template.is_seed ? 'seed (read-only)' : 'custom'}
-            </Text>
-          </View>
-          {template.is_active ? (
-            <Badge tone="brand">Active</Badge>
-          ) : (
-            <Button title="Activate" variant="secondary" onPress={activate} loading={activating} />
-          )}
-        </View>
-
-        {readOnly ? (
-          <View style={styles.cloneRow}>
-            <Text style={styles.readOnlyNote}>
-              Seed templates are read-only. Make a custom copy to edit fields and actions.
-            </Text>
-            <Button
-              title="Customize copy"
-              variant="secondary"
-              onPress={cloneAndEdit}
-              loading={cloning}
-            />
-          </View>
-        ) : null}
-
-        <FormField label="Description">
-          <Textarea value={description} onChangeText={setDescription} editable={!readOnly} />
-        </FormField>
-        <FormField label="Domain hint">
-          <Input value={domainHint} onChangeText={setDomainHint} editable={!readOnly} />
-        </FormField>
-        <FormField
-          label="Custom dictionary"
-          hint="Comma-separated terms the ASR engine should recognize."
-        >
-          <Textarea value={dictionary} onChangeText={setDictionary} editable={!readOnly} />
-        </FormField>
-      </Card>
-
-      <Card>
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Fields ({fields.length})</Text>
-          {!readOnly ? (
-            <Pressable
-              onPress={() =>
-                setFields([
-                  ...fields,
-                  {
-                    key: `field_${fields.length + 1}`,
-                    label: 'New field',
-                    type: 'string',
-                    pii_class: 'none',
-                    extractor_hint: 'freeform',
-                    required: false,
-                    sensitive: false,
-                    options: [],
-                    depends_on: [],
-                  },
-                ])
-              }
-              style={styles.addBtn}
-            >
-              <Ionicons name="add" size={16} color={colors.brand} />
-              <Text style={styles.addBtnText}>Add field</Text>
-            </Pressable>
-          ) : null}
-        </View>
-        {fields.map((f, idx) => (
-          <FieldEditor
-            key={`f-${idx}`}
-            field={f}
-            otherKeys={fieldKeys.filter((k) => k !== f.key)}
-            readOnly={readOnly}
-            onChange={(next) =>
-              setFields(fields.map((curr, i) => (i === idx ? next : curr)))
-            }
-            onRemove={() => setFields(fields.filter((_, i) => i !== idx))}
-          />
-        ))}
-      </Card>
-
-      <Card>
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Actions ({actions.length})</Text>
-          {!readOnly ? (
-            <Pressable
-              onPress={() =>
-                setActions([
-                  ...actions,
-                  {
-                    key: catalog[0]?.key ?? 'booking.create',
-                    label: catalog[0]?.label ?? 'New action',
-                    execution_mode: 'auto',
-                    mock_target: catalog[0]?.mock_target ?? 'booking',
-                    preconditions: [],
-                    confidence_threshold: 0.7,
-                    mutates: false,
-                    evidence_required: true,
-                  },
-                ])
-              }
-              style={styles.addBtn}
-            >
-              <Ionicons name="add" size={16} color={colors.brand} />
-              <Text style={styles.addBtnText}>Add action</Text>
-            </Pressable>
-          ) : null}
-        </View>
-        {actions.map((a, idx) => (
-          <ActionEditor
-            key={`a-${idx}`}
-            action={a}
-            fieldKeys={fieldKeys}
-            catalog={catalog}
-            readOnly={readOnly}
-            onChange={(next) =>
-              setActions(actions.map((curr, i) => (i === idx ? next : curr)))
-            }
-            onRemove={() => setActions(actions.filter((_, i) => i !== idx))}
-          />
-        ))}
-      </Card>
-
-      <Card>
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Prompt rules ({promptHints.length})</Text>
-          {!readOnly ? (
-            <Pressable
-              onPress={() => setPromptHints([...promptHints, { when: 'always', then: '' }])}
-              style={styles.addBtn}
-            >
-              <Ionicons name="add" size={16} color={colors.brand} />
-              <Text style={styles.addBtnText}>Add rule</Text>
-            </Pressable>
-          ) : null}
-        </View>
-        {promptHints.map((h, idx) => (
-          <View key={`h-${idx}`} style={styles.itemRow}>
-            <View style={{ flex: 1, gap: spacing.xs }}>
-              <FormField label="when">
-                <Input
-                  value={h.when}
-                  onChangeText={(v) =>
-                    setPromptHints(
-                      promptHints.map((curr, i) => (i === idx ? { ...curr, when: v } : curr)),
-                    )
-                  }
-                  editable={!readOnly}
-                />
-              </FormField>
-              <FormField label="then">
-                <Textarea
-                  value={h.then}
-                  onChangeText={(v) =>
-                    setPromptHints(
-                      promptHints.map((curr, i) => (i === idx ? { ...curr, then: v } : curr)),
-                    )
-                  }
-                  editable={!readOnly}
-                />
-              </FormField>
+      <Card mode="elevated">
+        <Card.Content style={styles.cardContent}>
+          <View style={styles.headerRow}>
+            <View style={styles.headerTitle}>
+              <Text variant="titleMedium">{template.name}</Text>
+              <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
+                v{template.version} - {template.is_seed ? 'seed (read-only)' : 'custom'}
+              </Text>
             </View>
+            {template.is_active ? (
+              <Chip compact mode="flat" style={{ backgroundColor: theme.colors.primaryContainer }}>
+                Active
+              </Chip>
+            ) : (
+              <Button mode="outlined" onPress={activate} loading={activating}>
+                Activate
+              </Button>
+            )}
+          </View>
+
+          {readOnly ? (
+            <View style={styles.cloneRow}>
+              <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
+                Seed templates are read-only. Make a custom copy to edit fields and actions.
+              </Text>
+              <Button mode="outlined" onPress={cloneAndEdit} loading={cloning}>
+                Customize copy
+              </Button>
+            </View>
+          ) : null}
+
+          <FormField label="Description">
+            <TextInput
+              mode="outlined"
+              value={description}
+              onChangeText={setDescription}
+              editable={!readOnly}
+              multiline
+              numberOfLines={4}
+            />
+          </FormField>
+          <FormField label="Domain hint">
+            <TextInput
+              mode="outlined"
+              value={domainHint}
+              onChangeText={setDomainHint}
+              editable={!readOnly}
+            />
+          </FormField>
+          <FormField
+            label="Custom dictionary"
+            hint="Comma-separated terms the ASR engine should recognize."
+          >
+            <TextInput
+              mode="outlined"
+              value={dictionary}
+              onChangeText={setDictionary}
+              editable={!readOnly}
+              multiline
+              numberOfLines={4}
+            />
+          </FormField>
+        </Card.Content>
+      </Card>
+
+      <Card mode="elevated">
+        <Card.Content style={styles.cardContent}>
+          <View style={styles.sectionHeader}>
+            <Text variant="titleSmall">Fields ({fields.length})</Text>
             {!readOnly ? (
-              <Pressable
-                onPress={() => setPromptHints(promptHints.filter((_, i) => i !== idx))}
+              <Button
+                mode="text"
+                icon="plus"
+                compact
+                onPress={() =>
+                  setFields([
+                    ...fields,
+                    {
+                      key: `field_${fields.length + 1}`,
+                      label: 'New field',
+                      type: 'string',
+                      pii_class: 'none',
+                      extractor_hint: 'freeform',
+                      required: false,
+                      sensitive: false,
+                      options: [],
+                      depends_on: [],
+                    },
+                  ])
+                }
               >
-                <Ionicons name="trash-outline" size={18} color={colors.danger} />
-              </Pressable>
+                Add field
+              </Button>
             ) : null}
           </View>
-        ))}
+          {fields.map((f, idx) => (
+            <FieldEditor
+              key={`f-${idx}`}
+              field={f}
+              otherKeys={fieldKeys.filter((k) => k !== f.key)}
+              readOnly={readOnly}
+              onChange={(next) =>
+                setFields(fields.map((curr, i) => (i === idx ? next : curr)))
+              }
+              onRemove={() => setFields(fields.filter((_, i) => i !== idx))}
+            />
+          ))}
+        </Card.Content>
       </Card>
 
-      {error ? <Text style={styles.error}>{error}</Text> : null}
+      <Card mode="elevated">
+        <Card.Content style={styles.cardContent}>
+          <View style={styles.sectionHeader}>
+            <Text variant="titleSmall">Actions ({actions.length})</Text>
+            {!readOnly ? (
+              <Button
+                mode="text"
+                icon="plus"
+                compact
+                onPress={() =>
+                  setActions([
+                    ...actions,
+                    {
+                      key: catalog[0]?.key ?? 'booking.create',
+                      label: catalog[0]?.label ?? 'New action',
+                      execution_mode: 'auto',
+                      mock_target: catalog[0]?.mock_target ?? 'booking',
+                      preconditions: [],
+                      confidence_threshold: 0.7,
+                      mutates: false,
+                      evidence_required: true,
+                    },
+                  ])
+                }
+              >
+                Add action
+              </Button>
+            ) : null}
+          </View>
+          {actions.map((a, idx) => (
+            <ActionEditor
+              key={`a-${idx}`}
+              action={a}
+              fieldKeys={fieldKeys}
+              catalog={catalog}
+              readOnly={readOnly}
+              onChange={(next) =>
+                setActions(actions.map((curr, i) => (i === idx ? next : curr)))
+              }
+              onRemove={() => setActions(actions.filter((_, i) => i !== idx))}
+            />
+          ))}
+        </Card.Content>
+      </Card>
+
+      <Card mode="elevated">
+        <Card.Content style={styles.cardContent}>
+          <View style={styles.sectionHeader}>
+            <Text variant="titleSmall">Prompt rules ({promptHints.length})</Text>
+            {!readOnly ? (
+              <Button
+                mode="text"
+                icon="plus"
+                compact
+                onPress={() => setPromptHints([...promptHints, { when: 'always', then: '' }])}
+              >
+                Add rule
+              </Button>
+            ) : null}
+          </View>
+          {promptHints.map((h, idx) => (
+            <View key={`h-${idx}`} style={styles.itemRow}>
+              <View style={styles.itemContent}>
+                <FormField label="when">
+                  <TextInput
+                    mode="outlined"
+                    value={h.when}
+                    onChangeText={(v) =>
+                      setPromptHints(
+                        promptHints.map((curr, i) => (i === idx ? { ...curr, when: v } : curr)),
+                      )
+                    }
+                    editable={!readOnly}
+                  />
+                </FormField>
+                <FormField label="then">
+                  <TextInput
+                    mode="outlined"
+                    value={h.then}
+                    onChangeText={(v) =>
+                      setPromptHints(
+                        promptHints.map((curr, i) => (i === idx ? { ...curr, then: v } : curr)),
+                      )
+                    }
+                    editable={!readOnly}
+                    multiline
+                    numberOfLines={4}
+                  />
+                </FormField>
+              </View>
+              {!readOnly ? (
+                <IconButton
+                  icon="trash-can-outline"
+                  iconColor={theme.colors.error}
+                  onPress={() => setPromptHints(promptHints.filter((_, i) => i !== idx))}
+                />
+              ) : null}
+            </View>
+          ))}
+        </Card.Content>
+      </Card>
+
+      {error ? (
+        <Text variant="bodySmall" style={{ color: theme.colors.error }}>
+          {error}
+        </Text>
+      ) : null}
 
       {!readOnly ? (
         <View style={styles.footer}>
-          <Button title="Save changes" onPress={save} loading={saving} />
+          <Button mode="contained" onPress={save} loading={saving}>
+            Save changes
+          </Button>
         </View>
       ) : null}
     </ScrollView>
@@ -396,44 +448,41 @@ function FieldEditor({
   onChange: (next: FieldDefinition) => void;
   onRemove: () => void;
 }) {
-  const { colors } = useTheme();
+  const theme = useTheme<AppTheme>();
   const styles = useTemplateDetailStyles();
   const [expanded, setExpanded] = useState(false);
+
   return (
     <View style={styles.editorRow}>
-      <Pressable
-        style={styles.editorHeader}
+      <EditorHeader
+        expanded={expanded}
+        title={field.label || field.key}
+        meta={`${field.key} - ${field.type} - pii=${field.pii_class ?? 'none'}`}
         onPress={() => setExpanded(!expanded)}
-      >
-        <Ionicons
-          name={expanded ? 'chevron-down' : 'chevron-forward'}
-          size={16}
-          color={colors.textMuted}
-        />
-        <View style={{ flex: 1 }}>
-          <Text style={styles.itemName}>{field.label || field.key}</Text>
-          <Text style={styles.itemMeta}>
-            {field.key} · {field.type} · pii={field.pii_class ?? 'none'}
-          </Text>
-        </View>
-        {!readOnly ? (
-          <Pressable onPress={onRemove} hitSlop={8}>
-            <Ionicons name="trash-outline" size={18} color={colors.danger} />
-          </Pressable>
-        ) : null}
-      </Pressable>
+        trailing={
+          !readOnly ? (
+            <IconButton
+              icon="trash-can-outline"
+              iconColor={theme.colors.error}
+              onPress={onRemove}
+            />
+          ) : null
+        }
+      />
 
       {expanded ? (
         <View style={styles.editorBody}>
           <FormField label="Label (what the operator sees)">
-            <Input
+            <TextInput
+              mode="outlined"
               value={field.label}
               onChangeText={(v) => onChange({ ...field, label: v })}
               editable={!readOnly}
             />
           </FormField>
           <FormField label="Key (machine name, snake_case)">
-            <Input
+            <TextInput
+              mode="outlined"
               value={field.key}
               onChangeText={(v) => onChange({ ...field, key: v })}
               editable={!readOnly}
@@ -441,39 +490,47 @@ function FieldEditor({
             />
           </FormField>
           <FormField label="Type">
-            <Select
+            <SelectField
               value={field.type}
               options={FIELD_TYPES}
+              disabled={readOnly}
               onChange={(v) => onChange({ ...field, type: v })}
             />
           </FormField>
           <FormField label="PII class">
-            <Select
+            <SelectField
               value={field.pii_class ?? 'none'}
               options={PII_CLASSES.map((p) => ({ value: p.value, label: p.label }))}
+              disabled={readOnly}
               onChange={(v) => onChange({ ...field, pii_class: v as PiiClass })}
             />
           </FormField>
           <FormField label="Extractor hint">
-            <Select
+            <SelectField
               value={field.extractor_hint ?? 'freeform'}
               options={EXTRACTOR_HINTS.map((p) => ({ value: p.value, label: p.label }))}
+              disabled={readOnly}
               onChange={(v) => onChange({ ...field, extractor_hint: v as ExtractorHint })}
             />
           </FormField>
-          <Checkbox
-            value={!!field.required}
-            onChange={(v) => onChange({ ...field, required: v })}
+          <Checkbox.Item
             label="Required"
+            status={field.required ? 'checked' : 'unchecked'}
+            onPress={() => onChange({ ...field, required: !field.required })}
+            disabled={readOnly}
+            position="leading"
           />
-          <Checkbox
-            value={!!field.sensitive}
-            onChange={(v) => onChange({ ...field, sensitive: v })}
+          <Checkbox.Item
             label="Sensitive (flag in audit)"
+            status={field.sensitive ? 'checked' : 'unchecked'}
+            onPress={() => onChange({ ...field, sensitive: !field.sensitive })}
+            disabled={readOnly}
+            position="leading"
           />
           {field.type === 'enum' ? (
             <FormField label="Enum options (comma-separated)">
-              <Input
+              <TextInput
+                mode="outlined"
                 value={(field.options ?? []).join(', ')}
                 onChangeText={(v) =>
                   onChange({
@@ -486,7 +543,8 @@ function FieldEditor({
             </FormField>
           ) : null}
           <FormField label="Depends on (comma-separated field keys)">
-            <Input
+            <TextInput
+              mode="outlined"
               value={(field.depends_on ?? []).join(', ')}
               onChangeText={(v) =>
                 onChange({
@@ -498,8 +556,9 @@ function FieldEditor({
               autoCapitalize="none"
             />
           </FormField>
-          <FormField label="Confidence threshold (0.0–1.0, optional)">
-            <Input
+          <FormField label="Confidence threshold (0.0-1.0, optional)">
+            <TextInput
+              mode="outlined"
               value={
                 field.confidence_threshold != null ? String(field.confidence_threshold) : ''
               }
@@ -537,7 +596,7 @@ function ActionEditor({
   onChange: (next: ActionDefinition) => void;
   onRemove: () => void;
 }) {
-  const { colors } = useTheme();
+  const theme = useTheme<AppTheme>();
   const styles = useTemplateDetailStyles();
   const [expanded, setExpanded] = useState(false);
   const catalogEntry = catalog.find((c) => c.key === action.key);
@@ -545,35 +604,41 @@ function ActionEditor({
 
   return (
     <View style={styles.editorRow}>
-      <Pressable style={styles.editorHeader} onPress={() => setExpanded(!expanded)}>
-        <Ionicons
-          name={expanded ? 'chevron-down' : 'chevron-forward'}
-          size={16}
-          color={colors.textMuted}
-        />
-        <View style={{ flex: 1 }}>
-          <Text style={styles.itemName}>{action.label || action.key}</Text>
-          <Text style={styles.itemMeta}>
-            {action.key} · {action.execution_mode}
-            {' · '}
-            {integrationBadge === 'internal_real' ? 'internal' : integrationBadge === 'mock_external' ? 'mock' : '?'}
-          </Text>
-        </View>
-        {action.mutates ? <Badge tone="warning">Changes records</Badge> : null}
-        {action.evidence_required ? <Badge>Needs transcript proof</Badge> : null}
-        {!readOnly ? (
-          <Pressable onPress={onRemove} hitSlop={8}>
-            <Ionicons name="trash-outline" size={18} color={colors.danger} />
-          </Pressable>
-        ) : null}
-      </Pressable>
+      <EditorHeader
+        expanded={expanded}
+        title={action.label || action.key}
+        meta={`${action.key} - ${action.execution_mode} - ${
+          integrationBadge === 'internal_real'
+            ? 'internal'
+            : integrationBadge === 'mock_external'
+              ? 'mock'
+              : '?'
+        }`}
+        onPress={() => setExpanded(!expanded)}
+        badges={
+          <View style={styles.badgeRow}>
+            {action.mutates ? <Chip compact>Changes records</Chip> : null}
+            {action.evidence_required ? <Chip compact>Needs transcript proof</Chip> : null}
+          </View>
+        }
+        trailing={
+          !readOnly ? (
+            <IconButton
+              icon="trash-can-outline"
+              iconColor={theme.colors.error}
+              onPress={onRemove}
+            />
+          ) : null
+        }
+      />
 
       {expanded ? (
         <View style={styles.editorBody}>
           <FormField label="Action key (from catalog)">
-            <Select
+            <SelectField
               value={action.key}
               options={catalog.map((c) => ({ value: c.key, label: c.key }))}
+              disabled={readOnly}
               onChange={(v) => {
                 const next = catalog.find((c) => c.key === v);
                 onChange({
@@ -586,28 +651,33 @@ function ActionEditor({
             />
           </FormField>
           {catalogEntry ? (
-            <Text style={styles.itemMeta}>{catalogEntry.description}</Text>
+            <Text variant="bodySmall" style={styles.metaText}>
+              {catalogEntry.description}
+            </Text>
           ) : (
-            <Text style={[styles.itemMeta, { color: colors.danger }]}>
-              ⚠ Unknown action key — pick one from the catalog or the executor will refuse it.
+            <Text variant="bodySmall" style={{ color: theme.colors.error }}>
+              Unknown action key. Pick one from the catalog or the executor will refuse it.
             </Text>
           )}
           <FormField label="Label (operator-facing)">
-            <Input
+            <TextInput
+              mode="outlined"
               value={action.label}
               onChangeText={(v) => onChange({ ...action, label: v })}
               editable={!readOnly}
             />
           </FormField>
           <FormField label="Execution mode">
-            <Select
+            <SelectField
               value={action.execution_mode}
               options={EXECUTION_MODES.map((m) => ({ value: m.value, label: m.label }))}
+              disabled={readOnly}
               onChange={(v) => onChange({ ...action, execution_mode: v as ExecutionMode })}
             />
           </FormField>
           <FormField label="Preconditions (comma-separated field keys)">
-            <Input
+            <TextInput
+              mode="outlined"
               value={(action.preconditions ?? []).join(', ')}
               onChangeText={(v) =>
                 onChange({
@@ -619,13 +689,14 @@ function ActionEditor({
               autoCapitalize="none"
             />
             {action.preconditions && action.preconditions.length > 0 && fieldKeys.length > 0 ? (
-              <Text style={styles.hint}>
+              <Text variant="bodySmall" style={styles.metaText}>
                 Available field keys: {fieldKeys.join(', ')}
               </Text>
             ) : null}
           </FormField>
-          <FormField label="Confidence threshold (0.0–1.0)">
-            <Input
+          <FormField label="Confidence threshold (0.0-1.0)">
+            <TextInput
+              mode="outlined"
               value={String(action.confidence_threshold ?? 0.7)}
               onChangeText={(v) => {
                 const parsed = Number(v);
@@ -639,21 +710,26 @@ function ActionEditor({
               keyboardType="decimal-pad"
             />
           </FormField>
-          <Checkbox
-            value={!!action.mutates}
-            onChange={(v) => onChange({ ...action, mutates: v })}
+          <Checkbox.Item
             label="Changes records (irreversible side effect)"
+            status={action.mutates ? 'checked' : 'unchecked'}
+            onPress={() => onChange({ ...action, mutates: !action.mutates })}
+            disabled={readOnly}
+            position="leading"
           />
-          <Checkbox
-            value={!!action.evidence_required}
-            onChange={(v) => onChange({ ...action, evidence_required: v })}
+          <Checkbox.Item
             label="Needs transcript proof"
+            status={action.evidence_required ? 'checked' : 'unchecked'}
+            onPress={() => onChange({ ...action, evidence_required: !action.evidence_required })}
+            disabled={readOnly}
+            position="leading"
           />
           <FormField
             label="Payload schema (JSONSchema, optional)"
             hint="Use { } for type:object schemas. Invalid JSON shows as a warning at save time."
           >
-            <Textarea
+            <TextInput
+              mode="outlined"
               value={
                 action.payload_schema
                   ? JSON.stringify(action.payload_schema, null, 2)
@@ -668,12 +744,11 @@ function ActionEditor({
                   const parsed = JSON.parse(v);
                   onChange({ ...action, payload_schema: parsed });
                 } catch {
-                  // Defer parsing errors to backend validate; keep the
-                  // raw text so the user can keep typing.
                   onChange({ ...action, payload_schema: action.payload_schema });
                 }
               }}
               editable={!readOnly}
+              multiline
               numberOfLines={6}
             />
           </FormField>
@@ -683,63 +758,197 @@ function ActionEditor({
   );
 }
 
-function useTemplateDetailStyles() {
-  const { colors } = useTheme();
-  return useMemo(() => createTemplateDetailStyles(colors), [colors]);
+function FormField({
+  label,
+  hint,
+  error,
+  children,
+}: {
+  label: string;
+  hint?: string;
+  error?: string | null;
+  children: ReactNode;
+}) {
+  return (
+    <View style={fieldStyles.wrap}>
+      <Text variant="labelLarge">{label}</Text>
+      {children}
+      {error ? (
+        <HelperText type="error" visible>
+          {error}
+        </HelperText>
+      ) : hint ? (
+        <HelperText type="info" visible>
+          {hint}
+        </HelperText>
+      ) : null}
+    </View>
+  );
 }
 
-function createTemplateDetailStyles(colors: ColorPalette) {
+function SelectField({
+  value,
+  options,
+  disabled,
+  onChange,
+}: {
+  value: string | null | undefined;
+  options: Option[];
+  disabled?: boolean;
+  onChange: (next: string) => void;
+}) {
+  if (options.length > 0 && options.length <= 4) {
+    return (
+      <SegmentedButtons
+        value={value ?? ''}
+        onValueChange={onChange}
+        buttons={options.map((o) => ({ value: o.value, label: o.label, disabled }))}
+      />
+    );
+  }
+
+  return <MenuSelect value={value} options={options} disabled={disabled} onChange={onChange} />;
+}
+
+function MenuSelect({
+  value,
+  options,
+  disabled,
+  onChange,
+}: {
+  value: string | null | undefined;
+  options: Option[];
+  disabled?: boolean;
+  onChange: (next: string) => void;
+}) {
+  const [visible, setVisible] = useState(false);
+  const current = options.find((o) => o.value === value);
+  return (
+    <View style={fieldStyles.menuWrap}>
+      <Menu
+        visible={visible}
+        onDismiss={() => setVisible(false)}
+        anchor={
+          <Button
+            mode="outlined"
+            icon="chevron-down"
+            disabled={disabled || options.length === 0}
+            onPress={() => setVisible(true)}
+          >
+            {current?.label ?? 'Select'}
+          </Button>
+        }
+      >
+        {options.map((opt) => (
+          <Menu.Item
+            key={opt.value}
+            onPress={() => {
+              onChange(opt.value);
+              setVisible(false);
+            }}
+            title={opt.label}
+          />
+        ))}
+      </Menu>
+    </View>
+  );
+}
+
+function EditorHeader({
+  expanded,
+  title,
+  meta,
+  badges,
+  trailing,
+  onPress,
+}: {
+  expanded: boolean;
+  title: string;
+  meta: string;
+  badges?: ReactNode;
+  trailing?: ReactNode;
+  onPress: () => void;
+}) {
+  const theme = useTheme<AppTheme>();
+  const styles = useTemplateDetailStyles();
+  return (
+    <TouchableRipple onPress={onPress} borderless>
+      <View style={styles.editorHeader}>
+        <Icon
+          source={expanded ? 'chevron-down' : 'chevron-right'}
+          size={20}
+          color={theme.colors.onSurfaceVariant}
+        />
+        <View style={styles.itemContent}>
+          <Text variant="bodyMedium" numberOfLines={1}>
+            {title}
+          </Text>
+          <Text variant="bodySmall" numberOfLines={1} style={styles.metaText}>
+            {meta}
+          </Text>
+        </View>
+        {badges}
+        {trailing}
+      </View>
+    </TouchableRipple>
+  );
+}
+
+function useTemplateDetailStyles() {
+  const theme = useTheme<AppTheme>();
+  return useMemo(() => createTemplateDetailStyles(theme), [theme]);
+}
+
+function createTemplateDetailStyles(theme: AppTheme) {
   return StyleSheet.create({
-    container: { padding: spacing.lg, gap: spacing.md },
-    headerRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, marginBottom: spacing.md },
-    title: { color: colors.text, fontSize: 18, fontWeight: '600' },
-    meta: { color: colors.textMuted, fontSize: 12, marginTop: 2 },
-    cloneRow: { gap: spacing.sm, marginBottom: spacing.md },
-    readOnlyNote: { color: colors.textMuted, fontStyle: 'italic', fontSize: 13 },
-    error: { color: colors.danger, marginTop: spacing.sm, fontSize: 13 },
+    container: {
+      padding: spacing.lg,
+      gap: spacing.md,
+      backgroundColor: theme.colors.background,
+    },
+    cardContent: { gap: spacing.md },
+    headerRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+    headerTitle: { flex: 1, gap: 2 },
+    cloneRow: { gap: spacing.sm },
     sectionHeader: {
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'space-between',
-      marginBottom: spacing.sm,
+      gap: spacing.md,
     },
-    sectionTitle: { color: colors.text, fontWeight: '600', fontSize: 15 },
-    addBtn: {
+    editorRow: {
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: theme.colors.outlineVariant,
+      paddingTop: spacing.sm,
+    },
+    editorHeader: {
+      minHeight: 48,
       flexDirection: 'row',
       alignItems: 'center',
-      gap: 4,
-      paddingHorizontal: spacing.sm + 2,
-      paddingVertical: 5,
-      borderRadius: radius.pill,
-      backgroundColor: colors.infoBg,
-      borderWidth: StyleSheet.hairlineWidth,
-      borderColor: colors.infoBorder,
+      gap: spacing.sm,
+      paddingVertical: spacing.xs,
     },
-    addBtnText: { color: colors.text, fontSize: 12, fontWeight: '500' },
-    editorRow: {
-      borderTopWidth: 1,
-      borderTopColor: colors.border,
-      paddingTop: spacing.sm,
-      paddingBottom: spacing.sm,
-    },
-    editorHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
     editorBody: {
       paddingTop: spacing.sm,
-      paddingLeft: spacing.lg,
+      paddingLeft: spacing.xl,
       gap: spacing.sm,
     },
-    itemName: { color: colors.text, fontSize: 14, fontWeight: '600' },
-    itemMeta: { color: colors.textSubtle, fontSize: 11, marginTop: 2, fontFamily: 'monospace' },
-    hint: { color: colors.textSubtle, fontSize: 11, marginTop: 4 },
     itemRow: {
       flexDirection: 'row',
       gap: spacing.sm,
       alignItems: 'flex-start',
-      marginBottom: spacing.sm,
-      paddingBottom: spacing.sm,
-      borderBottomWidth: 1,
-      borderBottomColor: colors.border,
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: theme.colors.outlineVariant,
+      paddingTop: spacing.sm,
     },
+    itemContent: { flex: 1, gap: spacing.xs },
+    metaText: { color: theme.colors.onSurfaceVariant },
+    badgeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs, justifyContent: 'flex-end' },
     footer: { paddingTop: spacing.md, paddingBottom: spacing.xl },
   });
 }
+
+const fieldStyles = StyleSheet.create({
+  wrap: { gap: spacing.xs },
+  menuWrap: { alignSelf: 'flex-start' },
+});

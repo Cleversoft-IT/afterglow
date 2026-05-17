@@ -8,7 +8,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { PaperProvider } from 'react-native-paper';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { LocaleProvider } from '../lib/LocaleContext';
-import { ThemeProvider, useTheme } from '../lib/ThemeContext';
+import { ThemeProvider, useThemePreference } from '../lib/ThemeContext';
 import { api, isDemoMode } from '../lib/api';
 import { markFreshSession } from '../lib/freshSession';
 import { paperDarkTheme, paperLightTheme, type AppTheme } from '../lib/paperTheme';
@@ -43,7 +43,7 @@ export default function RootLayout() {
 }
 
 function RootLayoutInner() {
-  const { isDark } = useTheme();
+  const { isDark } = useThemePreference();
   const paperTheme: AppTheme = isDark ? paperDarkTheme : paperLightTheme;
   const [fontsLoaded] = useFonts(Ionicons.font);
   const [gateChecked, setGateChecked] = useState(!isDemoMode());

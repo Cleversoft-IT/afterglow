@@ -1,4 +1,4 @@
-import type { ThemePreference } from './theme';
+import type { ThemePreference } from './themePreference';
 
 const STORAGE_KEY = 'afterglow.theme_mode';
 

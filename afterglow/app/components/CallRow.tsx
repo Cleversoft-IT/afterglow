@@ -6,12 +6,12 @@ import { formatBookingSlot, formatRelativeTime } from '../lib/dateFormat';
 import { useLocale } from '../lib/LocaleContext';
 import type { BookingListItem, CallListItem } from '../lib/types';
 
-type FilterKey = 'all' | 'missed' | 'bookings' | 'saved' | 'unsaved';
+export type CallFilterKey = 'all' | 'missed' | 'bookings' | 'clients' | 'saved' | 'unsaved';
 
 type Props = {
   call: CallListItem;
   booking?: BookingListItem;
-  mode: FilterKey;
+  mode: CallFilterKey;
   onPress: () => void;
 };
 

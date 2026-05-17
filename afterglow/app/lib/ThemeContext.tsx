@@ -1,20 +1,11 @@
 import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react';
 import { useColorScheme } from 'react-native';
-import {
-  getColors,
-  getShadows,
-  type ColorPalette,
-  type ShadowPalette,
-  type ThemeMode,
-  type ThemePreference,
-} from './theme';
+import type { ThemeMode, ThemePreference } from './themePreference';
 import { readInitialThemePreference, writeStoredThemePreference } from './themeStorage';
 
 type ThemeContextValue = {
   mode: ThemePreference;          // user-facing preference (auto/light/dark)
   resolvedMode: ThemeMode;        // concrete mode actually rendered (light/dark)
-  colors: ColorPalette;
-  shadows: ShadowPalette;
   setMode: (mode: ThemePreference) => void;
   isDark: boolean;
 };
@@ -34,28 +25,23 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     writeStoredThemePreference(next);
   }, []);
 
-  const colors = useMemo(() => getColors(resolvedMode), [resolvedMode]);
-  const shadows = useMemo(() => getShadows(resolvedMode), [resolvedMode]);
-
   const value = useMemo(
     () => ({
       mode,
       resolvedMode,
-      colors,
-      shadows,
       setMode,
       isDark: resolvedMode === 'dark',
     }),
-    [mode, resolvedMode, colors, shadows, setMode],
+    [mode, resolvedMode, setMode],
   );
 
   return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;
 }
 
-export function useTheme(): ThemeContextValue {
+export function useThemePreference(): ThemeContextValue {
   const ctx = useContext(ThemeContext);
   if (!ctx) {
-    throw new Error('useTheme must be used within ThemeProvider');
+    throw new Error('useThemePreference must be used within ThemeProvider');
   }
   return ctx;
 }

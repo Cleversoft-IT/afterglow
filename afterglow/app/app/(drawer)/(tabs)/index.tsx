@@ -17,7 +17,7 @@ import {
   Text,
   useTheme,
 } from 'react-native-paper';
-import { CallRow } from '../../../components/CallRow';
+import { CallRow, type CallFilterKey } from '../../../components/CallRow';
 import { api, ApiError } from '../../../lib/api';
 import { findMockContact } from '../../../lib/mockContacts';
 import { resolveFromCallItem } from '../../../lib/callerResolver';
@@ -33,9 +33,7 @@ import type { BookingListItem, CallListItem } from '../../../lib/types';
 const NON_TERMINAL_STATUSES = new Set(['pending', 'transcribing', 'analyzing']);
 const POLL_INTERVAL_MS = 2000;
 
-type FilterKey = 'all' | 'missed' | 'bookings' | 'clients' | 'saved' | 'unsaved';
-
-const FILTER_LABEL: Record<FilterKey, string> = {
+const FILTER_LABEL: Record<CallFilterKey, string> = {
   all: 'All',
   missed: 'Missed',
   bookings: 'Bookings',
@@ -44,7 +42,7 @@ const FILTER_LABEL: Record<FilterKey, string> = {
   unsaved: 'Unsaved',
 };
 
-const FILTERS: FilterKey[] = ['all', 'missed', 'bookings', 'clients', 'saved', 'unsaved'];
+const FILTERS: CallFilterKey[] = ['all', 'missed', 'bookings', 'clients', 'saved', 'unsaved'];
 
 export default function HomeScreen() {
   const theme = useTheme();
@@ -54,7 +52,7 @@ export default function HomeScreen() {
 
   const [calls, setCalls] = useState<CallListItem[]>([]);
   const [bookings, setBookings] = useState<BookingListItem[]>([]);
-  const [filter, setFilter] = useState<FilterKey>('all');
+  const [filter, setFilter] = useState<CallFilterKey>('all');
   const [query, setQuery] = useState('');
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);

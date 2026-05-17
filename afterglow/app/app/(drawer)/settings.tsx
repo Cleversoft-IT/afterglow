@@ -16,13 +16,13 @@ import { api, ApiError, isDemoMode } from '../../lib/api';
 import type { Locale } from '../../lib/dateFormat';
 import { useLocale } from '../../lib/LocaleContext';
 import { callRed } from '../../lib/paperTheme';
-import { useTheme as useAppTheme } from '../../lib/ThemeContext';
-import type { ThemePreference } from '../../lib/theme';
+import { useThemePreference } from '../../lib/ThemeContext';
+import type { ThemePreference } from '../../lib/themePreference';
 
 export default function SettingsScreen() {
   const theme = useTheme();
   const navigation = useNavigation();
-  const { mode, setMode } = useAppTheme();
+  const { mode, setMode } = useThemePreference();
   const { locale, setLocale } = useLocale();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
