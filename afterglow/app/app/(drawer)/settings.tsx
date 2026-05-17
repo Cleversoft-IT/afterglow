@@ -13,6 +13,8 @@ import {
   useTheme,
 } from 'react-native-paper';
 import { api, ApiError, isDemoMode } from '../../lib/api';
+import type { Locale } from '../../lib/dateFormat';
+import { useLocale } from '../../lib/LocaleContext';
 import { callRed } from '../../lib/paperTheme';
 import { useTheme as useAppTheme } from '../../lib/ThemeContext';
 import type { ThemePreference } from '../../lib/theme';
@@ -21,6 +23,7 @@ export default function SettingsScreen() {
   const theme = useTheme();
   const navigation = useNavigation();
   const { mode, setMode } = useAppTheme();
+  const { locale, setLocale } = useLocale();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [resetDialogVisible, setResetDialogVisible] = useState(false);
@@ -67,6 +70,23 @@ export default function SettingsScreen() {
                 { value: 'auto', label: 'Auto', icon: 'theme-light-dark' },
                 { value: 'light', label: 'Light', icon: 'white-balance-sunny' },
                 { value: 'dark', label: 'Dark', icon: 'weather-night' },
+              ]}
+            />
+          </View>
+        </List.Section>
+
+        <List.Section>
+          <List.Subheader>Format</List.Subheader>
+          <View style={{ paddingHorizontal: 16, paddingBottom: 16 }}>
+            <Text variant="bodyMedium" style={{ color: theme.colors.onSurfaceVariant, marginBottom: 12 }}>
+              Pick how dates and times are formatted across the app. Italian uses 24-hour and DD/MM/YYYY; English uses 12-hour and MM/DD/YYYY.
+            </Text>
+            <SegmentedButtons
+              value={locale}
+              onValueChange={(next) => setLocale(next as Locale)}
+              buttons={[
+                { value: 'it', label: 'Italian', icon: 'translate' },
+                { value: 'en', label: 'English', icon: 'translate' },
               ]}
             />
           </View>

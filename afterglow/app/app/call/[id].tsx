@@ -3,42 +3,60 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ScrollView, StyleSheet, View } from 'react-native';
 import {
   ActivityIndicator,
-  Avatar,
   Banner,
   Button,
   Card,
   Chip,
   Divider,
-  IconButton,
   Text,
   useTheme,
 } from 'react-native-paper';
 import { api, ApiError } from '../../lib/api';
 import { ContactAvatar } from '../../components/ContactAvatar';
+import { TranscriptList } from '../../components/TranscriptList';
+import { formatDateTime } from '../../lib/dateFormat';
+import { flagFromE164 } from '../../lib/flagFromE164';
+import { useLocale } from '../../lib/LocaleContext';
 import type { AppTheme } from '../../lib/paperTheme';
 import type { CallDetailView, FieldDefinitionLite } from '../../lib/types';
 
+// Action types whose side effect lives on the operator's own device (the
+// booking happens inside Afterglow itself, not against an external CRM).
+// We don't want the UI to flag them as "Simulated" even though the backend
+// catalog classifies them as `mock_external` — that classification is
+// pipeline-internal, not user-facing.
+const REAL_ON_DEVICE = new Set([
+  'booking.create',
+  'appointment.create',
+  'appointment.create_inspection',
+]);
+
 function statusChip(status: string, theme: AppTheme): {
   label: string;
+  icon: string;
   style: { backgroundColor: string };
   textColor: string;
 } {
+  const label = status ? status[0].toUpperCase() + status.slice(1) : '';
   if (status === 'completed') {
     return {
-      label: status,
+      label,
+      icon: 'check-circle-outline',
       style: { backgroundColor: theme.colors.successContainer },
       textColor: theme.colors.onSuccessContainer,
     };
   }
   if (status === 'failed') {
     return {
-      label: status,
+      label,
+      icon: 'alert-circle-outline',
       style: { backgroundColor: theme.colors.errorContainer },
       textColor: theme.colors.onErrorContainer,
     };
   }
   return {
-    label: status,
+    label,
+    icon: 'progress-clock',
     style: { backgroundColor: theme.colors.secondaryContainer },
     textColor: theme.colors.onSecondaryContainer,
   };
@@ -55,6 +73,7 @@ export default function CallDetailScreen() {
   const theme = useTheme<AppTheme>();
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
+  const { locale } = useLocale();
   const [call, setCall] = useState<CallDetailView | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -125,23 +144,32 @@ export default function CallDetailScreen() {
   const callerDisplay = call.customer?.display_name ?? call.phone_e164;
   const sc = statusChip(call.status, theme);
   const extracted = call.extracted;
+  const flag = flagFromE164(call.phone_e164);
 
   return (
     <ScrollView contentContainerStyle={styles.scroll}>
       <Card mode="elevated">
         <Card.Title
           title={callerDisplay}
-          subtitle={`${call.phone_e164}${call.detected_language ? ` · ${call.detected_language}` : ''}`}
-          left={() => <ContactAvatar phone={call.phone_e164} name={callerDisplay} size={48} />}
+          titleVariant="titleMedium"
+          subtitle={`${flag} ${call.phone_e164}${call.detected_language ? ` · ${call.detected_language}` : ''}`}
+          left={() => <ContactAvatar phone={call.phone_e164} name={callerDisplay} size={56} />}
+          leftStyle={{ marginRight: 12 }}
           right={() => (
-            <Chip mode="flat" compact style={[{ marginRight: 12 }, sc.style]} textStyle={{ color: sc.textColor }}>
+            <Chip
+              mode="flat"
+              compact
+              icon={sc.icon}
+              style={[{ marginRight: 12 }, sc.style]}
+              textStyle={{ color: sc.textColor }}
+            >
               {sc.label}
             </Chip>
           )}
         />
         <Card.Content>
           <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
-            {new Date(call.created_at).toLocaleString()}
+            {formatDateTime(call.created_at, locale)}
           </Text>
           {call.error ? (
             <Text variant="bodySmall" style={{ color: theme.colors.error, marginTop: 8 }}>
@@ -187,9 +215,6 @@ export default function CallDetailScreen() {
                       <Text variant="bodyMedium" style={{ fontWeight: '600' }}>
                         {def?.label ?? k}
                       </Text>
-                      <Text variant="labelSmall" style={{ fontFamily: 'monospace', color: theme.colors.onSurfaceVariant }}>
-                        {k}
-                      </Text>
                     </View>
                     <Text variant="bodyMedium" style={{ flex: 1, textAlign: 'right' }}>
                       {formatValue(v)}
@@ -208,13 +233,15 @@ export default function CallDetailScreen() {
           <Card.Content>
             {call.executed_actions.map((a, i) => {
               const isUndone = a.status === 'undone' || a.status === 'reverted';
-              const isSimulated = a.is_simulated ?? a.result?.mock === true;
+              const isSimulated = REAL_ON_DEVICE.has(a.action_type)
+                ? false
+                : (a.is_simulated ?? a.result?.mock === true);
               const canUndo = a.can_undo ?? false;
               return (
                 <View key={a.id}>
-                  {i > 0 ? <Divider style={{ marginVertical: 8 }} /> : null}
+                  {i > 0 ? <Divider style={{ marginVertical: 12 }} /> : null}
                   <View style={styles.actionRow}>
-                    <View style={{ flex: 1, gap: 4 }}>
+                    <View style={{ flex: 1, gap: 6 }}>
                       <View style={styles.actionHeader}>
                         <Text variant="bodyLarge" style={{ fontWeight: '600' }}>
                           {a.title}
@@ -225,12 +252,6 @@ export default function CallDetailScreen() {
                           </Chip>
                         ) : null}
                       </View>
-                      <Text
-                        variant="labelSmall"
-                        style={{ fontFamily: 'monospace', color: theme.colors.onSurfaceVariant }}
-                      >
-                        {a.action_type}
-                      </Text>
                       {a.summary ? (
                         <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
                           {a.summary}
@@ -268,33 +289,24 @@ export default function CallDetailScreen() {
         </Card>
       ) : null}
 
-      {call.raw_transcript?.text ? (
-        <Card mode="elevated">
-          <Card.Title title="Transcript" />
-          <Card.Content>
-            <Text variant="bodyMedium" style={{ color: theme.colors.onSurfaceVariant, lineHeight: 20 }}>
-              {call.raw_transcript.text}
-            </Text>
-          </Card.Content>
-        </Card>
-      ) : null}
+      {call.raw_transcript?.text ? <TranscriptList text={call.raw_transcript.text} /> : null}
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  scroll: { padding: 16, gap: 16, paddingBottom: 48 },
+  scroll: { padding: 16, gap: 20, paddingBottom: 48 },
   chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 12 },
   fieldRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     gap: 12,
-    paddingVertical: 8,
+    paddingVertical: 10,
   },
   actionRow: {
     flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
+    alignItems: 'flex-start',
+    gap: 16,
   },
   actionHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' },
 });

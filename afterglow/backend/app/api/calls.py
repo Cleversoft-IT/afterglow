@@ -135,9 +135,51 @@ async def submit_audio_call(
     audio_path = storage_dir / f"{call_id}.{ext}"
     audio_path.write_bytes(raw)
 
+    # Eager customer link: if we can resolve a Customer for this phone right
+    # now (clone-first / seed-fallback in demo, session-scoped in prod), the
+    # call list can render the proper name immediately instead of showing
+    # the bare phone number while the pipeline runs.
+    # NB: a seed FK is temporary — the pipeline's `_resolve_customer` will
+    # clone the seed into a session-scoped row and may rewrite this FK.
+    eager_customer_id: Optional[uuid.UUID] = None
+    if ctx.is_demo:
+        clone = (
+            await session.execute(
+                select(Customer).where(
+                    Customer.phone_e164 == phone_e164,
+                    Customer.session_id == ctx.session_id,
+                )
+            )
+        ).scalar_one_or_none()
+        if clone is not None:
+            eager_customer_id = clone.id
+        else:
+            seed = (
+                await session.execute(
+                    select(Customer).where(
+                        Customer.phone_e164 == phone_e164,
+                        Customer.is_seed.is_(True),
+                    )
+                )
+            ).scalar_one_or_none()
+            if seed is not None:
+                eager_customer_id = seed.id
+    else:
+        row = (
+            await session.execute(
+                select(Customer).where(
+                    Customer.phone_e164 == phone_e164,
+                    Customer.session_id.is_(None),
+                )
+            )
+        ).scalar_one_or_none()
+        if row is not None:
+            eager_customer_id = row.id
+
     call = Call(
         id=call_id,
         template_id=template.id,
+        customer_id=eager_customer_id,
         phone_e164=phone_e164,
         audio_url=str(audio_path),
         status="pending",

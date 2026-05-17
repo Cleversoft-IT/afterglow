@@ -10,10 +10,13 @@ import {
   Button,
   Card,
   Chip,
+  Dialog,
+  Portal,
   Text,
   useTheme,
 } from 'react-native-paper';
 import { api, ApiError } from '../../lib/api';
+import { consumeFreshSession } from '../../lib/freshSession';
 import type { TemplateView } from '../../lib/types';
 
 function domainIcon(domain: string | null | undefined): string {
@@ -36,6 +39,10 @@ export default function TemplatesScreen() {
   const [loading, setLoading] = useState(true);
   const [switching, setSwitching] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // After a fresh session bootstrap (or post-reset) we land on this screen.
+  // When the user activates a template we offer to jump to the calls feed
+  // so they're not stranded here. The flag is one-shot, set by RootLayout.
+  const [goHomeDialogVisible, setGoHomeDialogVisible] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -60,6 +67,9 @@ export default function TemplatesScreen() {
     try {
       await api.setActiveTemplate(id);
       await load();
+      if (consumeFreshSession()) {
+        setGoHomeDialogVisible(true);
+      }
     } catch (e) {
       setError(e instanceof ApiError ? e.message : String(e));
     } finally {
@@ -151,6 +161,29 @@ export default function TemplatesScreen() {
         )}
       />
 
+      <Portal>
+        <Dialog visible={goHomeDialogVisible} onDismiss={() => setGoHomeDialogVisible(false)}>
+          <Dialog.Icon icon="phone-incoming" />
+          <Dialog.Title>Template activated</Dialog.Title>
+          <Dialog.Content>
+            <Text variant="bodyMedium">
+              The dialer is wired up. Head over to the calls feed to try the simulator, or stay here to keep tweaking templates.
+            </Text>
+          </Dialog.Content>
+          <Dialog.Actions>
+            <Button onPress={() => setGoHomeDialogVisible(false)}>Stay on Templates</Button>
+            <Button
+              mode="contained-tonal"
+              onPress={() => {
+                setGoHomeDialogVisible(false);
+                router.navigate('/(drawer)/(tabs)' as never);
+              }}
+            >
+              Go to Calls
+            </Button>
+          </Dialog.Actions>
+        </Dialog>
+      </Portal>
     </View>
   );
 }

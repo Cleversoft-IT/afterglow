@@ -1,13 +1,12 @@
 import { DrawerActions } from '@react-navigation/native';
 import { useFocusEffect, useNavigation, useRouter } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
-import { SectionList, StyleSheet, View } from 'react-native';
+import { ScrollView, SectionList, StyleSheet, View } from 'react-native';
 import {
   ActivityIndicator,
   Appbar,
   Banner,
   Chip,
-  IconButton,
   List,
   Searchbar,
   Snackbar,
@@ -18,6 +17,15 @@ import { ContactAvatar } from '../../components/ContactAvatar';
 import { api, ApiError } from '../../lib/api';
 import { MOCK_CONTACTS } from '../../lib/mockContacts';
 import type { CustomerCard } from '../../lib/types';
+
+type KindFilter = 'all' | 'clients' | 'personal';
+
+const KIND_FILTERS: KindFilter[] = ['all', 'clients', 'personal'];
+const KIND_FILTER_LABEL: Record<KindFilter, string> = {
+  all: 'All',
+  clients: 'Clients',
+  personal: 'Personal',
+};
 
 type ContactEntry = {
   kind: 'customer' | 'mock';
@@ -40,6 +48,7 @@ export default function ContactsScreen() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState('');
+  const [kindFilter, setKindFilter] = useState<KindFilter>('all');
   const [snackbar, setSnackbar] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -86,15 +95,23 @@ export default function ContactsScreen() {
       ...mockEntries.filter((m) => !seenPhones.has(normalisePhone(m.phone_e164))),
     ];
 
-    // 4. filter by query
+    // 4a. kind filter (clients vs personal phonebook)
+    const byKind =
+      kindFilter === 'clients'
+        ? merged.filter((e) => e.kind === 'customer')
+        : kindFilter === 'personal'
+          ? merged.filter((e) => e.kind === 'mock')
+          : merged;
+
+    // 4b. filter by query
     const q = query.trim().toLowerCase();
     const filtered = q
-      ? merged.filter(
+      ? byKind.filter(
           (e) =>
             e.display_name.toLowerCase().includes(q) ||
             e.phone_e164.replace(/\s/g, '').includes(q.replace(/\s/g, '')),
         )
-      : merged;
+      : byKind;
 
     // 5. sort alphabetical, group by first letter
     const sorted = filtered.sort((a, b) => a.display_name.localeCompare(b.display_name));
@@ -106,13 +123,20 @@ export default function ContactsScreen() {
       else map.set(letter, [e]);
     }
     return Array.from(map.entries()).map(([title, data]) => ({ title, data }));
-  }, [customers, query]);
+  }, [customers, query, kindFilter]);
 
   const styles = useMemo(
     () =>
       StyleSheet.create({
         container: { flex: 1, backgroundColor: theme.colors.background },
         header: { paddingHorizontal: 16, paddingTop: 0, paddingBottom: 8 },
+        chipsScroll: { flexGrow: 0, flexShrink: 0, backgroundColor: theme.colors.background },
+        chipsRow: {
+          paddingHorizontal: 16,
+          paddingVertical: 4,
+          gap: 8,
+          alignItems: 'center',
+        },
         sectionHeader: {
           paddingHorizontal: 16,
           paddingTop: 16,
@@ -151,6 +175,32 @@ export default function ContactsScreen() {
         />
       </View>
 
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        style={styles.chipsScroll}
+        contentContainerStyle={styles.chipsRow}
+      >
+        {KIND_FILTERS.map((k) => (
+          <Chip
+            key={k}
+            mode="flat"
+            compact
+            selected={kindFilter === k}
+            showSelectedCheck={false}
+            onPress={() => setKindFilter(k)}
+            selectedColor={kindFilter === k ? theme.colors.onSecondaryContainer : undefined}
+            style={
+              kindFilter === k
+                ? { backgroundColor: theme.colors.secondaryContainer }
+                : { backgroundColor: theme.colors.surfaceVariant }
+            }
+          >
+            {KIND_FILTER_LABEL[k]}
+          </Chip>
+        ))}
+      </ScrollView>
+
       {error ? (
         <Banner visible icon="alert-circle-outline" actions={[{ label: 'Retry', onPress: load }]}>
           {error}
@@ -184,22 +234,17 @@ export default function ContactsScreen() {
             )}
             title={item.display_name}
             description={item.phone_e164}
-            right={() => (
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                {item.kind === 'customer' && (
-                  <Chip compact mode="flat" textStyle={{ fontSize: 11 }} icon="account-star-outline">
-                    Client
-                  </Chip>
-                )}
-                <IconButton
-                  icon="phone-outline"
-                  onPress={(e) => {
-                    (e as unknown as { stopPropagation?: () => void })?.stopPropagation?.();
-                    setSnackbar('Use the Simulator from the drawer to test the AI pipeline.');
-                  }}
-                />
-              </View>
-            )}
+            right={
+              item.kind === 'customer'
+                ? () => (
+                    <View style={{ justifyContent: 'center', paddingRight: 12 }}>
+                      <Chip compact mode="flat" textStyle={{ fontSize: 11 }} icon="account-star-outline">
+                        Client
+                      </Chip>
+                    </View>
+                  )
+                : undefined
+            }
           />
         )}
         ListEmptyComponent={

@@ -52,6 +52,39 @@ const surfacesDark = {
   outlineVariant: '#262B3A',
 };
 
+// Override MD3 secondary/tertiary containers and elevation tints. The
+// `themeFromSourceColor` generator produces lavender/pink-tinted surfaces
+// from the #3b82f6 brand seed; we replace them with neutral cool greys so
+// chips, accordions and elevated cards read consistently across the app.
+const accentsLight = {
+  secondaryContainer: '#E7EEFC',
+  onSecondaryContainer: '#0A2A5C',
+  tertiaryContainer: '#EEF0F4',
+  onTertiaryContainer: '#1A1C1F',
+  elevation: {
+    level0: 'transparent',
+    level1: '#F4F6FB',
+    level2: '#EDF1F8',
+    level3: '#E5EBF6',
+    level4: '#DEE5F2',
+    level5: '#D8E1EF',
+  },
+};
+const accentsDark = {
+  secondaryContainer: '#1B2944',
+  onSecondaryContainer: '#D6E2FA',
+  tertiaryContainer: '#1F2330',
+  onTertiaryContainer: '#ECEEF2',
+  elevation: {
+    level0: 'transparent',
+    level1: '#1A1F2B',
+    level2: '#1F2533',
+    level3: '#242B3A',
+    level4: '#293042',
+    level5: '#2D344A',
+  },
+};
+
 function buildSchemeColors(
   scheme: Scheme,
   base: MD3Theme['colors'],
@@ -99,6 +132,7 @@ export const paperLightTheme: AppTheme = {
   ...MD3LightTheme,
   colors: {
     ...buildSchemeColors(matTheme.schemes.light, MD3LightTheme.colors, surfacesLight),
+    ...accentsLight,
     ...successLight,
   },
 };
@@ -107,6 +141,7 @@ export const paperDarkTheme: AppTheme = {
   ...MD3DarkTheme,
   colors: {
     ...buildSchemeColors(matTheme.schemes.dark, MD3DarkTheme.colors, surfacesDark),
+    ...accentsDark,
     ...successDark,
   },
 };

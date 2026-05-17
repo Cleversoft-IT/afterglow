@@ -95,6 +95,14 @@ export default function IncomingCallScreen() {
   const newCallerPhone = useRef(callerMode === 'new' ? generateNewCallerPhone() : null);
   const pulse = useRef(new Animated.Value(1)).current;
 
+  // Reset the generated phone whenever the screen is opened with a different
+  // caller mode OR a different active template — otherwise a leftover ref
+  // from a prior visit makes the "new caller" land on the previous template's
+  // identity.
+  useEffect(() => {
+    newCallerPhone.current = callerMode === 'new' ? generateNewCallerPhone() : null;
+  }, [callerMode, template?.id]);
+
   const domain = (template?.domain_hint as AudioDomain) ?? 'restaurant';
   const fallbackCaller = CALLERS[domain] ?? CALLERS.restaurant;
   const sim = template?.simulation_config;
@@ -350,12 +358,18 @@ export default function IncomingCallScreen() {
             {formatTime(elapsed)}
           </Text>
         )}
-        <Text variant="headlineLarge" style={[styles.callerName, { color: theme.colors.onSurface }]}>
+        <Text
+          variant="headlineLarge"
+          numberOfLines={1}
+          adjustsFontSizeToFit
+          style={[styles.callerName, { color: theme.colors.onSurface }]}
+        >
           {displayName}
         </Text>
         <Text
           variant="titleMedium"
-          style={{ color: theme.colors.onSurfaceVariant, marginTop: 4 }}
+          numberOfLines={1}
+          style={{ color: theme.colors.onSurfaceVariant, marginTop: 6 }}
         >
           {fallbackDisplayPhone}
         </Text>
@@ -552,9 +566,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   callerName: {
-    fontSize: 32,
+    fontSize: 30,
     fontWeight: '600',
-    marginTop: 8,
+    marginTop: 12,
     textAlign: 'center',
   },
   avatarZone: {
@@ -562,7 +576,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 24,
-    gap: 24,
+    gap: 28,
   },
   footer: {
     paddingTop: 24,
@@ -573,22 +587,23 @@ const styles = StyleSheet.create({
   },
   controlsRow: {
     flexDirection: 'row',
-    justifyContent: 'space-around',
+    justifyContent: 'space-evenly',
     alignItems: 'flex-start',
   },
   fabRow: {
     flexDirection: 'row',
-    justifyContent: 'space-around',
+    justifyContent: 'space-evenly',
     alignItems: 'flex-start',
+    gap: 8,
   },
-  fabCol: { alignItems: 'center', gap: 6 },
-  actionFab: { width: 72, height: 72, borderRadius: 20 },
-  fabLabel: { fontWeight: '500' },
+  fabCol: { alignItems: 'center', gap: 8, minWidth: 72 },
+  actionFab: { width: 64, height: 64, borderRadius: 32 },
+  fabLabel: { fontWeight: '500', textAlign: 'center' },
   hangupCenter: { alignItems: 'center' },
   hangupPill: {
-    width: '60%',
-    minWidth: 200,
-    height: 64,
+    width: '50%',
+    minWidth: 180,
+    height: 56,
     borderRadius: 999,
   },
   contextBlock: {

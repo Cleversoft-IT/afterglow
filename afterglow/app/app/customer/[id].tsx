@@ -13,7 +13,8 @@ import {
 } from 'react-native-paper';
 import { api, ApiError } from '../../lib/api';
 import { ContactAvatar } from '../../components/ContactAvatar';
-import { formatRelativeTime } from '../../lib/dateGrouping';
+import { formatDateTime, formatRelativeTime } from '../../lib/dateFormat';
+import { useLocale } from '../../lib/LocaleContext';
 import type { AppTheme } from '../../lib/paperTheme';
 import type { CallListItem, CustomerCard } from '../../lib/types';
 
@@ -34,6 +35,7 @@ export default function CustomerDetailScreen() {
   const theme = useTheme<AppTheme>();
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
+  const { locale } = useLocale();
   const [customer, setCustomer] = useState<CustomerCard | null>(null);
   const [calls, setCalls] = useState<CallListItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -99,7 +101,7 @@ export default function CustomerDetailScreen() {
         {customer.last_call_at ? (
           <Card.Content>
             <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
-              Last call {new Date(customer.last_call_at).toLocaleString()}
+              Last call {formatDateTime(customer.last_call_at, locale)}
             </Text>
           </Card.Content>
         ) : null}
@@ -171,8 +173,8 @@ export default function CustomerDetailScreen() {
               return (
                 <List.Item
                   key={c.id}
-                  title={new Date(c.created_at).toLocaleString()}
-                  description={`${c.detected_language ?? '—'} · ${formatRelativeTime(c.created_at)}`}
+                  title={formatDateTime(c.created_at, locale)}
+                  description={`${c.detected_language ?? '—'} · ${formatRelativeTime(c.created_at, locale)}`}
                   left={() => <List.Icon icon="phone-incoming" />}
                   right={() => (
                     <Chip mode="flat" compact style={[{ marginRight: 8 }, { backgroundColor: sc.bg }]} textStyle={{ color: sc.fg }}>

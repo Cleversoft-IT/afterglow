@@ -3,26 +3,48 @@ import { useFonts } from 'expo-font';
 import { Stack, router } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Platform, StyleSheet, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { PaperProvider } from 'react-native-paper';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { LocaleProvider } from '../lib/LocaleContext';
 import { ThemeProvider, useTheme } from '../lib/ThemeContext';
 import { api, isDemoMode } from '../lib/api';
-import { paperDarkTheme, paperLightTheme } from '../lib/paperTheme';
-import { spacing } from '../lib/theme';
+import { markFreshSession } from '../lib/freshSession';
+import { paperDarkTheme, paperLightTheme, type AppTheme } from '../lib/paperTheme';
+import { readStoredThemePreference } from '../lib/themeStorage';
+
+// Module-level early color-scheme on web: runs at bundle parse, before the
+// first React render. Eliminates the visible flash between the browser
+// default white background and the resolved Afterglow theme. It does NOT
+// run pre-paint on the initial HTML document (that would need a custom
+// index.html template) — just earliest possible from JS.
+if (Platform.OS === 'web' && typeof document !== 'undefined') {
+  const pref = readStoredThemePreference();
+  const sysDark =
+    typeof window !== 'undefined' &&
+    typeof window.matchMedia === 'function' &&
+    window.matchMedia('(prefers-color-scheme: dark)').matches;
+  const dark = pref === 'dark' || (pref !== 'light' && sysDark);
+  const bg = dark ? paperDarkTheme.colors.background : paperLightTheme.colors.background;
+  document.documentElement.style.colorScheme = dark ? 'dark' : 'light';
+  document.documentElement.style.backgroundColor = bg;
+  if (document.body) document.body.style.backgroundColor = bg;
+}
 
 export default function RootLayout() {
   return (
     <ThemeProvider>
-      <RootLayoutInner />
+      <LocaleProvider>
+        <RootLayoutInner />
+      </LocaleProvider>
     </ThemeProvider>
   );
 }
 
 function RootLayoutInner() {
-  const { colors, isDark } = useTheme();
-  const paperTheme = isDark ? paperDarkTheme : paperLightTheme;
+  const { isDark } = useTheme();
+  const paperTheme: AppTheme = isDark ? paperDarkTheme : paperLightTheme;
   const [fontsLoaded] = useFonts(Ionicons.font);
   const [gateChecked, setGateChecked] = useState(!isDemoMode());
 
@@ -31,19 +53,28 @@ function RootLayoutInner() {
       StyleSheet.create({
         splash: {
           flex: 1,
-          backgroundColor: colors.bg,
+          backgroundColor: paperTheme.colors.background,
           alignItems: 'center',
           justifyContent: 'center',
         },
         splashOverlay: {
           ...StyleSheet.absoluteFillObject,
-          backgroundColor: colors.bg,
+          backgroundColor: paperTheme.colors.background,
           alignItems: 'center',
           justifyContent: 'center',
         },
       }),
-    [colors],
+    [paperTheme],
   );
+
+  // Re-sync document chrome whenever the theme flips at runtime (web only).
+  useEffect(() => {
+    if (Platform.OS !== 'web' || typeof document === 'undefined') return;
+    const bg = paperTheme.colors.background;
+    document.documentElement.style.colorScheme = isDark ? 'dark' : 'light';
+    document.documentElement.style.backgroundColor = bg;
+    if (document.body) document.body.style.backgroundColor = bg;
+  }, [isDark, paperTheme]);
 
   useEffect(() => {
     if (!isDemoMode()) return;
@@ -53,6 +84,7 @@ function RootLayoutInner() {
       .then((t) => {
         if (cancelled) return;
         if (t === null) {
+          markFreshSession();
           router.replace('/(drawer)/templates' as never);
         }
       })
@@ -69,9 +101,11 @@ function RootLayoutInner() {
 
   if (!fontsLoaded) {
     return (
-      <View style={styles.splash}>
-        <ActivityIndicator color={colors.brand} />
-      </View>
+      <PaperProvider theme={paperTheme}>
+        <View style={styles.splash}>
+          <ActivityIndicator color={paperTheme.colors.primary} />
+        </View>
+      </PaperProvider>
     );
   }
 
@@ -82,11 +116,11 @@ function RootLayoutInner() {
           <StatusBar style={isDark ? 'light' : 'dark'} />
           <Stack
             screenOptions={{
-              headerStyle: { backgroundColor: colors.bg },
-              headerTintColor: colors.text,
+              headerStyle: { backgroundColor: paperTheme.colors.background },
+              headerTintColor: paperTheme.colors.onSurface,
               headerTitleStyle: { fontWeight: '600', fontSize: 17 },
               headerShadowVisible: false,
-              contentStyle: { backgroundColor: colors.bg },
+              contentStyle: { backgroundColor: paperTheme.colors.background },
             }}
           >
             <Stack.Screen name="(drawer)" options={{ headerShown: false }} />
@@ -97,7 +131,7 @@ function RootLayoutInner() {
           </Stack>
           {gateChecked ? null : (
             <View style={styles.splashOverlay} pointerEvents="auto">
-              <ActivityIndicator color={colors.brand} />
+              <ActivityIndicator color={paperTheme.colors.primary} />
             </View>
           )}
         </SafeAreaProvider>

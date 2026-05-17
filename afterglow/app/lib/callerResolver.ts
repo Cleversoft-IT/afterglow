@@ -5,6 +5,7 @@ export type ResolvedCaller = {
   display_name: string;
   label: string;
   is_customer: boolean;
+  avatar_url?: string | null;
 };
 
 export function resolveFromCallItem(call: CallListItem): ResolvedCaller {
@@ -13,7 +14,12 @@ export function resolveFromCallItem(call: CallListItem): ResolvedCaller {
   }
   const mock = findMockContact(call.phone_e164);
   if (mock) {
-    return { display_name: mock.display_name, label: mock.label, is_customer: false };
+    return {
+      display_name: mock.display_name,
+      label: mock.label,
+      is_customer: false,
+      avatar_url: mock.avatar_url ?? null,
+    };
   }
   return { display_name: call.phone_e164, label: 'Unknown', is_customer: false };
 }
@@ -28,7 +34,12 @@ export function resolveFromPhone(
   }
   const mock = findMockContact(phone);
   if (mock) {
-    return { display_name: mock.display_name, label: mock.label, is_customer: false };
+    return {
+      display_name: mock.display_name,
+      label: mock.label,
+      is_customer: false,
+      avatar_url: mock.avatar_url ?? null,
+    };
   }
   return { display_name: phone, label: 'Unknown', is_customer: false };
 }

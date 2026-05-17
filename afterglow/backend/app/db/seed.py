@@ -625,7 +625,12 @@ async def seed():
     async with SessionLocal() as session:
         existing = (await session.execute(select(Template))).scalars().all()
         if existing:
-            print(f"[seed] {len(existing)} templates already present, skipping.")
+            print(
+                f"[seed] {len(existing)} templates already present, "
+                f"ensuring personal calls."
+            )
+            await _ensure_personal_calls(session)
+            await session.commit()
             return
 
         # Restaurant is the active preset out of the box; the others are
@@ -739,6 +744,7 @@ async def seed():
             _emit_seeded_call_audit(session, spec)
             await session.flush()
 
+        await _ensure_personal_calls(session)
         await session.commit()
         print(
             f"[seed] Demo data inserted: 3 templates, 4 customers, "
@@ -1281,6 +1287,128 @@ def _emit_seeded_call_audit(session, spec) -> None:
                 created_at=spec["created_at"] + timedelta(seconds=10 + idx * 5),
             )
         )
+
+
+# ---------------------------------------------------------------------------
+# Personal phonebook calls — missed/unsaved/human-handled rows that make the
+# Home feed look like a real device, not a pristine demo.
+#
+# Idempotency: fixed UUIDs, INSERT-or-skip via Call.id existence check.
+# Visibility: every row has `is_seed=True, session_id=None` so the demo
+# session filter (`visibility_filter_seedable`) lets all visitors see them.
+#
+# Caller fixtures duplicate phone + display_name from
+# `afterglow/app/lib/mockContacts.ts` — keep these in sync with the
+# matching `pc_xxx` entries listed in the comment below.
+# ---------------------------------------------------------------------------
+
+# Source of truth on the client side: afterglow/app/lib/mockContacts.ts
+# Entries used here:
+#   pc_001 Amelia Brooks     +447911100001
+#   pc_003 Charlotte Davies  +447911100003
+#   pc_004 Daniel Edwards    +447911100004
+#   pc_008 Henry Iverson     +447911100008
+#   pc_009 Isla Johnson      +447911100009
+_PERSONAL_CALL_FIXTURES = [
+    # 3 × missed (status='failed') — appear in the Missed filter + Saved (mock)
+    {
+        "id": uuid.UUID("22222222-2222-4222-8222-000000000001"),
+        "phone_e164": "+447911100001",  # Amelia Brooks
+        "status": "failed",
+        "created_at": datetime(2026, 5, 16, 9, 12, tzinfo=timezone.utc),
+        "language": None,
+    },
+    {
+        "id": uuid.UUID("22222222-2222-4222-8222-000000000002"),
+        "phone_e164": "+447911100004",  # Daniel Edwards
+        "status": "failed",
+        "created_at": datetime(2026, 5, 15, 14, 47, tzinfo=timezone.utc),
+        "language": None,
+    },
+    {
+        "id": uuid.UUID("22222222-2222-4222-8222-000000000003"),
+        "phone_e164": "+447911100009",  # Isla Johnson
+        "status": "failed",
+        "created_at": datetime(2026, 5, 14, 18, 5, tzinfo=timezone.utc),
+        "language": None,
+    },
+    # 2 × unsaved (status='completed', phone NOT in mock list, no customer)
+    {
+        "id": uuid.UUID("22222222-2222-4222-8222-000000000004"),
+        "phone_e164": "+15550009999",
+        "status": "completed",
+        "created_at": datetime(2026, 5, 13, 11, 30, tzinfo=timezone.utc),
+        "language": "en",
+    },
+    {
+        "id": uuid.UUID("22222222-2222-4222-8222-000000000005"),
+        "phone_e164": "+447700900800",
+        "status": "completed",
+        "created_at": datetime(2026, 5, 12, 16, 22, tzinfo=timezone.utc),
+        "language": "en",
+    },
+    # 2 × human-handled (status='completed' but no extracted/no actions —
+    # the operator answered personally, Afterglow was not engaged)
+    {
+        "id": uuid.UUID("22222222-2222-4222-8222-000000000006"),
+        "phone_e164": "+447911100003",  # Charlotte Davies
+        "status": "completed",
+        "created_at": datetime(2026, 5, 11, 20, 0, tzinfo=timezone.utc),
+        "language": "en",
+    },
+    {
+        "id": uuid.UUID("22222222-2222-4222-8222-000000000007"),
+        "phone_e164": "+447911100008",  # Henry Iverson
+        "status": "completed",
+        "created_at": datetime(2026, 5, 10, 8, 45, tzinfo=timezone.utc),
+        "language": "en",
+    },
+]
+
+
+async def _ensure_personal_calls(session) -> None:
+    """Insert missing personal phonebook calls. Idempotent via fixed UUIDs.
+
+    Call.template_id is non-nullable, so we attach personal calls to the
+    first seed template we find. These rows carry no extracted fields and
+    no executed actions, so the template choice is cosmetic only — the UI
+    renders them as plain phonebook entries.
+    """
+    seed_template = (
+        await session.execute(
+            select(Template).where(Template.is_seed.is_(True)).limit(1)
+        )
+    ).scalar_one_or_none()
+    if seed_template is None:
+        print("[seed] no seed template found, skipping personal calls.")
+        return
+
+    inserted = 0
+    for fx in _PERSONAL_CALL_FIXTURES:
+        present = await session.scalar(select(Call.id).where(Call.id == fx["id"]))
+        if present is not None:
+            continue
+        session.add(
+            Call(
+                id=fx["id"],
+                template_id=seed_template.id,
+                customer_id=None,
+                phone_e164=fx["phone_e164"],
+                audio_url=None,
+                detected_language=fx["language"],
+                raw_transcript=None,
+                status=fx["status"],
+                started_at=fx["created_at"],
+                completed_at=fx["created_at"] if fx["status"] != "failed" else None,
+                is_seed=True,
+                session_id=None,
+                created_at=fx["created_at"],
+            )
+        )
+        inserted += 1
+    if inserted:
+        await session.flush()
+        print(f"[seed] inserted {inserted} personal calls.")
 
 
 if __name__ == "__main__":

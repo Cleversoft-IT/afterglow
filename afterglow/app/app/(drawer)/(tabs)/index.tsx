@@ -13,7 +13,6 @@ import {
   Banner,
   Chip,
   Searchbar,
-  Snackbar,
   Surface,
   Text,
   useTheme,
@@ -23,6 +22,7 @@ import { api, ApiError } from '../../../lib/api';
 import { findMockContact } from '../../../lib/mockContacts';
 import { resolveFromCallItem } from '../../../lib/callerResolver';
 import { groupByDay } from '../../../lib/dateGrouping';
+import { useLocale } from '../../../lib/LocaleContext';
 import {
   setPipelineToast,
   subscribePipelineToast,
@@ -49,6 +49,7 @@ export default function HomeScreen() {
   const theme = useTheme();
   const router = useRouter();
   const navigation = useNavigation();
+  const { locale } = useLocale();
 
   const [calls, setCalls] = useState<CallListItem[]>([]);
   const [bookings, setBookings] = useState<BookingListItem[]>([]);
@@ -58,7 +59,6 @@ export default function HomeScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [toast, setToast] = useState<PipelineToast | null>(null);
-  const [snackbar, setSnackbar] = useState<string | null>(null);
   const focusedRef = useRef(false);
 
   const load = useCallback(async () => {
@@ -142,8 +142,36 @@ export default function HomeScreen() {
         .toLowerCase();
       return haystack.includes(q);
     });
-    return groupByDay(filtered);
-  }, [calls, bookingByCallId, filter, query]);
+
+    if (filter === 'bookings') {
+      // Sort by the actual booking slot (date+time from payload), not the
+      // call timestamp. Upcoming slots come first; past bookings sink
+      // toward the end. Calls whose payload lacks a valid date land last.
+      const now = Date.now();
+      const slotMs = (c: CallListItem): number => {
+        const b = bookingByCallId.get(c.id);
+        if (!b) return Infinity;
+        const p = b.payload as Record<string, unknown>;
+        const date = typeof p.booking_date === 'string' ? p.booking_date : null;
+        const time = typeof p.booking_time === 'string' ? p.booking_time : '00:00';
+        if (!date) return Infinity;
+        const ms = Date.parse(`${date}T${time}`);
+        return Number.isNaN(ms) ? Infinity : ms;
+      };
+      const sorted = [...filtered].sort((a, b) => {
+        const aMs = slotMs(a);
+        const bMs = slotMs(b);
+        // Future slots ascending (next first); past slots after future.
+        const aFuture = aMs >= now;
+        const bFuture = bMs >= now;
+        if (aFuture !== bFuture) return aFuture ? -1 : 1;
+        return aFuture ? aMs - bMs : bMs - aMs;
+      });
+      return groupByDay(sorted, locale);
+    }
+
+    return groupByDay(filtered, locale);
+  }, [calls, bookingByCallId, filter, query, locale]);
 
   const styles = useMemo(
     () =>
@@ -273,9 +301,6 @@ export default function HomeScreen() {
             booking={bookingByCallId.get(item.id)}
             mode={filter}
             onPress={() => router.push(`/call/${item.id}` as never)}
-            onCallIconPress={() =>
-              setSnackbar('Use the Simulator from the drawer to test the AI pipeline.')
-            }
           />
         )}
         ListEmptyComponent={
@@ -287,14 +312,6 @@ export default function HomeScreen() {
           </Surface>
         }
       />
-
-      <Snackbar
-        visible={!!snackbar}
-        onDismiss={() => setSnackbar(null)}
-        duration={3500}
-      >
-        {snackbar ?? ''}
-      </Snackbar>
     </View>
   );
 }

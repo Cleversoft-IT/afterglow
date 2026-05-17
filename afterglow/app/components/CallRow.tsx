@@ -1,8 +1,9 @@
 import { View } from 'react-native';
-import { Chip, IconButton, List, Text, useTheme } from 'react-native-paper';
+import { Chip, Icon, List, Text, useTheme } from 'react-native-paper';
 import { ContactAvatar } from './ContactAvatar';
 import { resolveFromCallItem } from '../lib/callerResolver';
-import { formatRelativeTime } from '../lib/dateGrouping';
+import { formatBookingSlot, formatRelativeTime } from '../lib/dateFormat';
+import { useLocale } from '../lib/LocaleContext';
 import type { BookingListItem, CallListItem } from '../lib/types';
 
 type FilterKey = 'all' | 'missed' | 'bookings' | 'saved' | 'unsaved';
@@ -12,7 +13,6 @@ type Props = {
   booking?: BookingListItem;
   mode: FilterKey;
   onPress: () => void;
-  onCallIconPress: () => void;
 };
 
 function directionIcon(status: string): string {
@@ -20,8 +20,34 @@ function directionIcon(status: string): string {
   return 'phone-incoming';
 }
 
-export function CallRow({ call, booking, mode, onPress, onCallIconPress }: Props) {
+function BookingBadge({ booking }: { booking: BookingListItem }) {
   const theme = useTheme();
+  const { locale } = useLocale();
+  const p = booking.payload as Record<string, unknown>;
+  const date = typeof p.booking_date === 'string' ? p.booking_date : null;
+  const time = typeof p.booking_time === 'string' ? p.booking_time : null;
+  const partySize =
+    typeof p.party_size === 'number' ? p.party_size : Number(p.party_size) || null;
+
+  const slot = formatBookingSlot(date, time, locale);
+  const label = partySize ? `${slot} · party ${partySize}` : slot || 'Booking';
+
+  return (
+    <Chip
+      compact
+      mode="flat"
+      icon="calendar-blank-outline"
+      style={{ backgroundColor: theme.colors.secondaryContainer }}
+      textStyle={{ fontSize: 11, color: theme.colors.onSecondaryContainer }}
+    >
+      {label}
+    </Chip>
+  );
+}
+
+export function CallRow({ call, booking, mode, onPress }: Props) {
+  const theme = useTheme();
+  const { locale } = useLocale();
   const caller = resolveFromCallItem(call);
   const isMissed = call.status === 'failed';
   const isBookingsMode = mode === 'bookings';
@@ -31,64 +57,66 @@ export function CallRow({ call, booking, mode, onPress, onCallIconPress }: Props
       onPress={onPress}
       left={() => (
         <View style={{ paddingLeft: 8, justifyContent: 'center' }}>
-          <ContactAvatar phone={call.phone_e164} name={caller.display_name} size={48} />
+          <ContactAvatar
+            phone={call.phone_e164}
+            name={caller.display_name}
+            avatarUrl={caller.avatar_url}
+            size={48}
+          />
         </View>
       )}
       title={(props) => (
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
           <Text {...props} variant="bodyLarge" numberOfLines={1} style={{ flexShrink: 1 }}>
             {caller.display_name}
           </Text>
-          {booking && (
-            <Chip compact mode="flat" icon="calendar-clock" textStyle={{ fontSize: 11 }}>
-              Booking
-            </Chip>
-          )}
         </View>
       )}
       description={() => {
         if (isBookingsMode && booking) {
+          // In bookings mode the whole row is about the booking; show title
+          // (or summary) as the description and let the badge carry the slot.
           const p = booking.payload as Record<string, unknown>;
-          const parts: string[] = [];
-          const title = booking.title || (typeof p.booking_title === 'string' ? p.booking_title : null);
-          if (title) parts.push(title);
-          if (typeof p.booking_date === 'string') parts.push(p.booking_date);
-          if (typeof p.booking_time === 'string') parts.push(p.booking_time);
-          if (p.party_size != null) parts.push(`party of ${p.party_size}`);
-          if (!parts.length && booking.summary) parts.push(booking.summary);
+          const titleText =
+            booking.title ||
+            (typeof p.booking_title === 'string' ? p.booking_title : null) ||
+            booking.summary ||
+            null;
           return (
-            <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
-              {parts.join(' · ')}
+            <Text
+              variant="bodySmall"
+              numberOfLines={1}
+              style={{ color: theme.colors.onSurfaceVariant }}
+            >
+              {titleText ?? ''}
             </Text>
           );
         }
         return (
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-            <IconButton
-              icon={directionIcon(call.status)}
+            <Icon
+              source={directionIcon(call.status)}
               size={14}
-              iconColor={isMissed ? theme.colors.error : theme.colors.onSurfaceVariant}
-              style={{ margin: 0, padding: 0, width: 14, height: 14 }}
+              color={isMissed ? theme.colors.error : theme.colors.onSurfaceVariant}
             />
             <Text
               variant="bodySmall"
               style={{ color: isMissed ? theme.colors.error : theme.colors.onSurfaceVariant }}
             >
-              {caller.label} · {formatRelativeTime(call.created_at)}
+              {caller.label} · {formatRelativeTime(call.created_at, locale)}
             </Text>
           </View>
         );
       }}
-      right={() => (
-        <IconButton
-          icon="phone-outline"
-          onPress={(e) => {
-            // Stop the row onPress from firing.
-            (e as unknown as { stopPropagation?: () => void })?.stopPropagation?.();
-            onCallIconPress();
-          }}
-        />
-      )}
+      right={
+        booking
+          ? () => (
+              <View style={{ justifyContent: 'center', paddingRight: 12 }}>
+                <BookingBadge booking={booking} />
+              </View>
+            )
+          : undefined
+      }
       style={{ paddingRight: 0 }}
     />
   );

@@ -258,11 +258,18 @@ function DraftSidebar({
       <Card.Content>
         {Object.keys(slots).length > 0 ? (
           <View style={{ gap: 4 }}>
-            {Object.entries(slots).map(([k, v]) => (
-              <Text key={k} variant="bodySmall">
-                <Text style={{ fontWeight: '600' }}>{k}:</Text> {formatSlot(v)}
-              </Text>
-            ))}
+            {Object.entries(slots).map(([k, v]) => {
+              // Prefer the human label from the draft schema; fall back to
+              // the raw slot key so we never show nothing if the wizard
+              // produced a slot before the matching field landed in the draft.
+              const labelFromDraft = draft?.fields_schema.find((f) => f.key === k)?.label;
+              const display = labelFromDraft && labelFromDraft.trim() !== '' ? labelFromDraft : k;
+              return (
+                <Text key={k} variant="bodySmall">
+                  <Text style={{ fontWeight: '600' }}>{display}:</Text> {formatSlot(v)}
+                </Text>
+              );
+            })}
           </View>
         ) : null}
 
