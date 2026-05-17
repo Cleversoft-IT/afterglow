@@ -116,10 +116,19 @@ def _make_tool(action_def: dict[str, Any]):
 
     if payload_model is not None:
         def tool(payload, confidence=0.9, evidence=[], tool_context=None):
+            # `exclude_none=True` drops keys that Gemini set to null for
+            # absent optional fields. The deterministic JSONSchema validator
+            # in action_executor refuses `null` on a `{"type": "string"}` or
+            # `{"type": "array"}` field, so a leftover `{"occasion": null}`
+            # would flip an otherwise valid action to `validation_failed`.
+            if hasattr(payload, "model_dump"):
+                payload_dict = payload.model_dump(exclude_none=True)
+            else:
+                payload_dict = {k: v for k, v in dict(payload).items() if v is not None}
             return _record_tool_call(
                 key=key,
                 label=label,
-                payload=payload.model_dump() if hasattr(payload, "model_dump") else dict(payload),
+                payload=payload_dict,
                 confidence=confidence,
                 evidence=list(evidence or []),
                 tool_context=tool_context,
@@ -154,6 +163,9 @@ def _make_tool(action_def: dict[str, Any]):
                     payload = {}
             if not isinstance(payload, dict):
                 payload = {"value": payload}
+            # Drop null values for consistency with the typed branch above —
+            # see the explanatory comment there.
+            payload = {k: v for k, v in payload.items() if v is not None}
             return _record_tool_call(
                 key=key,
                 label=label,

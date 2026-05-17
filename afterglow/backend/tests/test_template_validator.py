@@ -5,7 +5,7 @@ The deterministic step never calls Gemini and must catch:
   - duplicate field keys
   - depends_on cycles + unknown deps
   - non-dot.namespaced action keys
-  - actions whose key is not in MOCK_REGISTRY (warning, not error)
+  - actions whose key is not in the action catalog (warning, not error)
   - invalid JSONSchema in payload_schema
   - prompt_hints `when` expressions outside the supported grammar
 """
@@ -93,7 +93,7 @@ def test_unknown_action_key_warned_not_errored():
         ]
     )
     issues = validate_template_deterministic(d)
-    matching = [i for i in issues if "MOCK_REGISTRY" in i.message]
+    matching = [i for i in issues if "action catalog" in i.message]
     assert len(matching) == 1
     assert matching[0].severity == "warning"
 

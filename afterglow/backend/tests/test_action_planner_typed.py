@@ -123,6 +123,83 @@ def test_make_tool_coerces_json_string_when_no_schema():
     assert state["requested_actions"]["items"][0]["payload"] == {"a": 1}
 
 
+def _booking_action_with_optionals() -> dict[str, Any]:
+    # Schema mirroring the seed restaurant template: `occasion` and
+    # `seating_preference` are optional `{"type": "string"}` — null is NOT
+    # in the type union, so an `{"occasion": null}` payload would fail
+    # jsonschema.validate downstream.
+    return {
+        "key": "booking.create",
+        "label": "Create booking",
+        "execution_mode": "auto",
+        "preconditions": ["party_size"],
+        "confidence_threshold": 0.75,
+        "evidence_required": True,
+        "payload_schema": {
+            "type": "object",
+            "properties": {
+                "party_size": {"type": "integer", "minimum": 1},
+                "booking_date": {"type": "string", "format": "date"},
+                "occasion": {"type": "string"},
+                "seating_preference": {"type": "string"},
+            },
+            "required": ["party_size", "booking_date"],
+            "additionalProperties": False,
+        },
+    }
+
+
+def test_typed_tool_drops_none_values_from_payload():
+    """Regression for the 2026-05-17 prod incident: Gemini emitted
+    `{"occasion": null, ...}` for optional string fields and the executor's
+    jsonschema.validate rejected it with `"None is not of type 'string'"`,
+    flipping the action to status='validation_failed'. The planner must
+    strip null values before recording the request so downstream validation
+    only sees keys with real values."""
+    tool = _make_tool(_booking_action_with_optionals())
+    state: dict[str, Any] = {}
+    tool_context = SimpleNamespace(state=state)
+
+    payload_model = _get_payload_annotation(tool)
+    # Gemini emits null for optional fields when uncertain — replicate that.
+    payload = payload_model(
+        party_size=3,
+        booking_date="2026-05-23",
+        occasion=None,
+        seating_preference=None,
+    )
+    tool(payload=payload, confidence=0.9, evidence=["table for three"], tool_context=tool_context)
+
+    recorded = state["requested_actions"]["items"][0]["payload"]
+    assert recorded == {"party_size": 3, "booking_date": "2026-05-23"}
+    assert "occasion" not in recorded
+    assert "seating_preference" not in recorded
+
+
+def test_dict_fallback_tool_drops_none_values_from_payload():
+    """Same regression as above, but for the dict-fallback branch (used
+    when an action has no payload_schema)."""
+    action = {
+        "key": "whatsapp.send_confirmation",
+        "label": "Send confirmation",
+        "execution_mode": "auto",
+        "preconditions": [],
+        "confidence_threshold": 0.7,
+        "evidence_required": False,
+    }
+    tool = _make_tool(action)
+    state: dict[str, Any] = {}
+    tool_context = SimpleNamespace(state=state)
+    tool(
+        payload={"customer_name": "Marco", "channel": None, "booking_date": None},
+        tool_context=tool_context,
+    )
+    recorded = state["requested_actions"]["items"][0]["payload"]
+    assert recorded == {"customer_name": "Marco"}
+    assert "channel" not in recorded
+    assert "booking_date" not in recorded
+
+
 def test_plan_actions_raises_when_no_api_key(monkeypatch):
     """plan_actions must fail-fast (no fallback) when GOOGLE_API_KEY is unset."""
     import app.agents.action_planner as ap
