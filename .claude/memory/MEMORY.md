@@ -10,7 +10,7 @@
 - [Plan files location](feedback_plan_files_location.md) — i piani vanno in `.claude/plans/` della repo, non in `~/.claude/plans/`
 - [Plans no timing](feedback_plans_no_timing.md) — solo ordine di esecuzione, niente durate o giorni
 - [Drawer window.confirm hangs](feedback_drawer_window_confirm.md) — dentro DrawerItem usa Paper Dialog stateful, non window.confirm: race con auto-close lascia il bottone bloccato su "Resetting…"
-- [Web first-paint flash minimization](feedback_web_first_paint.md) — il `_layout.tsx` module-level block riduce il flash di tema + l'hydration guard (`hydrated` flag) ricopre il primo render React; `web.output: "static"` prerenderizza senza localStorage/matchMedia, letture grezze al primo render → React error #418
+- [Web first-paint flash minimization](feedback_web_first_paint.md) — `web.output: "single"` (SPA shell, no static prerender) per evitare React error #418 da hydration mismatch; module-level theme sync per il cold-load flash + hydration guard come defensive scaffolding. NON flippare a `"static"` senza audit SSR-safety completo.
 - [Locale toggle = dates only](feedback_locale_dates_only.md) — Settings → Format è SOLO formati data/ora (Intl.DateTimeFormat-based); UI strings restano inglesi per feedback-code-language
 - [REAL_ON_DEVICE whitelist UI-only](feedback_real_on_device_whitelist.md) — il badge "Simulated" si nasconde per booking/appointment in Call Detail via whitelist client-side; backend integration_kind resta `mock_external`
 - [Mock avatars: hardcoded URLs](feedback_mock_avatars_hardcoded.md) — usa `randomuser.me/api/portraits/{women,men}/N.jpg` scelti a mano; DiceBear seed-RNG può rendere "Amelia" mascolina anche con `top=` filtro
