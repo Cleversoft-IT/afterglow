@@ -217,6 +217,85 @@ html, body, #root {
   aspect-ratio: 9 / 19.5;
 }
 
+/* ── Phone stage (demo section) ───────────────────────────
+   The phone keeps its logical 390×845 size so the embedded
+   app always renders against the same viewport. The stage
+   wrapper applies a viewport-aware scale via transform: only
+   if the phone would not fit on screen, it shrinks down to a
+   floor of 0.55 — never above 1.0. Below 0.55 the embed makes
+   no sense anymore, so the CTA-only fallback kicks in.
+
+   Tuning: --demo-chrome counts the vertical UI cost in the demo
+   section that lives outside the phone — section padding,
+   heading block, CTA above, hint below. Adjust here, not inline.
+*/
+.phone-stage {
+  /* Vertical UI cost outside the phone in the demo section, measured:
+     section py-14/16 + heading block + hint label + safety margin. */
+  --demo-chrome: 260px;
+  --phone-h: 845px;
+  --phone-w: 390px;
+  /* Scale 1.0 when the phone fits comfortably; shrink only as far as
+     needed to stay inside the viewport, with a floor of 0.5 so the
+     embedded UI never becomes unusable. */
+  --phone-scale: clamp(
+    0.5,
+    calc((100dvh - var(--demo-chrome)) / var(--phone-h)),
+    1
+  );
+  position: relative;
+  width: calc(var(--phone-w) * var(--phone-scale));
+  height: calc(var(--phone-h) * var(--phone-scale));
+}
+
+.phone-stage > .phone-frame {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: var(--phone-w);
+  height: var(--phone-h);
+  max-width: none;
+  aspect-ratio: auto;
+  transform: scale(var(--phone-scale));
+  transform-origin: top left;
+}
+
+.phone-stage > .demo-phone-glow {
+  /* keep the glow centred on the SCALED phone, not the logical box */
+  inset: calc(-60px * var(--phone-scale));
+}
+
+/* ── Phone hint (subtle "click to interact" below the phone) ── */
+.phone-hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  letter-spacing: 0.02em;
+  color: var(--muted-foreground);
+  user-select: none;
+}
+
+.phone-hint-dot {
+  position: relative;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--primary);
+  box-shadow: 0 0 0 0 oklch(0.56 0.20 260 / 0.6);
+  animation: phone-hint-pulse 2s ease-out infinite;
+}
+
+@keyframes phone-hint-pulse {
+  0%   { box-shadow: 0 0 0 0   oklch(0.56 0.20 260 / 0.5); }
+  70%  { box-shadow: 0 0 0 10px oklch(0.56 0.20 260 / 0); }
+  100% { box-shadow: 0 0 0 0   oklch(0.56 0.20 260 / 0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .phone-hint-dot { animation: none; }
+}
+
 /* ── Video placeholder ────────────────────────────────── */
 .video-placeholder {
   width: 100%;

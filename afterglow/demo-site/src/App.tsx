@@ -286,27 +286,31 @@ export default function App() {
         </section>
 
         {/* ── Live demo ─────────────────────────────────── */}
-        <section id="demo" className="py-20 md:py-24 border-t border-border/40">
-          <SectionLabel>02 — Try it now</SectionLabel>
-          <h2 className="text-3xl md:text-4xl font-extrabold tracking-tight mb-3">
-            Live demo
-          </h2>
-          <p className="text-muted-foreground text-sm mb-8 max-w-xl leading-relaxed">
-            The phone below is the real Afterglow app, running against the production backend
-            on Vultr. Activate a template, tap the blue button, and inspect the call.
-          </p>
-
-          {/* Desktop+: embedded device frame, with "open in new tab" on top */}
-          <div className="hidden md:flex flex-col items-center gap-5">
-            <Button asChild variant="outline" size="sm" className="rounded-full gap-2">
+        <section id="demo" className="py-14 md:py-16 border-t border-border/40">
+          <div className="flex flex-wrap items-end justify-between gap-4 mb-6">
+            <div>
+              <SectionLabel>02 — Try it now</SectionLabel>
+              <h2 className="text-3xl md:text-4xl font-extrabold tracking-tight mb-2">
+                Live demo
+              </h2>
+              <p className="text-muted-foreground text-sm max-w-xl leading-relaxed">
+                The phone below is the real Afterglow app, running against the production
+                backend on Vultr. Activate a template, tap the blue button, and inspect the call.
+              </p>
+            </div>
+            <Button asChild variant="outline" size="sm" className="rounded-full gap-2 hidden md:inline-flex shrink-0">
               <a href={APP_URL} target="_blank" rel="noopener noreferrer">
-                Open full demo in a new tab
+                Open in a new tab
                 <ExternalLink className="w-3.5 h-3.5" />
               </a>
             </Button>
-            <div className="relative">
+          </div>
+
+          {/* Desktop+: embedded device frame, scaled to fit viewport */}
+          <div className="hidden md:flex flex-col items-center gap-3">
+            <div className="phone-stage">
               <div className="demo-phone-glow" aria-hidden="true" />
-              <div className="relative phone-frame">
+              <div className="phone-frame">
                 <iframe
                   title="Afterglow live demo"
                   src={APP_URL}
@@ -315,6 +319,10 @@ export default function App() {
                 />
               </div>
             </div>
+            <span className="phone-hint" aria-hidden="true">
+              <span className="phone-hint-dot" />
+              Click anywhere on the screen to interact
+            </span>
           </div>
 
           {/* Mobile: no iframe-in-phone-in-phone — single prominent CTA */}
