@@ -196,6 +196,7 @@ export type ActionCatalogEntry = {
   mock_target?: string | null;
   internal_handler?: string | null;
   can_undo: boolean;
+  mutates: boolean;
   default_payload_schema?: Record<string, unknown> | null;
   compatible_domains: string[];
 };

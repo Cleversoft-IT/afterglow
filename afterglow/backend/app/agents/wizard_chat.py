@@ -166,8 +166,26 @@ def _system_instruction(language: str, catalog_keys: list[str]) -> str:
     )
 
 
+def _questions_asked_after_user_started(payload: WizardChatRequest) -> int:
+    """Count wizard questions, ignoring any client-side greeting.
+
+    The Expo screen seeds the local chat with an assistant greeting before the
+    user types anything. That greeting is not a model question and must not
+    consume the server-side question budget.
+    """
+
+    user_started = False
+    questions = 0
+    for message in payload.messages:
+        if message.role == "user":
+            user_started = True
+        elif user_started and message.role == "assistant":
+            questions += 1
+    return questions
+
+
 def _user_prompt(payload: WizardChatRequest) -> str:
-    questions_asked = sum(1 for m in payload.messages if m.role == "assistant")
+    questions_asked = _questions_asked_after_user_started(payload)
     lines: list[str] = []
     lines.append("=== AGENT STATE ===")
     lines.append(f"Questions asked so far: {questions_asked} / {QUESTION_BUDGET}")

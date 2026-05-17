@@ -128,9 +128,9 @@ def validate_template_deterministic(
                     field_path=f"action_types[{i}].key",
                     severity="warning",
                     message=(
-                        f"action key {a.key!r} is not in MOCK_REGISTRY; the "
-                        "executor will return status='failed' until a mock "
-                        "target is wired. The validator may propose one."
+                        f"action key {a.key!r} is not in the action catalog; "
+                        "the executor will reject it until a catalog entry is "
+                        "wired. The validator may propose a close existing key."
                     ),
                 )
             )

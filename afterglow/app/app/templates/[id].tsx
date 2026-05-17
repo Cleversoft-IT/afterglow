@@ -569,6 +569,7 @@ function ActionEditor({
         onPress={() => setExpanded(!expanded)}
         badges={
           <View style={styles.badgeRow}>
+            {catalogEntry?.mutates ? <Chip compact>Changes records</Chip> : null}
             {action.evidence_required ? <Chip compact>Needs transcript proof</Chip> : null}
           </View>
         }

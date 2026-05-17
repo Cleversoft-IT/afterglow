@@ -26,11 +26,11 @@ logger = logging.getLogger("afterglow")
 async def lifespan(app: FastAPI):
     logger.info("Afterglow API starting up (env=%s)", settings.app_env)
     if not settings.google_api_key:
-        logger.warning("GOOGLE_API_KEY not set — Gemini agents will run in stub mode.")
+        logger.warning("GOOGLE_API_KEY not set — Gemini agents will fail fast.")
     if not settings.vultr_inference_api_key:
-        logger.warning("VULTR_INFERENCE_API_KEY not set — Vultr inference in stub mode.")
+        logger.warning("VULTR_INFERENCE_API_KEY not set — Vultr memory lookup is disabled.")
     if not settings.speechmatics_api_key:
-        logger.warning("SPEECHMATICS_API_KEY not set — Speechmatics in stub mode.")
+        logger.warning("SPEECHMATICS_API_KEY not set — transcription/TTS will fail fast.")
 
     try:
         recovered = await recover_orphans()

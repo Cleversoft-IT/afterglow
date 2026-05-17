@@ -24,6 +24,7 @@ from app.agents.wizard_chat import (
     QUESTION_BUDGET,
     WizardChatError,
     _WizardModelOutput,
+    _questions_asked_after_user_started,
     _system_instruction,
     _user_prompt,
     run_wizard_chat,
@@ -149,6 +150,22 @@ def test_user_prompt_marks_first_turn():
     assert "BUDGET EXHAUSTED" not in prompt
 
 
+def test_user_prompt_ignores_client_side_greeting_for_question_budget():
+    payload = _payload(
+        [
+            (
+                "assistant",
+                "Hi! Tell me a bit about your business — what kind of phone calls do you usually take?",
+            ),
+            ("user", "I run a restaurant and take booking calls"),
+        ]
+    )
+    prompt = _user_prompt(payload)
+    assert _questions_asked_after_user_started(payload) == 0
+    assert "Questions asked so far: 0 / 5" in prompt
+    assert "First turn" in prompt
+
+
 def test_user_prompt_includes_question_count():
     payload = _payload(
         [
@@ -166,7 +183,7 @@ def test_user_prompt_includes_question_count():
 
 
 def test_user_prompt_forces_draft_at_budget_ceiling():
-    turns: list[tuple[str, str]] = [("user", "hi")]
+    turns: list[tuple[str, str]] = [("assistant", "Hi"), ("user", "hi")]
     for i in range(QUESTION_BUDGET):
         turns.append(("assistant", f"Question {i + 1}?"))
         turns.append(("user", f"Answer {i + 1}"))
