@@ -33,6 +33,7 @@ type ContactEntry = {
   display_name: string;
   phone_e164: string;
   label: string;
+  avatar_url?: string | null;
 };
 
 function normalisePhone(p: string): string {
@@ -86,6 +87,7 @@ export default function ContactsScreen() {
       display_name: m.display_name,
       phone_e164: m.phone_e164,
       label: m.label,
+      avatar_url: m.avatar_url ?? null,
     }));
 
     // 3. dedupe by phone — customer wins
@@ -229,7 +231,12 @@ export default function ContactsScreen() {
             }}
             left={() => (
               <View style={{ paddingLeft: 8, justifyContent: 'center' }}>
-                <ContactAvatar phone={item.phone_e164} name={item.display_name} size={48} />
+                <ContactAvatar
+                  phone={item.phone_e164}
+                  name={item.display_name}
+                  avatarUrl={item.avatar_url}
+                  size={48}
+                />
               </View>
             )}
             title={item.display_name}

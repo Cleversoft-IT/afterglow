@@ -27,6 +27,13 @@ export function colorFromPhone(phone: string): string {
 }
 
 export function initialsFromName(name: string): string {
+  // Phone-number strings (e.g. unknown callers shown as "+15550009999")
+  // would otherwise compute a "+" or a digit as their initial, which looks
+  // ugly in the colored circle. Detect them and skip — the ContactAvatar
+  // falls back to a generic icon when initials are empty.
+  const looksLikePhone = /^\+?[\d\s().-]+$/.test(name.trim());
+  if (looksLikePhone) return '';
+
   const parts = name.trim().split(/\s+/).filter(Boolean);
   if (parts.length >= 2) {
     return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();

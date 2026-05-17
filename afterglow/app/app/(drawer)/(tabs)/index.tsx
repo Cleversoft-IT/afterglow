@@ -33,17 +33,18 @@ import type { BookingListItem, CallListItem } from '../../../lib/types';
 const NON_TERMINAL_STATUSES = new Set(['pending', 'transcribing', 'analyzing']);
 const POLL_INTERVAL_MS = 2000;
 
-type FilterKey = 'all' | 'missed' | 'bookings' | 'saved' | 'unsaved';
+type FilterKey = 'all' | 'missed' | 'bookings' | 'clients' | 'saved' | 'unsaved';
 
 const FILTER_LABEL: Record<FilterKey, string> = {
   all: 'All',
   missed: 'Missed',
   bookings: 'Bookings',
+  clients: 'Clients',
   saved: 'Saved',
   unsaved: 'Unsaved',
 };
 
-const FILTERS: FilterKey[] = ['all', 'missed', 'bookings', 'saved', 'unsaved'];
+const FILTERS: FilterKey[] = ['all', 'missed', 'bookings', 'clients', 'saved', 'unsaved'];
 
 export default function HomeScreen() {
   const theme = useTheme();
@@ -125,6 +126,7 @@ export default function HomeScreen() {
       // Chip filter
       if (filter === 'missed' && c.status !== 'failed') return false;
       if (filter === 'bookings' && !booking) return false;
+      if (filter === 'clients' && !caller.is_customer) return false;
       if (filter === 'saved' && !(caller.is_customer || mock)) return false;
       if (filter === 'unsaved' && (caller.is_customer || mock)) return false;
       // Search query
