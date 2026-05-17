@@ -30,6 +30,14 @@ Stack siblings (outside the drawer)
 └─ simulator.tsx                            Test simulator (drawer entry → push)
 ```
 
+**Simulator / incoming-call audio** reads the active template's
+`simulation_config`. Seed templates ship bundled recordings under
+`app/assets/audio/`; wizard-generated templates can generate a call script
+and MP3 through the backend's simulation endpoints (`simulation_script.py` +
+Speechmatics TTS) or accept an uploaded recording. The selected recording is
+then submitted to `POST /api/v1/calls` with the current `X-Demo-Session`
+header.
+
 **Home (Recents) layout** mirrors the Pixel call log: an `Appbar` pill
 `Searchbar` with hamburger leading + voice trailing, a horizontal chip filter
 row (**All / Missed / Bookings / Saved / Unsaved**), a `SectionList` with
@@ -133,6 +141,18 @@ handler in `app/incoming-call.tsx` also falls back to
 false, so a deep-link / cold-load hangup no longer leaves a black
 screen behind a stale `play()` rejection toast.
 
+## Demo site shell
+
+The public demo site is a Vite/React marketing shell that embeds the real
+Expo web app via `APP_URL` (`VITE_APP_URL`, defaulting to the production
+`app.95-179-245-107.sslip.io` URL). On desktop/tablet widths it renders the
+app inside a fixed logical 390×845 phone viewport, wrapped by `.phone-stage`:
+the app keeps a stable viewport while the wrapper applies a viewport-aware
+CSS transform scale (`0.55..1.0`) so the full device fits below the demo
+section copy. A subtle "Click anywhere on the screen to interact" hint sits
+below the frame. On mobile, the iframe preview is hidden and the site shows
+a single CTA to open the live app full-screen.
+
 ## End-to-end shape
 
 ```
@@ -141,9 +161,11 @@ App (Expo + react-native-web)         ◄── embedded by ── Demo site (Vi
        ▼
 FastAPI background task ─► Speechmatics batch (diarization + lang detect + custom dict)
        │
-       ├─► Vultr Vector Store /v1/chat/completions/RAG  (pre-fetch: prior_facts)
-       │   └─► single collection, configured via VULTR_VECTOR_DEFAULT_COLLECTION
-       │       (skipped when the call carries a demo session_id — see below)
+       ├─► Memory lookup
+       │   ├─► structured SQL history (demo, or customers with <=10 prior calls)
+       │   └─► Vultr Vector Store /v1/chat/completions/RAG
+       │       (production customers with >10 prior calls, single collection
+       │        configured via VULTR_VECTOR_DEFAULT_COLLECTION)
        │
        ├─► Gemini structured-output call  (call_analyzer.py — single Gemini pass)
        │       prompt: transcript + template fields_schema (incl. pii_class /
@@ -159,26 +181,30 @@ FastAPI background task ─► Speechmatics batch (diarization + lang detect + c
        │         - next_call_briefing  (NL paragraph, detected language)
        │       Fail-fast: missing key / error / schema mismatch → Call.failed.
        │
-       ├─► PII sanitizer (pii_sanitizer.py — pure Python, no LLM)
-       │       applies the per-pii_class redaction policy to next_call_briefing
-       │       and planned_action evidence; audit step `pii_policy_applied`
-       │       records exactly what was redacted, with which threshold.
-       │       Raw `fields` survive untouched for UI + executor.
+       ├─► PII inspector (pii_sanitizer.py — pure Python, no LLM)
+       │       observe-only: it does not redact or mutate the analysis.
+       │       audit step `pii_policy_applied` records which PII classes were
+       │       present, at what confidence, and whether they cleared the
+       │       relevant threshold. Raw values stay available to the operator,
+       │       executor, memory_summary, briefing_snapshot, and vector chunk.
        │
        ├─► Action Planner (action_planner.py — Google ADK agentic loop)
-       │       reads the SANITIZED analysis, exposes the template's auto-mode
+       │       reads the analysis, exposes the template's auto-mode
        │       action_types as ADK tools with TYPED payload parameters
        │       (Pydantic models built from payload_schema). Gemini emits a
        │       structured object that matches the schema; the executor revalidates.
        │       Fail-fast: ADK runner error → Call.failed (no fallback).
        │
        ├─► Action Executor (deterministic Python) ─► jsonschema.validate(payload),
-       │       evidence_required gate, mutates flag, `mock: True` stamp on the
-       │       result (renders a "Simulated" badge in the operator UI) →
-       │       mock registry + Postgres + audit_log
+       │       evidence_required gate, mutates flag, catalog dispatch:
+       │       `mock_external` actions are stamped `mock: True`; `internal_real`
+       │       actions mutate Postgres and are stamped `mock: False`.
+       │       All executions/refusals write executed_actions + audit_log.
        │
        └─► Memory write-back ─► customer.memory_summary (Postgres, operator-visible)
-                                + extracted_fields.briefing_snapshot (sanitized per-call copy)
+                                + extracted_fields.briefing_snapshot (per-call copy)
+                                + customer.profile_facts / tags when internal profile
+                                  actions run
                                 + bilingual chunk pushed to Vultr Vector Store
                                   (native briefing + EN summary; skipped when the
                                    call carries a demo session_id)
@@ -187,6 +213,20 @@ FastAPI background task ─► Speechmatics batch (diarization + lang detect + c
 The pipeline runs **entirely after the call ends**. The human-facing latency
 is whatever Postgres takes to return `customer.memory_summary`. No AI in the
 live-call hot path.
+
+**Startup recovery.** FastAPI lifespan startup also runs `orphan_recovery`:
+any call stuck in `transcribing` or `analyzing` for more than 10 minutes is
+marked `failed` with `error="orphaned_after_restart"` and an audit row. This
+keeps the UI from polling forever after a deploy, crash, or container restart
+that interrupted a background task.
+
+**Action catalog.** `backend/app/integrations/action_catalog.py` is the source
+of truth for action execution kind. External integrations are simulated
+through `MOCK_REGISTRY` (`mock_external`); internal profile updates run
+against Postgres (`internal_real`) through `customer_profile.apply_update`.
+The profile handler can backfill `display_name`, merge `tags`, store
+allergies and other free-form facts in `customers.profile_facts`, and keeps a
+`previous_state` snapshot so undo can replay the prior customer row state.
 
 System of record: **Vultr Managed Postgres**. Deploy: **Vultr Cloud Compute +
 Coolify** with auto-deploy via GitHub App webhook on push to `main` (no
@@ -226,10 +266,13 @@ the freshly-generated uuid back on the response. The frontend persists it to
 `localStorage` and stamps every subsequent request with it. No cookies, so
 SameSite/Partitioned cookie behaviour inside an iframe is irrelevant.
 
-**Visibility rule.** Every read filters
-`WHERE session_id = me OR session_id IS NULL`. Seed rows (the three template
-presets, the two known customers) live with `session_id IS NULL` and stay
-shared and read-only.
+**Visibility rule.** Activity tables (`calls`, `audit_log`,
+`executed_actions`, etc.) are not seedable: production reads
+`session_id IS NULL`, while demo reads strictly `session_id = me`.
+Seedable tables (`templates`, `customers`) use a different filter: production
+reads `session_id IS NULL`, while demo reads `session_id = me OR is_seed =
+TRUE`. Seed rows (the template presets, the known demo customers) live with
+`session_id IS NULL AND is_seed = TRUE` and stay shared and read-only.
 
 **Clone-on-write customer.** When a call lands on a phone number that matches
 a seed customer, the orchestrator clones the seed (`memory_summary`, `tags`,
@@ -248,12 +291,17 @@ cannot safely partition a shared collection by `session_id`. Rather than
 provision one Vultr collection per visitor (cleanup is not guaranteed across
 a 6-day judging window), demo mode skips both the chunk push and the RAG
 prefetch. Postgres remains the source of truth: the briefing is still saved
-on the visitor's clone customer and shown post-call. The audit log keeps the
-wiring visible with explicit `status=skipped reason=demo_session` rows on the
-`memory_lookup` and `memory_updater` steps.
+on the visitor's clone customer and shown post-call. Demo memory lookup uses
+the session-isolated SQL structured-history path and writes a
+`memory_lookup.structured_history` audit row with `demo=true`; the vector
+write-back path writes a `memory_updater` audit row with `status=skipped`
+and reason `demo_sandbox_vector_store_disabled`.
 
 The production single-tenant path (no `X-Demo-Session` header, or
-`?bypass=<token>` for pitch-day) runs the full Vultr loop unchanged.
+`?bypass=<token>` for pitch-day) keeps Vultr enabled: memory write-back pushes
+chunks to the configured collection, and semantic RAG is used once the
+customer has enough history (`total_calls > 10`). For shorter histories,
+production also uses the exact SQL structured-history path.
 
 **Cleanup.** A background asyncio task running in the FastAPI lifespan event
 sweeps `demo_sessions` every 30 minutes and deletes everything that has been
@@ -285,13 +333,13 @@ ships with a working default until the admin chooses.
 | Table                    | Carries `session_id`? | Purpose                                                |
 |--------------------------|-----------------------|--------------------------------------------------------|
 | `demo_sessions`          | (is the id)           | Per-visitor sandbox, plus the picked active template   |
-| `templates`              | yes                   | Seed presets (`NULL`) + wizard-generated (per session) |
-| `customers`              | yes                   | Seed customers (`NULL`) + clone-on-write per session   |
+| `templates`              | yes                   | Seed presets (`NULL`) + wizard-generated templates, including optional `simulation_config` |
+| `customers`              | yes                   | Seed customers (`NULL`) + clone-on-write per session; profile facts live in `profile_facts` |
 | `calls`                  | yes                   | Filtered on read and on cleanup                        |
 | `audit_log`              | yes                   | Same; lets judges read their own audit trail           |
 | `executed_actions`       | yes                   | Same                                                   |
-| `customer_memory_chunks` | yes (always NULL today) | Demo mode skips the write; column exists for future   |
-| `extracted_fields`       | no                    | Cascades via `calls`. Carries `briefing_snapshot` (mig `0005`): a frozen copy of the SANITIZED briefing emitted for this specific call, kept even after `customer.memory_summary` is later overwritten by a newer call. |
+| `customer_memory_chunks` | yes (NULL in production rows; demo writes are skipped today) | Vector-store write index for production memory chunks |
+| `extracted_fields`       | no                    | Cascades via `calls`. Carries `briefing_snapshot` (mig `0005`): a frozen copy of the operator-visible briefing emitted for this specific call, kept even after `customer.memory_summary` is later overwritten by a newer call. |
 
 ## PII handling
 
@@ -300,41 +348,48 @@ financial|identity`) and an optional per-field `confidence_threshold`
 that overrides the class default. The defaults are encoded in
 `backend/app/agents/pii_policy.py`:
 
-| Class      | Default threshold | Redaction strategy (briefing / vector chunk / audit evidence) |
-|------------|-------------------|---------------------------------------------------------------|
-| `none`     | 0.0               | passthrough                                                   |
-| `contact`  | 0.80              | `[redacted: contact]`                                         |
-| `identity` | 0.85              | first2 + asterisks + last2 (e.g. `AB***CD`)                  |
-| `financial`| 0.90              | `[hash:<sha256[:8]>]` deterministic per value                |
-| `health`   | 0.90              | `[redacted: health]` — never inline                          |
+| Class       | Default threshold | Runtime behavior today                                      |
+|-------------|-------------------|-------------------------------------------------------------|
+| `none`      | 0.0               | passthrough; no audit observation                           |
+| `contact`   | 0.80              | observed and labeled; value remains verbatim                |
+| `identity`  | 0.85              | observed and labeled; value remains verbatim                |
+| `financial` | 0.90              | observed and labeled; value remains verbatim                |
+| `health`    | 0.90              | observed and labeled; value remains verbatim                |
 
 The sanitizer (`backend/app/agents/pii_sanitizer.py`) runs **immediately
-after** the call_analyzer and produces a `SanitizedAnalysis` that:
+after** the call_analyzer and produces a `SanitizedAnalysis` wrapper for API
+stability, but the wrapped `analysis` is the original object. This is
+intentional: the operator needs to see names, allergies, identifiers, and
+other call facts verbatim before the next pickup. A placeholder such as
+`[redacted: health]` would make the briefing much less useful.
 
-1. Redacts every occurrence of a PII field's raw value from
-   `next_call_briefing` and from each `planned_action.evidence` span.
-2. Leaves `analysis.fields` untouched — the operator UI and the action
-   executor still need the original value (booking the right table, sending
-   the right WhatsApp to the right customer).
-3. Emits a `pii_policy_applied` audit row enumerating which fields
-   triggered the policy, the class, the threshold, and the action taken
-   (`flag` when confidence is below threshold, `redact` otherwise). The
-   raw values never appear in the audit payload — only the field key.
+The runtime behavior is observe-only:
 
-The chunk that lands in the Vultr Vector Store metadata records
-`pii_redactions_applied: list[pii_class]` so an auditor can answer "did
-we leak any health data into the embedding?" without re-reading the
-chunk text.
+1. `next_call_briefing`, planned-action evidence, extracted fields,
+   `customer.memory_summary`, `extracted_fields.briefing_snapshot`, and the
+   production Vultr chunk keep the original values.
+2. The `pii_policy_applied` audit row records only field key, `pii_class`,
+   confidence, threshold, and status (`observed` or
+   `observed_low_confidence`). It does not store the raw value in that audit
+   payload.
+3. The production Vultr Vector Store metadata records
+   `pii_classes_present: list[pii_class]`, so an auditor can answer whether
+   a chunk carried health/contact/financial/etc. data without parsing the
+   chunk body.
+
+`pii_policy.py` still contains helper functions such as `redact_for_briefing`
+and `hash_for_audit`, but they are retained for future alternate projections;
+they are not applied on the post-call runtime path today.
 
 ## Bilingual briefing
 
 When `transcript.language != "en"` (and we are not in demo mode), the
 orchestrator's `_persist_memory` makes one extra small Gemini call
 (`_summarize_to_english`, ≤120 output tokens) to produce an English
-restatement of the (already sanitized) briefing. Both copies are pushed
-to the Vultr Vector Store chunk so semantic retrieval works across the
-operator's spoken language and the embedding model's bias toward
-English. Failure of the bilingual call lands as
+restatement of the operator-visible briefing. Both copies are pushed to the
+Vultr Vector Store chunk so semantic retrieval works across the operator's
+spoken language and the embedding model's bias toward English. Failure of
+the bilingual call lands as
 `audit.memory_summarizer_bilingual.status=degraded` and the chunk falls
 back to native-only — the briefing on Postgres is unaffected.
 
