@@ -1,8 +1,9 @@
+import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
   Bot, Zap, Brain, Layers, Play, ArrowRight, ExternalLink,
-  Sun, Moon, Monitor,
+  Sun, Moon, Monitor, Maximize2,
   type LucideIcon,
 } from 'lucide-react';
 import { useTheme, type ThemeMode } from '@/lib/theme';
@@ -130,8 +131,10 @@ function Navbar() {
           after<span className="text-primary">glow</span>
         </span>
         <div className="hidden md:flex items-center gap-6 text-sm text-muted-foreground">
+          <a href="#why" className="hover:text-foreground transition-colors">Why</a>
           <a href="#how" className="hover:text-foreground transition-colors">How it works</a>
           <a href="#demo" className="hover:text-foreground transition-colors">Live demo</a>
+          <a href="#features" className="hover:text-foreground transition-colors">Features</a>
           <a href="#built-on" className="hover:text-foreground transition-colors">Tech stack</a>
         </div>
         <div className="flex items-center gap-3">
@@ -151,6 +154,115 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
     <p className="text-[11px] font-bold uppercase tracking-[4px] text-primary mb-4">
       {children}
     </p>
+  );
+}
+
+/* ─── Phone scale hook ──────────────────────────────────────
+   Mirrors the CSS formula in .phone-stage so the page can show
+   a "Scaled to N%" badge when (and only when) the phone is not
+   at full logical size. */
+const PHONE_H = 845;
+const PHONE_FLOOR = 0.45;
+const DEMO_CHROME = 48;
+
+function usePhoneScale(): number {
+  const [scale, setScale] = useState(1);
+  useEffect(() => {
+    const compute = () => {
+      const vh = window.innerHeight;
+      const raw = (vh - DEMO_CHROME) / PHONE_H;
+      setScale(Math.min(1, Math.max(PHONE_FLOOR, raw)));
+    };
+    compute();
+    window.addEventListener('resize', compute);
+    return () => window.removeEventListener('resize', compute);
+  }, []);
+  return scale;
+}
+
+/* ─── Demo section ──────────────────────────────────────────
+   Side-by-side: copy/CTAs on the left, full-viewport-height phone
+   on the right. On narrow viewports the iframe is hidden and the
+   page shows a single "Open the live app" CTA card instead. */
+function DemoSection() {
+  const scale = usePhoneScale();
+  const scaledDown = scale < 0.999;
+  const pct = Math.round(scale * 100);
+
+  return (
+    <section
+      id="demo"
+      className="border-t border-border/40 -mx-6 px-6 md:min-h-dvh md:flex md:items-center py-16 md:py-0"
+    >
+      <div className="w-full grid grid-cols-1 md:grid-cols-[minmax(260px,1fr)_auto] md:gap-12 lg:gap-16 items-center">
+        {/* Left column: copy + CTAs (sits next to the phone) */}
+        <div className="flex flex-col gap-6 max-w-md">
+          <div>
+            <SectionLabel>02 — Try it now</SectionLabel>
+            <h2 className="text-3xl md:text-4xl font-extrabold tracking-tight mb-3">
+              Live demo
+            </h2>
+            <p className="text-muted-foreground text-sm leading-relaxed">
+              The phone is the real Afterglow app, running against the production
+              backend on Vultr. Activate a template, tap the blue button, and inspect
+              the call.
+            </p>
+          </div>
+
+          <div className="hidden md:flex flex-wrap items-center gap-3">
+            <Button asChild className="rounded-full gap-2">
+              <a href={APP_URL} target="_blank" rel="noopener noreferrer">
+                Open in a new tab
+                <ExternalLink className="w-4 h-4" />
+              </a>
+            </Button>
+            <span className="phone-hint" aria-hidden="true">
+              <span className="phone-hint-dot" />
+              Click anywhere to interact
+            </span>
+          </div>
+
+          {/* Scale indicator — only when the phone is downscaled */}
+          {scaledDown && (
+            <p
+              className="hidden md:flex items-center gap-2 text-[11px] text-muted-foreground/80"
+              aria-live="polite"
+            >
+              <Maximize2 className="w-3 h-3" aria-hidden="true" />
+              Scaled to {pct}% — open in a new tab for full size.
+            </p>
+          )}
+
+          {/* Mobile: single CTA, no iframe-in-phone-in-phone */}
+          <div className="md:hidden flex flex-col items-center gap-4 rounded-2xl border border-border/60 bg-card/60 p-8 mt-2">
+            <p className="text-sm text-muted-foreground text-center leading-relaxed max-w-xs">
+              The embedded preview is hidden on mobile — open the real app full-screen instead.
+            </p>
+            <Button asChild size="lg" className="rounded-full gap-2 w-full sm:w-auto">
+              <a href={APP_URL} target="_blank" rel="noopener noreferrer">
+                Open the live app
+                <ExternalLink className="w-4 h-4" />
+              </a>
+            </Button>
+          </div>
+        </div>
+
+        {/* Right column: phone */}
+        <div className="hidden md:flex justify-center md:justify-end">
+          <div className="phone-stage">
+            <div className="demo-phone-glow" aria-hidden="true" />
+            <div className="phone-frame">
+              <iframe
+                title="Afterglow live demo"
+                src={APP_URL}
+                allow="autoplay; clipboard-write"
+                loading="lazy"
+              />
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
   );
 }
 
@@ -212,7 +324,7 @@ export default function App() {
       <div className="mx-auto max-w-5xl px-6">
 
         {/* ── Problem / Solution ────────────────────────── */}
-        <section className="py-20 md:py-24">
+        <section id="why" className="py-20 md:py-24">
           <SectionLabel>Why it exists</SectionLabel>
           <div className="grid grid-cols-1 md:grid-cols-[1fr_auto_1fr] gap-6 items-stretch">
             <div className="rounded-xl border border-border/60 p-8 bg-card/60">
@@ -286,61 +398,11 @@ export default function App() {
         </section>
 
         {/* ── Live demo ─────────────────────────────────── */}
-        <section id="demo" className="py-14 md:py-16 border-t border-border/40">
-          <div className="flex flex-wrap items-end justify-between gap-4 mb-6">
-            <div>
-              <SectionLabel>02 — Try it now</SectionLabel>
-              <h2 className="text-3xl md:text-4xl font-extrabold tracking-tight mb-2">
-                Live demo
-              </h2>
-              <p className="text-muted-foreground text-sm max-w-xl leading-relaxed">
-                The phone below is the real Afterglow app, running against the production
-                backend on Vultr. Activate a template, tap the blue button, and inspect the call.
-              </p>
-            </div>
-            <Button asChild variant="outline" size="sm" className="rounded-full gap-2 hidden md:inline-flex shrink-0">
-              <a href={APP_URL} target="_blank" rel="noopener noreferrer">
-                Open in a new tab
-                <ExternalLink className="w-3.5 h-3.5" />
-              </a>
-            </Button>
-          </div>
+        <DemoSection />
 
-          {/* Desktop+: embedded device frame, scaled to fit viewport */}
-          <div className="hidden md:flex flex-col items-center gap-3">
-            <div className="phone-stage">
-              <div className="demo-phone-glow" aria-hidden="true" />
-              <div className="phone-frame">
-                <iframe
-                  title="Afterglow live demo"
-                  src={APP_URL}
-                  allow="autoplay; clipboard-write"
-                  loading="lazy"
-                />
-              </div>
-            </div>
-            <span className="phone-hint" aria-hidden="true">
-              <span className="phone-hint-dot" />
-              Click anywhere on the screen to interact
-            </span>
-          </div>
-
-          {/* Mobile: no iframe-in-phone-in-phone — single prominent CTA */}
-          <div className="md:hidden flex flex-col items-center gap-4 rounded-2xl border border-border/60 bg-card/60 p-8">
-            <p className="text-sm text-muted-foreground text-center leading-relaxed max-w-xs">
-              The embedded preview is hidden on mobile — open the real app full-screen instead.
-            </p>
-            <Button asChild size="lg" className="rounded-full gap-2 w-full sm:w-auto">
-              <a href={APP_URL} target="_blank" rel="noopener noreferrer">
-                Open the live app
-                <ExternalLink className="w-4 h-4" />
-              </a>
-            </Button>
-          </div>
-        </section>
 
         {/* ── What makes it different ───────────────────── */}
-        <section className="py-20 md:py-24 border-t border-border/40">
+        <section id="features" className="py-20 md:py-24 border-t border-border/40">
           <SectionLabel>03 — Differentiators</SectionLabel>
           <h2 className="text-3xl md:text-4xl font-extrabold tracking-tight mb-12">
             What makes it different

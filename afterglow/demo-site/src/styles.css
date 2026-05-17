@@ -218,28 +218,21 @@ html, body, #root {
 }
 
 /* ── Phone stage (demo section) ───────────────────────────
-   The phone keeps its logical 390×845 size so the embedded
-   app always renders against the same viewport. The stage
-   wrapper applies a viewport-aware scale via transform: only
-   if the phone would not fit on screen, it shrinks down to a
-   floor of 0.55 — never above 1.0. Below 0.55 the embed makes
-   no sense anymore, so the CTA-only fallback kicks in.
+   Side-by-side layout: copy on the left, full-height phone on
+   the right. The phone keeps its logical 390×845 size so the
+   embedded app always renders against the same viewport — the
+   wrapper just shrinks the visual size via `transform: scale()`.
 
-   Tuning: --demo-chrome counts the vertical UI cost in the demo
-   section that lives outside the phone — section padding,
-   heading block, CTA above, hint below. Adjust here, not inline.
+   The phone fills almost the entire viewport height (clamp floor
+   0.45 prevents an unusable thumbnail on extreme cases), with
+   --demo-chrome = top+bottom breathing room.
 */
 .phone-stage {
-  /* Vertical UI cost outside the phone in the demo section, measured:
-     section py-14/16 + heading block + hint label + safety margin. */
-  --demo-chrome: 260px;
+  --demo-chrome: 48px;
   --phone-h: 845px;
   --phone-w: 390px;
-  /* Scale 1.0 when the phone fits comfortably; shrink only as far as
-     needed to stay inside the viewport, with a floor of 0.5 so the
-     embedded UI never becomes unusable. */
   --phone-scale: clamp(
-    0.5,
+    0.45,
     calc((100dvh - var(--demo-chrome)) / var(--phone-h)),
     1
   );
