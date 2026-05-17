@@ -173,7 +173,9 @@ export default function IncomingCallScreen() {
           await audio.prefetch(t.domain_hint as AudioDomain, callerMode);
         } else if (statusForMode === 'ready') {
           const customKey = `${t.id}_${callerMode}`;
-          await audio.prefetchUrl(customKey, api.simulationAudioUrl(t.id, callerMode));
+          const audioBlob = await api.fetchSimulationAudio(t.id, callerMode);
+          if (cancelled) return;
+          audio.prefetchBlob(customKey, audioBlob);
         } else {
           throw new Error(
             'This template has no demo audio yet. Generate or upload one in the Simulator screen.',

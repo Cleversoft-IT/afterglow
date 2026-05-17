@@ -20,14 +20,14 @@ import {
 
 const isWeb = Platform.OS === 'web';
 
-// Cache keys are flat strings so `playCallAudio` / `prefetchUrl` can stay
+// Cache keys are flat strings so `playCallAudio` / `prefetchBlob` can stay
 // single-arg. For bundled audio the caller composes `${domain}_${mode}` via
 // `bundledAudioKey`; for custom templates it composes `${template.id}_${mode}`.
 type AudioSourceKey = string;
 
 export type PhoneAudio = {
   prefetch: (domain: AudioDomain, mode: CallerMode) => Promise<void>;
-  prefetchUrl: (key: AudioSourceKey, url: string) => Promise<void>;
+  prefetchBlob: (key: AudioSourceKey, blob: Blob) => void;
   playRingtone: () => void;
   stopRinging: () => void;
   playCallAudio: (key: AudioSourceKey, onEnded: () => void, onError: (err: Error) => void) => void;
@@ -41,6 +41,9 @@ export function usePhoneAudio(): PhoneAudio {
   const callBlobRef = useRef<Blob | null>(null);
   const ringtoneUriRef = useRef<string | null>(null);
   const callUriByKeyRef = useRef<Record<AudioSourceKey, string>>({});
+  // Object URLs we created so we can revoke them on unmount and avoid the
+  // browser holding the underlying blob in memory forever.
+  const ownedObjectUrlsRef = useRef<string[]>([]);
 
   const ensureRingtone = useCallback(async () => {
     if (!isWeb) return;
@@ -67,21 +70,24 @@ export function usePhoneAudio(): PhoneAudio {
     }
   }, [ensureRingtone]);
 
-  const prefetchUrl = useCallback(async (key: AudioSourceKey, url: string) => {
+  const prefetchBlob = useCallback((key: AudioSourceKey, blob: Blob) => {
     if (!isWeb) return;
-    await ensureRingtone();
-    // Always (re)assign the URL even if cached — a refresh of the backend
-    // audio means a new file, and the cached URL stays valid because we
-    // hit the API which streams the latest bytes.
-    callUriByKeyRef.current[key] = url;
-    try {
-      const res = await fetch(url, { credentials: 'include' });
-      if (res.ok) {
-        callBlobRef.current = await res.blob();
-      }
-    } catch {
-      // Non-fatal: upload path will retry the fetch.
+    // Ringtone is bundled, so this is a sync call — no await needed.
+    void ensureRingtone();
+    // Object URL bypasses the no-custom-headers limitation of <audio src=…>:
+    // session-scoped backend endpoints (X-Demo-Session) cannot be hit
+    // directly by HTMLAudioElement, so the caller fetches the blob through
+    // the session-aware client and hands it to us.
+    const objectUrl = URL.createObjectURL(blob);
+    const previous = callUriByKeyRef.current[key];
+    if (previous && previous.startsWith('blob:')) {
+      URL.revokeObjectURL(previous);
+      const idx = ownedObjectUrlsRef.current.indexOf(previous);
+      if (idx >= 0) ownedObjectUrlsRef.current.splice(idx, 1);
     }
+    callUriByKeyRef.current[key] = objectUrl;
+    ownedObjectUrlsRef.current.push(objectUrl);
+    callBlobRef.current = blob;
   }, [ensureRingtone]);
 
   const stopRinging = useCallback(() => {
@@ -152,13 +158,23 @@ export function usePhoneAudio(): PhoneAudio {
     }
   }, [stopRinging]);
 
-  useEffect(() => () => stopAll(), [stopAll]);
+  useEffect(
+    () => () => {
+      stopAll();
+      for (const url of ownedObjectUrlsRef.current) {
+        URL.revokeObjectURL(url);
+      }
+      ownedObjectUrlsRef.current = [];
+      callUriByKeyRef.current = {};
+    },
+    [stopAll],
+  );
 
   // Memoize the returned object so consumers can list it as an effect dep
   // without retriggering on every render. All members are stable useCallback
   // refs anyway.
   return useMemo(
-    () => ({ prefetch, prefetchUrl, playRingtone, stopRinging, playCallAudio, getCallBlob, stopAll }),
-    [prefetch, prefetchUrl, playRingtone, stopRinging, playCallAudio, getCallBlob, stopAll],
+    () => ({ prefetch, prefetchBlob, playRingtone, stopRinging, playCallAudio, getCallBlob, stopAll }),
+    [prefetch, prefetchBlob, playRingtone, stopRinging, playCallAudio, getCallBlob, stopAll],
   );
 }

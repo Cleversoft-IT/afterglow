@@ -298,6 +298,33 @@ export const api = {
       { method: 'POST', body: fd },
     );
   },
-  simulationAudioUrl: (template_id: string, mode: 'existing' | 'new' = 'existing') =>
-    `${BASE}/api/v1/templates/${template_id}/simulation/audio?mode=${mode}`,
+  // Fetched as a Blob (not a plain <audio src=URL>) because the endpoint is
+  // session-scoped and cross-origin: HTMLAudioElement cannot send custom
+  // headers, so the caller is expected to convert the blob into an object
+  // URL via URL.createObjectURL() before feeding it to <audio>.
+  fetchSimulationAudio: async (
+    template_id: string,
+    mode: 'existing' | 'new' = 'existing',
+  ): Promise<Blob> => {
+    const sessionValue = await ensureSession();
+    const headers: Record<string, string> = {
+      [SESSION_HEADER]: sessionValue,
+    };
+    if (sessionValue === 'bypass' && BYPASS_TOKEN) {
+      headers[BYPASS_HEADER] = BYPASS_TOKEN;
+    }
+    const res = await fetch(
+      `${BASE}/api/v1/templates/${template_id}/simulation/audio?mode=${mode}`,
+      { headers },
+    );
+    const minted = res.headers.get(SESSION_HEADER);
+    if (minted && minted !== sessionValue && minted !== 'bypass') {
+      writeStoredSession(minted);
+    }
+    if (!res.ok) {
+      const text = await res.text().catch(() => '');
+      throw new ApiError(res.status, text || res.statusText);
+    }
+    return res.blob();
+  },
 };

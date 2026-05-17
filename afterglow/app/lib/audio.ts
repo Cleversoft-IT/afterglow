@@ -32,7 +32,7 @@ export const ringtoneAsset = require('../assets/audio/ringtone.mp3');
 
 export type AudioDomain = keyof typeof audioByDomain;
 
-// Flat cache key used by usePhoneAudio so its `playCallAudio` / `prefetchUrl`
+// Flat cache key used by usePhoneAudio so its `playCallAudio` / `prefetchBlob`
 // keep a single-string signature (custom templates use `${template.id}_${mode}`).
 export function bundledAudioKey(domain: AudioDomain, mode: CallerMode): string {
   return `${domain}_${mode}`;
