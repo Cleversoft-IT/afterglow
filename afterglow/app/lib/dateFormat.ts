@@ -40,6 +40,15 @@ export function formatTime(iso: string, loc: Locale): string {
   return fmt(loc, { hour: '2-digit', minute: '2-digit', hour12: loc === 'en' }).format(parse(iso));
 }
 
+export function formatTimeWithSeconds(iso: string, loc: Locale): string {
+  return fmt(loc, {
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: loc === 'en',
+  }).format(parse(iso));
+}
+
 export function formatDateTime(iso: string, loc: Locale): string {
   return formatDate(iso, loc) + ' ' + formatTime(iso, loc);
 }

@@ -15,6 +15,7 @@ Template shape (simplified 2026-05-17, see `project_template_simplified_2026_05_
   caller's prior structured fields before the analyzer prompt is built.
 """
 import asyncio
+import random
 import uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -1222,26 +1223,88 @@ def _emit_seeded_call_core(session, spec) -> None:
 
 def _emit_seeded_call_audit(session, spec) -> None:
     """Insert the audit_log rows for a seed scenario. The Call has already
-    been flushed by `_emit_seeded_call_core`, so the FK resolves now."""
+    been flushed by `_emit_seeded_call_core`, so the FK resolves now.
+
+    Numbers are picked from realistic ranges for a Gemini 3.1 Flash-Lite call
+    on a ~60-word transcript (latency in the low-seconds for LLM steps, tens
+    of ms for deterministic ones) so the Audit log surfaces meaningful
+    duration + token figures even when no live pipeline has run yet. Values
+    are deterministic per seed call (Random seeded with the call UUID).
+    """
+    rng = random.Random(spec["id"].int)
+    action_count = len(spec.get("actions", []) or [])
+
     audit_steps = [
-        ("speechmatics", "tool_call", "success"),
-        ("call_analyzer", "llm_call", "success"),
-        ("action_planner", "agent_loop", "success"),
-        ("action_executor", "action_exec", "success"),
-        ("memory_updater", "tool_call", "success"),
+        {
+            "agent": "speechmatics",
+            "step_type": "tool_call",
+            "model": None,
+            "duration_ms": rng.randint(1600, 2800),
+            "input_tokens": None,
+            "output_tokens": None,
+            "payload": None,
+        },
+        {
+            "agent": "call_analyzer",
+            "step_type": "llm_call",
+            "model": "gemini-3.1-flash-lite",
+            "duration_ms": rng.randint(1700, 2600),
+            "input_tokens": rng.randint(1800, 2600),
+            "output_tokens": rng.randint(380, 620),
+            "payload": None,
+        },
+        {
+            "agent": "action_planner",
+            "step_type": "agent_loop",
+            "model": "gemini-3.1-flash-lite",
+            "duration_ms": rng.randint(1200, 1900),
+            "input_tokens": rng.randint(1100, 1700),
+            "output_tokens": rng.randint(140, 280),
+            "payload": {"mode": "auto", "count": action_count},
+        },
+        {
+            "agent": "action_executor",
+            "step_type": "action_exec",
+            "model": None,
+            "duration_ms": rng.randint(40, 160),
+            "input_tokens": None,
+            "output_tokens": None,
+            "payload": None,
+        },
+        {
+            "agent": "memory_updater",
+            "step_type": "tool_call",
+            "model": None,
+            "duration_ms": rng.randint(90, 240),
+            "input_tokens": None,
+            "output_tokens": None,
+            "payload": None,
+        },
     ]
-    for idx, (agent, step_type, status) in enumerate(audit_steps):
+    cursor_offset = 10
+    for step in audit_steps:
         session.add(
             AuditLog(
                 id=uuid.uuid4(),
                 call_id=spec["id"],
-                agent_name=agent,
-                step_type=step_type,
-                model="gemini-3.1-flash-lite" if agent.startswith("call_") or agent == "action_planner" else None,
-                status=status,
-                created_at=spec["created_at"] + timedelta(seconds=10 + idx * 5),
+                agent_name=step["agent"],
+                step_type=step["step_type"],
+                model=step["model"],
+                duration_ms=step["duration_ms"],
+                input_tokens=step["input_tokens"],
+                output_tokens=step["output_tokens"],
+                payload=step["payload"],
+                status="success",
+                created_at=spec["created_at"] + timedelta(
+                    seconds=cursor_offset,
+                    milliseconds=step["duration_ms"],
+                ),
             )
         )
+        # Each subsequent step starts roughly when the previous one ended,
+        # so the chronological view in the UI tells the same story as a live
+        # pipeline run.
+        cursor_offset += int(step["duration_ms"] / 1000) + 1
 
 
 # ---------------------------------------------------------------------------

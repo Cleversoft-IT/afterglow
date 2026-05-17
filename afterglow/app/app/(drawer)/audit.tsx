@@ -1,6 +1,6 @@
 import { DrawerActions } from '@react-navigation/native';
-import { useFocusEffect, useNavigation } from 'expo-router';
-import { useCallback, useState } from 'react';
+import { router, useFocusEffect, useNavigation } from 'expo-router';
+import { useCallback, useMemo, useState } from 'react';
 import { FlatList, RefreshControl, StyleSheet, View } from 'react-native';
 import {
   ActivityIndicator,
@@ -9,6 +9,7 @@ import {
   Banner,
   Chip,
   List,
+  Surface,
   Text,
   useTheme,
 } from 'react-native-paper';
@@ -18,6 +19,8 @@ import {
   friendlyStepLabel,
   humanLabelFromPayload,
 } from '../../lib/auditLabels';
+import { formatTimeWithSeconds } from '../../lib/dateFormat';
+import { useLocale } from '../../lib/LocaleContext';
 import type { AppTheme } from '../../lib/paperTheme';
 import type { AuditLogEntry } from '../../lib/types';
 
@@ -34,9 +37,100 @@ function statusVisuals(status: string, theme: AppTheme): { icon: string; bg: str
   return { icon: 'circle-outline', bg: theme.colors.surfaceVariant, fg: theme.colors.onSurfaceVariant };
 }
 
+type Totals = {
+  rows: number;
+  durationMs: number;
+  inputTokens: number;
+  outputTokens: number;
+  callCount: number;
+};
+
+function aggregate(rows: AuditLogEntry[]): Totals {
+  const callIds = new Set<string>();
+  let durationMs = 0;
+  let inputTokens = 0;
+  let outputTokens = 0;
+  for (const r of rows) {
+    if (r.call_id) callIds.add(r.call_id);
+    if (typeof r.duration_ms === 'number') durationMs += r.duration_ms;
+    if (typeof r.input_tokens === 'number') inputTokens += r.input_tokens;
+    if (typeof r.output_tokens === 'number') outputTokens += r.output_tokens;
+  }
+  return {
+    rows: rows.length,
+    durationMs,
+    inputTokens,
+    outputTokens,
+    callCount: callIds.size,
+  };
+}
+
+function formatDuration(ms: number): string {
+  if (ms < 1000) return `${ms}ms`;
+  const seconds = ms / 1000;
+  if (seconds < 60) return `${seconds.toFixed(1)}s`;
+  const minutes = Math.floor(seconds / 60);
+  const remainder = Math.round(seconds - minutes * 60);
+  return `${minutes}m ${remainder}s`;
+}
+
+function SummaryBanner({ totals, theme }: { totals: Totals; theme: AppTheme }) {
+  const totalTokens = totals.inputTokens + totals.outputTokens;
+  return (
+    <Surface
+      mode="flat"
+      style={[styles.summary, { backgroundColor: theme.colors.surfaceVariant }]}
+    >
+      <View style={styles.summaryRow}>
+        <SummaryCell label="Steps" value={String(totals.rows)} theme={theme} />
+        <SummaryCell label="Calls" value={String(totals.callCount)} theme={theme} />
+        <SummaryCell
+          label="Duration"
+          value={totals.durationMs > 0 ? formatDuration(totals.durationMs) : '—'}
+          theme={theme}
+        />
+        <SummaryCell
+          label="Tokens"
+          value={
+            totalTokens > 0
+              ? `${totals.inputTokens.toLocaleString()} in · ${totals.outputTokens.toLocaleString()} out`
+              : '—'
+          }
+          theme={theme}
+        />
+      </View>
+    </Surface>
+  );
+}
+
+function SummaryCell({
+  label,
+  value,
+  theme,
+}: {
+  label: string;
+  value: string;
+  theme: AppTheme;
+}) {
+  return (
+    <View style={styles.summaryCell}>
+      <Text
+        variant="labelSmall"
+        style={{ color: theme.colors.onSurfaceVariant, textTransform: 'uppercase', letterSpacing: 0.8 }}
+      >
+        {label}
+      </Text>
+      <Text variant="titleMedium" style={{ color: theme.colors.onSurface, fontFamily: 'monospace' }}>
+        {value}
+      </Text>
+    </View>
+  );
+}
+
 export default function AuditScreen() {
   const theme = useTheme<AppTheme>();
   const navigation = useNavigation();
+  const { locale } = useLocale();
   const [rows, setRows] = useState<AuditLogEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -60,6 +154,8 @@ export default function AuditScreen() {
       load();
     }, [load]),
   );
+
+  const totals = useMemo(() => aggregate(rows), [rows]);
 
   if (loading) {
     return (
@@ -85,6 +181,7 @@ export default function AuditScreen() {
       <FlatList
         data={rows}
         keyExtractor={(r) => r.id}
+        ListHeaderComponent={rows.length > 0 ? <SummaryBanner totals={totals} theme={theme} /> : null}
         refreshControl={
           <RefreshControl
             tintColor={theme.colors.primary}
@@ -99,6 +196,8 @@ export default function AuditScreen() {
         renderItem={({ item }) => {
           const v = statusVisuals(item.status, theme);
           const humanLabel = humanLabelFromPayload(item.payload);
+          const time = formatTimeWithSeconds(item.created_at, locale);
+          const callShort = item.call_id ? item.call_id.slice(0, 8) : null;
           return (
             <List.Item
               title={friendlyAgentLabel(item.agent_name)}
@@ -121,12 +220,29 @@ export default function AuditScreen() {
                         {item.model}
                       </Chip>
                     ) : null}
+                    {callShort ? (
+                      <Chip
+                        compact
+                        mode="outlined"
+                        icon="phone"
+                        textStyle={{ fontSize: 11, fontFamily: 'monospace' }}
+                        onPress={() => router.push(`/call/${item.call_id}`)}
+                      >
+                        {callShort}
+                      </Chip>
+                    ) : null}
+                    <Text
+                      variant="labelSmall"
+                      style={{ color: theme.colors.onSurfaceVariant, fontFamily: 'monospace' }}
+                    >
+                      {time}
+                    </Text>
                     {item.duration_ms != null ? (
                       <Text
                         variant="labelSmall"
                         style={{ color: theme.colors.onSurfaceVariant, fontFamily: 'monospace' }}
                       >
-                        {item.duration_ms}ms
+                        · {item.duration_ms}ms
                       </Text>
                     ) : null}
                   </View>
@@ -172,4 +288,23 @@ export default function AuditScreen() {
   );
 }
 
-const styles = StyleSheet.create({});
+const styles = StyleSheet.create({
+  summary: {
+    marginHorizontal: 16,
+    marginTop: 8,
+    marginBottom: 4,
+    borderRadius: 16,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+  },
+  summaryRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    columnGap: 24,
+    rowGap: 8,
+  },
+  summaryCell: {
+    minWidth: 80,
+    gap: 2,
+  },
+});
