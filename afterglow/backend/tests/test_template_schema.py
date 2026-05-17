@@ -73,7 +73,6 @@ def test_prompt_hint_rule_defaults():
 def test_template_wizard_response_with_validation():
     rep = ValidationReport(
         issues=[ValidationIssue(field_path="x", severity="error", message="bad")],
-        proposed_mocks=[],
     )
     payload = TemplateWizardResponse(
         name="X",

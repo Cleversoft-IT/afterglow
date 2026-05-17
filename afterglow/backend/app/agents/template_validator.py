@@ -1,36 +1,41 @@
-"""Template Validator Agent — deterministic checks + Gemini semantic pass.
+"""Template Validator — deterministic guardrail for wizard drafts.
 
-Invoked from `wizard_chat.run_wizard_chat` once a candidate draft is ready,
-and from the refine UI through `POST /templates/validate`. Returns a
-`ValidationReport`:
+Despite the historical name, this module is **not an agent**: it runs zero
+LLM calls. It is a synchronous, deterministic check that fires once a
+candidate `TemplateWizardResponse` is ready (from `wizard_chat.run_wizard_chat`)
+and from the refine UI via `POST /templates/validate`.
 
-  - `issues`: list of `{field_path, severity, message}`. Hard issues are
-    produced deterministically (snake_case key violations, depends_on
-    cycles, invalid JSONSchema, action keys with no registered mock target).
-    Soft issues come from a small Gemini call that evaluates semantic
-    consistency (prompt_hints make sense, action labels match what the
-    actions actually do).
+It catches things that would otherwise crash silently at runtime:
 
-  - `proposed_mocks`: when an action key is not present in the action
-    catalog, the Gemini step suggests an existing catalog `key` the
-    operator should map it to.
+  - field keys not in snake_case, or duplicated
+  - `depends_on` graphs with unknown references or cycles
+  - action keys not dot.namespaced or duplicated
+  - action keys not present in `integrations/action_catalog.py` (warning —
+    the executor would refuse them)
+  - action `preconditions` referencing fields outside `fields_schema`
+  - `payload_schema` that is not a valid JSONSchema (would crash
+    `jsonschema.validate` in `action_executor`)
+  - `prompt_hints[].when` expressions outside the mini-grammar that
+    `prompt_hint_eval.py` understands (silently ignored at runtime otherwise)
 
-The deterministic step never raises; it just records issues. The Gemini
-step degrades gracefully to "no soft issues" on failure (the user still
-gets the hard report).
+History: an earlier revision also ran a Gemini "semantic review" pass that
+emitted soft narrative issues ("instruction ambiguous", "label mismatch")
+and `proposed_mocks` for hallucinated action keys. The narrative issues
+were suppressed before reaching the UI (they confused operators), and the
+proposed_mocks surface was already covered by the wizard's
+`proposed_actions_from_catalog` (the wizard server-side strips hallucinated
+keys in `wizard_chat.py` before the validator ever sees them). The Gemini
+call was removed 2026-05-17.
 """
 from __future__ import annotations
 
 import logging
 import re
-from typing import Any
 
 import jsonschema
 
-from app.config import get_settings
 from app.integrations.action_catalog import available_keys
 from app.schemas.templates import (
-    ProposedMock,
     TemplateWizardResponse,
     ValidationIssue,
     ValidationReport,
@@ -46,7 +51,7 @@ _DOT_NAMESPACED_RE = re.compile(r"^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$")
 def validate_template_deterministic(
     template: TemplateWizardResponse,
 ) -> list[ValidationIssue]:
-    """Hard checks that do not require Gemini. Always run first."""
+    """Hard checks against a wizard draft. Never raises."""
     issues: list[ValidationIssue] = []
 
     # 1. Field keys must be snake_case.
@@ -98,7 +103,7 @@ def validate_template_deterministic(
     # 3. Action keys must be dot.namespaced; their payload_schema (if any)
     # must be a valid JSONSchema; their preconditions must reference fields
     # that exist.
-    mock_keys = set(available_keys())
+    catalog_keys = set(available_keys())
     seen_action_keys: set[str] = set()
     for i, a in enumerate(template.action_types):
         if not _DOT_NAMESPACED_RE.match(a.key):
@@ -122,7 +127,7 @@ def validate_template_deterministic(
             )
         seen_action_keys.add(a.key)
 
-        if a.key not in mock_keys:
+        if a.key not in catalog_keys:
             issues.append(
                 ValidationIssue(
                     field_path=f"action_types[{i}].key",
@@ -130,7 +135,7 @@ def validate_template_deterministic(
                     message=(
                         f"action key {a.key!r} is not in the action catalog; "
                         "the executor will reject it until a catalog entry is "
-                        "wired. The validator may propose a close existing key."
+                        "wired."
                     ),
                 )
             )
@@ -238,88 +243,9 @@ def _validate_prompt_hint_when_grammar(
             )
 
 
-async def validate_template(
-    template: TemplateWizardResponse,
-) -> ValidationReport:
-    """Return only deterministic hard issues to the caller.
+def validate_template(template: TemplateWizardResponse) -> ValidationReport:
+    """Public entrypoint used by the wizard and `POST /templates/validate`.
 
-    The Gemini semantic review (`_semantic_review`) emits soft, narrative
-    feedback — `instruction ambiguous`, `label mismatch`, etc. Those
-    messages are useful for telemetry but confusing for an operator using
-    the wizard, who reads them as "Afterglow is broken". So we keep the
-    semantic review running (it also produces `proposed_mocks` we want to
-    surface), log its issues for debugging, and drop them from the
-    user-facing response.
+    Synchronous: no LLM call, no network, no I/O.
     """
-    hard_issues = validate_template_deterministic(template)
-
-    proposed_mocks: list[ProposedMock] = []
-    try:
-        soft = await _semantic_review(template)
-        for issue in soft.issues:
-            logger.info(
-                "template_validator: soft issue suppressed (severity=%s "
-                "field=%s) %s",
-                issue.severity,
-                issue.field_path,
-                issue.message,
-            )
-        proposed_mocks = soft.proposed_mocks
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("template_validator: semantic review skipped (%s).", exc)
-
-    return ValidationReport(
-        issues=hard_issues,
-        proposed_mocks=proposed_mocks,
-    )
-
-
-_SEMANTIC_INSTRUCTION = (
-    "You are the Template Validator Agent inside Afterglow.\n\n"
-    "Inspect the candidate template the prompt-to-template wizard just "
-    "produced. Return a ValidationReport with two parts:\n\n"
-    "- `issues[]`: semantic problems (severity `error|warning|info`) that the "
-    "deterministic validator cannot catch. Look for: (a) prompt_hints whose "
-    "`then` instruction is ambiguous; (b) action `label` strings that do not "
-    "match what the action actually does; (c) field `label` or `description` "
-    "that do not match the field `key`.\n\n"
-    "- `proposed_mocks[]`: for every action key the operator listed that is "
-    "NOT in `mock_registry_keys` (passed in the user prompt), propose the "
-    "closest matching catalog `key` from that registry, with a one-sentence "
-    "rationale. If no reasonable mapping exists, omit the entry — do not "
-    "invent a target.\n\n"
-    "Be concise; one sentence per issue is enough."
-)
-
-
-async def _semantic_review(
-    template: TemplateWizardResponse,
-) -> ValidationReport:
-    """Single Gemini structured-output call. Raises on missing key / error."""
-    settings = get_settings()
-    if not settings.google_api_key:
-        raise RuntimeError("GOOGLE_API_KEY not set")
-
-    from google import genai
-    from google.genai import types as genai_types
-
-    user_payload: dict[str, Any] = {
-        "template": template.model_dump(),
-        "mock_registry_keys": available_keys(),
-    }
-
-    client = genai.Client(api_key=settings.google_api_key)
-    resp = await client.aio.models.generate_content(
-        model=settings.gemini_default_model,
-        contents=str(user_payload),
-        config=genai_types.GenerateContentConfig(
-            system_instruction=_SEMANTIC_INSTRUCTION,
-            response_mime_type="application/json",
-            response_schema=ValidationReport,
-            temperature=0.2,
-        ),
-    )
-    text = (resp.text or "").strip()
-    if not text:
-        raise RuntimeError("empty Gemini response")
-    return ValidationReport.model_validate_json(text)
+    return ValidationReport(issues=validate_template_deterministic(template))

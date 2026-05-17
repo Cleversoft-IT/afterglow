@@ -306,10 +306,7 @@ async def run_wizard_chat(payload: WizardChatRequest) -> WizardChatResponse:
 
     validation = None
     if parsed.ready and parsed.draft_partial is not None:
-        try:
-            validation = await template_validator.validate_template(parsed.draft_partial)
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("wizard_chat: validation pass skipped (%s)", exc)
+        validation = template_validator.validate_template(parsed.draft_partial)
 
     slots_dict: dict[str, Any] = parsed.slots_filled if isinstance(parsed.slots_filled, dict) else {}
 

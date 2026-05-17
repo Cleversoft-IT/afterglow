@@ -1,6 +1,6 @@
 ---
 name: project-afterglow-decisions
-description: Decisioni di prodotto/architettura di Afterglow. Pivot da non rinegoziare senza ridiscutere. Aggiornato 2026-05-17 (round 5 fix cluster) — failure_kind computed, default_payload_schema arricchito al persistence boundary, Integration discovery HARD RULE nel wizard, template rename end-to-end, validator source-based filter, sidebar pulito + Contacts top-right Home + welcome dialog fresh install. 2026-05-17 (legacy cleanup) — wizard one-shot rimosso, conversational wizard chat unica via; residui PII/sanitizer ripuliti da docstring/prompts. 2026-05-17 (template simplification) — schema Template ridotto al solo product surface; mock_target/mutates spostati nel catalog. 2026-05-17 (notte) — simulator dei custom template wizard-built: solo bottone "new" + audio cross-origin via blob URL. 2026-05-17 (sera) — round 3 UI audit (drawer "Calls" voice, locale IT/EN via Intl.DateTimeFormat, BookingBadge inline, TranscriptList accordion, REAL_ON_DEVICE whitelist UI-only, randomuser.me portraits hard-coded, web first-paint sync, drawer reset via Paper Dialog, eager customer FK al submit). 2026-05-17 — frontend Material 3 rewrite + UI bug cluster post-rewrite. 2026-05-16 — feedback round 2 (action catalog, dialer non bloccante, Undo/Redo flip-only, simulator 2-mode con MP3 distinti existing/new e 4 customer seedati).
+description: Decisioni di prodotto/architettura di Afterglow. Pivot da non rinegoziare senza ridiscutere. Aggiornato 2026-05-18 (round 6 UI consistency) — drawer active highlight uniforme, Test simulator dentro (drawer), call/customer detail con Card.Content + Pressable + tags inline, calls list senza icone phone-incoming. 2026-05-17 (round 5 fix cluster) — failure_kind computed, default_payload_schema arricchito al persistence boundary, Integration discovery HARD RULE nel wizard, template rename end-to-end, validator source-based filter, sidebar pulito + Contacts top-right Home + welcome dialog fresh install. 2026-05-17 (legacy cleanup) — wizard one-shot rimosso, conversational wizard chat unica via; residui PII/sanitizer ripuliti da docstring/prompts. 2026-05-17 (template simplification) — schema Template ridotto al solo product surface; mock_target/mutates spostati nel catalog. 2026-05-17 (notte) — simulator dei custom template wizard-built: solo bottone "new" + audio cross-origin via blob URL. 2026-05-17 (sera) — round 3 UI audit (drawer "Calls" voice, locale IT/EN via Intl.DateTimeFormat, BookingBadge inline, TranscriptList accordion, REAL_ON_DEVICE whitelist UI-only, randomuser.me portraits hard-coded, web first-paint sync, drawer reset via Paper Dialog, eager customer FK al submit). 2026-05-17 — frontend Material 3 rewrite + UI bug cluster post-rewrite. 2026-05-16 — feedback round 2 (action catalog, dialer non bloccante, Undo/Redo flip-only, simulator 2-mode con MP3 distinti existing/new e 4 customer seedati).
 metadata:
   type: project
 ---
@@ -59,7 +59,7 @@ Cancellati (e tuttora assenti): `agents/extraction.py`, `agents/classification.p
 
 **Why:** AI a fine call è il modello giusto per *human-first AI dialer*. L'operatore vede il `customer.memory_summary` da Postgres istantaneamente. Il double-step (analizzatore structured + planner agentico) tiene il pitch agentic; il fail-fast esplicito sostituisce la falsa robustezza del fallback con audit reale e UI onesta.
 
-**How to apply:** `customer.memory_summary` è il "next-call briefing" Gemini-generated nella lingua detected. La tabella `extracted_fields.briefing_snapshot` (migration 0005) preserva la briefing storica per-call anche dopo overwrite di `memory_summary`. Quando si tocca la pipeline modifica `call_analyzer.py` per scope/prompt, `action_planner.py` per il tool registry / loop ADK, `action_executor.py` per la validation deterministica, `orchestrator.py` per glue/persistence + error state — non aggiungere altri sub-agent (l'unica eccezione è il `template_validator.py` del wizard, che è scope wizard, NON pipeline post-call), non re-introdurre fallback "per sicurezza".
+**How to apply:** `customer.memory_summary` è il "next-call briefing" Gemini-generated nella lingua detected. La tabella `extracted_fields.briefing_snapshot` (migration 0005) preserva la briefing storica per-call anche dopo overwrite di `memory_summary`. Quando si tocca la pipeline modifica `call_analyzer.py` per scope/prompt, `action_planner.py` per il tool registry / loop ADK, `action_executor.py` per la validation deterministica, `orchestrator.py` per glue/persistence + error state — non aggiungere altri sub-agent, non re-introdurre fallback "per sicurezza". Il `template_validator.py` vive in `agents/` per ragioni storiche ma dal 2026-05-17 è un guardrail deterministico puro (zero LLM call); vedi [[project_template_validator_deterministic]].
 
 ### 1.cinque. Templates v2 — schema strutturato + wizard 4-step (2026-05-16)
 Estensione completa del `Template` landata con migration `0006_templates_v2.py`. Tutta v2 è additive a livello di codice ma cancella i dati esistenti (vedi [[feedback-db-disposable]]) per riallineare la shape.
@@ -70,7 +70,7 @@ Estensione completa del `Template` landata con migration `0006_templates_v2.py`.
 - `Template.prompt_hints` da `Text` a `JSONB` (`list[PromptHintRule]` con grammatica `always | field.<key> == '<value>' | field.<key> is [not] null`).
 - Unique `(name, version)` espressa come **due partial unique index** (`session_id IS NULL` vs `IS NOT NULL`) per evitare la trappola Postgres "NULL distinct". POST `/templates` auto-bumpa la `version` per `(name, session_id)`.
 
-**Wizard conversazionale (revisione 2026-05-17):** `POST /api/v1/templates/wizard/chat` (`agents/wizard_chat.py`) gestisce un dialogo stateless multi-turn. Il client tiene history + `slots_filled` + `draft_partial`; il server ritorna il prossimo turno + draft aggiornato + `ValidationReport` (`agents/template_validator.py` runs deterministic + small Gemini semantic). Quando `ready=true`, UI Expo `app/templates/wizard.tsx` espone "Save draft / Save & activate" → `POST /api/v1/templates` (scrive con `session_id=ctx.session_id` in demo o `NULL` in prod, `set_active` opzionale nella stessa transazione). Il vecchio endpoint one-shot `POST /api/v1/templates/wizard` + `template_builder.py` sono stati **rimossi il 2026-05-17**.
+**Wizard conversazionale (revisione 2026-05-17):** `POST /api/v1/templates/wizard/chat` (`agents/wizard_chat.py`) gestisce un dialogo stateless multi-turn. Il client tiene history + `slots_filled` + `draft_partial`; il server ritorna il prossimo turno + draft aggiornato + `ValidationReport` (deterministico — `agents/template_validator.py`, vedi [[project_template_validator_deterministic]]). Action keys allucinate vengono droppate dal draft direttamente in `wizard_chat.run_wizard_chat` e restituite via `proposed_actions_from_catalog`. Quando `ready=true`, UI Expo `app/templates/wizard.tsx` espone "Save draft / Save & activate" → `POST /api/v1/templates` (scrive con `session_id=ctx.session_id` in demo o `NULL` in prod, `set_active` opzionale nella stessa transazione). Il vecchio endpoint one-shot `POST /api/v1/templates/wizard` + `template_builder.py` sono stati **rimossi il 2026-05-17**.
 
 **PII/privacy gating:** rimosso 2026-05-17 — vedi 1.nove + `afterglow/docs/future-ideas.md` §4.
 
@@ -104,7 +104,7 @@ Target: tutte le feature del prompt originale. Strategia: sviluppo a priorità t
 2. Pipeline reale: audio → Speechmatics → Gemini analisi → executed actions ⚠️ (Gemini live, Speechmatics ancora stub)
 3. Caller memory card alla seconda chiamata ✅ (briefing Gemini-generated)
 4. Dashboard web: call log + action history (con revert) + customer profile ✅
-5. Prompt-to-template wizard conversazionale (`POST /api/v1/templates/wizard/chat`) ✅ — `wizard_chat.py` chiama `gemini-3.1-flash-lite` multi-turn, `template_validator.py` runs deterministic + Gemini semantic, UI `app/templates/wizard.tsx` espone chat + draft sidebar e POST `/templates` persiste con session_id corretto + version auto-bump. Vedi sub-decisione 1.cinque.
+5. Prompt-to-template wizard conversazionale (`POST /api/v1/templates/wizard/chat`) ✅ — `wizard_chat.py` chiama `gemini-3.1-flash-lite` multi-turn, `template_validator.py` runs deterministic-only (Gemini semantic pass rimosso 2026-05-17), UI `app/templates/wizard.tsx` espone chat + draft sidebar e POST `/templates` persiste con session_id corretto + version auto-bump. Vedi sub-decisione 1.cinque.
 6. Template library con 3 voci ✅ (seed)
 7. Test/simulator template (nice-to-have)
 8. Manual template builder pieno (nice-to-have)
@@ -378,7 +378,7 @@ Cluster di fix dopo che l'utente ha fatto un giro completo dell'app demo e segna
 
 5. **Wizard "Integration discovery" HARD RULE.** Il system instruction di `agents/wizard_chat.py` ora include una regola esplicita: prima di draftare azioni `whatsapp.*` / `sms.*` / `email.*` / `case.open_insurance`, il wizard DEVE confermare con l'utente quali canali usa. Il primo turno è una domanda di clarification a meno che il primo messaggio utente menzioni esplicitamente i canali. Se BUDGET_EXHAUSTED e canali ancora ignoti → drafta omettendo le azioni canale-dipendenti (mai default a WhatsApp). Vedi [[feedback-wizard-agentic]] aggiornata. **Non rimuovere la regola** anche se l'agente sembrerà "meno snello al turno 1" — l'alternativa era proporre WhatsApp a un ristorante che non lo usa, percepito come "AI che non ascolta".
 
-6. **Template validator source-based filter.** `validate_template()` in `agents/template_validator.py` ritorna solo `validate_template_deterministic(template)` issues + `_semantic_review.proposed_mocks`. Le issue del semantic Gemini review ("instruction ambiguous", "label mismatch") vengono **loggate via `logger.info`** ma droppate dalla response. Il filtro non è su severity (Gemini può marcare le sue issue come `error`); è sulla sorgente. Il messaggio del grammar checker `_validate_prompt_hint_when_grammar` è stato riformulato business-friendly (`Prompt hint #N: the rule "when: X" doesn't match a recognized condition. Use "always", …`) e ora ha `severity="error"` (era `warning`, ma è bloccante per il runtime).
+6. **Template validator deterministico puro.** `validate_template()` in `agents/template_validator.py` ritorna esclusivamente `ValidationReport(issues=validate_template_deterministic(template))`. Il source-based filter precedente esisteva perché un `_semantic_review` Gemini emetteva issue narrative ("instruction ambiguous", "label mismatch") che venivano loggate ma droppate dalla response — confondevano l'operatore. **2026-05-17**: `_semantic_review`, `_SEMANTIC_INSTRUCTION`, `ProposedMock`, il campo `ValidationReport.proposed_mocks` e `agents/prompts/template_validator.md` sono stati rimossi. La funzione è ora sincrona, niente LLM call, niente network. Il caso d'uso che `proposed_mocks` copriva (action key fuori catalogo) era già gestito server-side in `wizard_chat` che droppa la key dal draft e la espone via `proposed_actions_from_catalog`. Il messaggio del grammar checker `_validate_prompt_hint_when_grammar` resta business-friendly con `severity="error"`. Vedi [[project_template_validator_deterministic]].
 
 7. **Pipeline status "in progress" in UI senza nuovo enum.** Originariamente proposto un nuovo `Call.status="processing"`. Scartato per non toccare il lifecycle. Soluzione: lato frontend, `status in {"transcribing", "analyzing"}` → label "Analyzing…" + icon `progress-clock` (sia in `CallRow` che in `statusChip` del call detail). Niente migrazione, niente cambio orchestrator.
 
@@ -402,6 +402,83 @@ Cluster di fix dopo che l'utente ha fatto un giro completo dell'app demo e segna
 **Why:** giro utente completo + audit esterno hanno trovato 7 cluster di problemi: onboarding mancante, contrast bug Light, ordinamento Bookings, navigazione Contacts mal posizionata, bug visivi Call/Customer detail, wizard troppo eager senza clarification, bottom-bar simulator non centrata, crash action_planner su template wizard-built (`payload: dict = None`), Settings con voce duplicata. La forma del fix (failure_kind computed + payload_schema enrichment + Integration discovery rule) è stata ricalibrata sull'audit per evitare assunzioni sbagliate sul contratto (es. l'idea iniziale "error null = missed" era sbagliata perché l'orchestrator setta sempre `error="empty_or_noise_audio"` sulle missed reali).
 
 **How to apply:** quando si tocca un'area di questo cluster, leggere le regole 1-7 sopra prima di modificare. Le tentazioni ricorrenti da evitare: (a) discriminare missed/pipeline su `Call.error is None` invece di `failure_kind`; (b) provare a far emettere `payload_schema` dal wizard model (Gemini lo rifiuta); (c) rimuovere la Integration discovery rule perché "rallenta il primo turno"; (d) re-introdurre la voce "Contacts" nel Drawer; (e) re-introdurre un List.Item "Audit log" in Settings (è già nel Drawer); (f) ricorrere a `() => <View>...</View>` per `Card.Title.subtitle` (i types accettano solo ReactNode); (g) introdurre un nuovo `Call.status` valido senza aggiornare orchestrator + tests + idempotency check.
+
+### 1.undici. Round 6 UI consistency (2026-05-18)
+
+Quattro inconsistenze emerse durante la verifica live del round 5 (commit
+`f3a9df5` / `059553f`), tutte risolte in un'unica passata frontend-only.
+Plan: `.claude/plans/il-tuo-obiettivo-curried-lemur.md` (round 6, overwrite
+del piano round 5).
+
+**Decisioni durature:**
+
+1. **Drawer active highlight per ogni DrawerItem.** Prima solo "Calls"
+   leggeva `activeRouteName === '(tabs)'` e settava `focused +
+   activeTintColor + activeBackgroundColor + labelStyle`. Templates / Audit
+   log / Test simulator / Settings ignoravano lo stato corrente. Fix in
+   `app/app/(drawer)/_layout.tsx`: derivare
+   `isOnTemplates/isOnAudit/isOnSimulator/isOnSettings` da
+   `props.state.routes[props.state.index]?.name` e applicare lo stesso
+   pattern di styling a tutti gli item. Helper inline
+   `itemLabelStyle(focused)` per evitare la duplicazione. **Quando
+   aggiungi un nuovo DrawerItem, ricalcola il flag `isOnX`** o l'item non
+   si evidenzierà.
+
+2. **Test simulator vive nel `(drawer)`.** Era una `Stack.Screen` root,
+   quindi mostrava back-arrow al posto dell'hamburger e mai nessun
+   highlight nel drawer. Fix: `git mv app/app/simulator.tsx
+   app/app/(drawer)/simulator.tsx`, registrato come `<Drawer.Screen
+   name="simulator" options={{ drawerItemStyle: { display: 'none' } }}>`
+   (il DrawerItem visibile è custom in `DrawerContent`, identico pattern
+   di `(tabs)`), rimossa la `<Stack.Screen name="simulator">` dal root
+   `_layout.tsx`. Aggiunto `Appbar.Header` con hamburger
+   (`DrawerActions.openDrawer()`). Import relativi dentro al file:
+   `../lib/…` → `../../lib/…`. **Non re-introdurre la
+   `<Stack.Screen name="simulator">` nel root** o la route si
+   sdoppierebbe.
+
+3. **Call detail header — Pressable Card.Content + tags inline.** Il
+   `<Card.Title>` di Paper non gestisce bene 3+ righe sotto il titolo e
+   non supporta gerarchie cliccabili compound. Fix: sostituito con un
+   `Card.Content` custom + `<Pressable>` a 3 colonne (avatar | text col |
+   status chip). Avatar + nome cliccabili →
+   `/customer/${customer_id}` quando il customer esiste, rimpiazzano
+   la `Card.Actions "Open contact"` che è stata rimossa. Dal subtitle
+   è uscito il chip `detected_language` (era ridondante con la
+   bandiera). Sotto il subtitle: `formatDateTime(call.created_at,
+   locale)` come `bodySmall`, poi una `tagRow` con
+   `customer.tags.slice(0, 4)` come `Chip mode="outlined" compact`.
+   L'error tecnico appare solo se `failure_kind === 'pipeline_error'`
+   (regola già del round 5). **I tag in call detail sono read-only**:
+   per editarli si va su customer detail.
+
+4. **Customer detail header coerente + Calls list senza icone.** Stesso
+   refactor a `Card.Content + headerRow` (senza Pressable, qui sei già
+   sul customer). Rimosso il chip `preferred_language` a destra
+   (duplicava la bandiera). Nella sezione "Calls (N)" rimossa
+   `<List.Icon icon="phone-incoming">` e la description ridondante
+   `${detected_language} · ${formatRelativeTime}`. Layout nuovo:
+   `<TouchableRipple>` con `<View style={callRow}>` a 2 colonne (date
+   + ora a sinistra, status chip a destra), `<Divider />` Paper-light
+   tra le righe. **La coerenza visiva fra call detail e customer
+   detail è il punto** — se cambi il layout in uno, replica nell'altro.
+
+**Patterns da preservare:**
+
+- Per ogni futuro screen drawer: registrare `<Drawer.Screen>` E
+  rendere il `<DrawerItem>` custom con `focused={isOnX}` +
+  `activeTintColor` + `activeBackgroundColor` + `labelStyle(isOnX)`.
+- `Card.Title.subtitle` accetta solo `ReactNode`, **non**
+  `() => ReactNode`. Se servono 2+ righe sotto il title, abbandona
+  `Card.Title` e usa `Card.Content + custom layout`.
+- `formatDateTime` resta l'unica funzione locale-aware per le date in UI
+  — niente `.toLocaleString()` raw. Vedi [[feedback-locale-dates-only]].
+
+**File toccati (round 6, 5 file frontend):**
+`app/app/(drawer)/_layout.tsx`, `app/app/(drawer)/simulator.tsx`
+(rinominato), `app/app/_layout.tsx`, `app/app/call/[id].tsx`,
+`app/app/customer/[id].tsx`. Niente backend, niente test backend, `tsc
+--noEmit` verde.
 
 ### 9. Stato env in produzione (volatile, 2026-05-15)
 Sezione "what's live right now" — da rileggere prima di pushare grossi cambi al backend.

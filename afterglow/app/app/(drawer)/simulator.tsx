@@ -1,8 +1,10 @@
-import { useRouter } from 'expo-router';
+import { DrawerActions } from '@react-navigation/native';
+import { useNavigation, useRouter } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import { ScrollView, StyleSheet, View } from 'react-native';
 import {
   ActivityIndicator,
+  Appbar,
   Avatar,
   Banner,
   Button,
@@ -12,8 +14,8 @@ import {
   Text,
   useTheme,
 } from 'react-native-paper';
-import { api, ApiError } from '../lib/api';
-import type { SimulationConfig, SimulationScenario, TemplateView } from '../lib/types';
+import { api, ApiError } from '../../lib/api';
+import type { SimulationConfig, SimulationScenario, TemplateView } from '../../lib/types';
 
 type CallerMode = 'existing' | 'new';
 
@@ -33,6 +35,7 @@ function domainIcon(domain: string | null | undefined): string {
 export default function SimulatorScreen() {
   const theme = useTheme();
   const router = useRouter();
+  const navigation = useNavigation();
   const [template, setTemplate] = useState<TemplateView | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -115,34 +118,47 @@ export default function SimulatorScreen() {
     input.click();
   };
 
+  const header = (
+    <Appbar.Header mode="small" elevated={false} style={{ backgroundColor: theme.colors.background }}>
+      <Appbar.Action icon="menu" onPress={() => navigation.dispatch(DrawerActions.openDrawer())} />
+      <Appbar.Content title="Test simulator" />
+    </Appbar.Header>
+  );
+
   if (loading) {
     return (
-      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-        <ActivityIndicator />
+      <View style={{ flex: 1, backgroundColor: theme.colors.background }}>
+        {header}
+        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+          <ActivityIndicator />
+        </View>
       </View>
     );
   }
 
   if (!template) {
     return (
-      <ScrollView contentContainerStyle={styles.scroll}>
-        <Card mode="elevated">
-          <Card.Title
-            title="No active template"
-            left={(p) => <Avatar.Icon {...p} icon="alert-circle-outline" />}
-          />
-          <Card.Content>
-            <Text variant="bodyMedium" style={{ color: theme.colors.onSurfaceVariant }}>
-              Pick or create a template in the drawer and activate it before running the simulator.
-            </Text>
-          </Card.Content>
-        </Card>
-        {error ? (
-          <Banner visible icon="alert-circle-outline">
-            {error}
-          </Banner>
-        ) : null}
-      </ScrollView>
+      <View style={{ flex: 1, backgroundColor: theme.colors.background }}>
+        {header}
+        <ScrollView contentContainerStyle={styles.scroll}>
+          <Card mode="elevated">
+            <Card.Title
+              title="No active template"
+              left={(p) => <Avatar.Icon {...p} icon="alert-circle-outline" />}
+            />
+            <Card.Content>
+              <Text variant="bodyMedium" style={{ color: theme.colors.onSurfaceVariant }}>
+                Pick or create a template in the drawer and activate it before running the simulator.
+              </Text>
+            </Card.Content>
+          </Card>
+          {error ? (
+            <Banner visible icon="alert-circle-outline">
+              {error}
+            </Banner>
+          ) : null}
+        </ScrollView>
+      </View>
     );
   }
 
@@ -166,7 +182,9 @@ export default function SimulatorScreen() {
     (sim?.script_turns?.length ?? 0) > 0;
 
   return (
-    <ScrollView contentContainerStyle={styles.scroll}>
+    <View style={{ flex: 1, backgroundColor: theme.colors.background }}>
+      {header}
+      <ScrollView contentContainerStyle={styles.scroll}>
       <Card mode="elevated">
         <Card.Title
           title="Incoming call simulator"
@@ -262,7 +280,8 @@ export default function SimulatorScreen() {
           {error}
         </Banner>
       ) : null}
-    </ScrollView>
+      </ScrollView>
+    </View>
   );
 }
 

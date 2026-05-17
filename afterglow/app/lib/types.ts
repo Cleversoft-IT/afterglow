@@ -84,15 +84,8 @@ export type ValidationIssue = {
   message: string;
 };
 
-export type ProposedMock = {
-  action_key: string;
-  suggested_mock_target: string;
-  rationale: string;
-};
-
 export type ValidationReport = {
   issues: ValidationIssue[];
-  proposed_mocks: ProposedMock[];
 };
 
 export type WizardChatTurn = {

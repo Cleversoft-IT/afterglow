@@ -1,6 +1,6 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ScrollView, StyleSheet, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import {
   ActivityIndicator,
   Banner,
@@ -169,65 +169,71 @@ export default function CallDetailScreen() {
   const extracted = call.extracted;
   const flag = flagFromE164(call.phone_e164);
 
+  const customerId = call.customer_id;
+  const goToCustomer = customerId
+    ? () => router.push(`/customer/${customerId}` as never)
+    : undefined;
+  const customerTags = call.customer?.tags ?? [];
+
   return (
     <ScrollView contentContainerStyle={styles.scroll}>
       <Card mode="elevated">
-        <Card.Title
-          title={callerDisplay}
-          titleVariant="titleMedium"
-          subtitle={
-            <View style={styles.subtitleRow}>
-              <Text style={{ fontSize: 18 }}>{flag}</Text>
-              <Text variant="bodyMedium" style={{ color: theme.colors.onSurfaceVariant }}>
-                {call.phone_e164}
-              </Text>
-              {call.detected_language ? (
-                <Chip compact mode="outlined">{call.detected_language}</Chip>
-              ) : null}
-            </View>
-          }
-          left={() => (
+        <Card.Content style={styles.headerCard}>
+          <Pressable
+            onPress={goToCustomer}
+            disabled={!goToCustomer}
+            style={styles.headerRow}
+          >
             <ContactAvatar
               phone={call.phone_e164}
               name={callerDisplay}
               avatarUrl={resolvedCaller.avatar_url}
               size={56}
             />
-          )}
-          leftStyle={{ marginRight: 16 }}
-          right={() => (
-            <Chip
-              mode="flat"
-              compact
-              icon={sc.icon}
-              style={[{ marginRight: 12 }, sc.style]}
-              textStyle={{ color: sc.textColor }}
-            >
-              {sc.label}
-            </Chip>
-          )}
-        />
-        <Card.Content>
-          <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
-            {formatDateTime(call.created_at, locale)}
-          </Text>
-          {call.error && call.failure_kind === 'pipeline_error' ? (
-            <Text variant="bodySmall" style={{ color: theme.colors.error, marginTop: 8 }}>
-              {call.error}
-            </Text>
-          ) : null}
+            <View style={styles.headerText}>
+              <Text variant="titleMedium" numberOfLines={1}>
+                {callerDisplay}
+              </Text>
+              <View style={styles.subtitleRow}>
+                <Text style={{ fontSize: 18 }}>{flag}</Text>
+                <Text variant="bodyMedium" style={{ color: theme.colors.onSurfaceVariant }}>
+                  {call.phone_e164}
+                </Text>
+              </View>
+              <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
+                {formatDateTime(call.created_at, locale)}
+              </Text>
+              {customerTags.length > 0 ? (
+                <View style={styles.tagRow}>
+                  {customerTags.slice(0, 4).map((t) => (
+                    <Chip key={t} mode="outlined" compact>
+                      {t}
+                    </Chip>
+                  ))}
+                </View>
+              ) : null}
+              {call.error && call.failure_kind === 'pipeline_error' ? (
+                <Text
+                  variant="bodySmall"
+                  style={{ color: theme.colors.error, marginTop: 4 }}
+                >
+                  {call.error}
+                </Text>
+              ) : null}
+            </View>
+            <View style={styles.headerRight}>
+              <Chip
+                mode="flat"
+                compact
+                icon={sc.icon}
+                style={sc.style}
+                textStyle={{ color: sc.textColor }}
+              >
+                {sc.label}
+              </Chip>
+            </View>
+          </Pressable>
         </Card.Content>
-        {call.customer_id ? (
-          <Card.Actions>
-            <Button
-              mode="text"
-              icon="account-circle-outline"
-              onPress={() => router.push(`/customer/${call.customer_id}` as never)}
-            >
-              Open contact
-            </Button>
-          </Card.Actions>
-        ) : null}
       </Card>
 
       {extracted ? (
@@ -349,11 +355,20 @@ const styles = StyleSheet.create({
     gap: 16,
   },
   actionHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' },
+  headerCard: { padding: 16 },
+  headerRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 16 },
+  headerText: { flex: 1, gap: 6 },
+  headerRight: { alignItems: 'flex-end' },
   subtitleRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
     flexWrap: 'wrap',
-    marginTop: 2,
+  },
+  tagRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginTop: 4,
   },
 });

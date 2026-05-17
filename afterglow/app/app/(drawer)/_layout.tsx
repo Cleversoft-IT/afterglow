@@ -43,10 +43,22 @@ function DrawerContent(props: DrawerContentComponentProps) {
     }
   };
 
-  // Active state from the current route — we expose the (tabs) home as
-  // a custom item because Drawer.Screen for (tabs) is hidden below.
+  // Active state from the current route — the drawer navigator only knows
+  // about its own children (tabs / contacts / templates / audit / simulator /
+  // settings). We derive a per-item flag and apply the same focused styling
+  // pattern that used to be hardcoded only for Calls, so every drawer item
+  // gets the blue-on-secondaryContainer highlight when its screen is open.
   const activeRouteName = props.state.routes[props.state.index]?.name ?? '';
   const isOnCalls = activeRouteName === '(tabs)';
+  const isOnTemplates = activeRouteName === 'templates';
+  const isOnAudit = activeRouteName === 'audit';
+  const isOnSimulator = activeRouteName === 'simulator';
+  const isOnSettings = activeRouteName === 'settings';
+
+  const itemLabelStyle = (focused: boolean) => ({
+    color: focused ? theme.colors.primary : theme.colors.onSurface,
+    fontWeight: '500' as const,
+  });
 
   return (
     <DrawerContentScrollView {...props} contentContainerStyle={{ paddingTop: 8 }}>
@@ -58,41 +70,53 @@ function DrawerContent(props: DrawerContentComponentProps) {
         icon={({ color, size }: IconRenderProps) => (
           <Icon source="phone-outline" size={size} color={iconColor(isOnCalls, color)} />
         )}
-        labelStyle={{ color: isOnCalls ? theme.colors.primary : theme.colors.onSurface, fontWeight: '500' }}
+        labelStyle={itemLabelStyle(isOnCalls)}
         onPress={() => router.navigate('/(drawer)/(tabs)' as never)}
       />
       <DrawerItem
         label="Templates"
-        icon={({ focused, color, size }: IconRenderProps) => (
-          <Icon source="view-grid-outline" size={size} color={iconColor(focused, color)} />
+        focused={isOnTemplates}
+        activeTintColor={theme.colors.primary}
+        activeBackgroundColor={theme.colors.secondaryContainer}
+        icon={({ color, size }: IconRenderProps) => (
+          <Icon source="view-grid-outline" size={size} color={iconColor(isOnTemplates, color)} />
         )}
-        labelStyle={{ color: theme.colors.onSurface, fontWeight: '500' }}
+        labelStyle={itemLabelStyle(isOnTemplates)}
         onPress={() => router.push('/(drawer)/templates' as never)}
       />
       <DrawerItem
         label="Audit log"
-        icon={({ focused, color, size }: IconRenderProps) => (
-          <Icon source="text-box-search-outline" size={size} color={iconColor(focused, color)} />
+        focused={isOnAudit}
+        activeTintColor={theme.colors.primary}
+        activeBackgroundColor={theme.colors.secondaryContainer}
+        icon={({ color, size }: IconRenderProps) => (
+          <Icon source="text-box-search-outline" size={size} color={iconColor(isOnAudit, color)} />
         )}
-        labelStyle={{ color: theme.colors.onSurface, fontWeight: '500' }}
+        labelStyle={itemLabelStyle(isOnAudit)}
         onPress={() => router.push('/(drawer)/audit' as never)}
       />
       <Divider style={{ marginVertical: 8 }} />
       <DrawerItem
         label="Test simulator"
-        icon={({ focused, color, size }: IconRenderProps) => (
-          <Icon source="phone-in-talk-outline" size={size} color={iconColor(focused, color)} />
+        focused={isOnSimulator}
+        activeTintColor={theme.colors.primary}
+        activeBackgroundColor={theme.colors.secondaryContainer}
+        icon={({ color, size }: IconRenderProps) => (
+          <Icon source="phone-in-talk-outline" size={size} color={iconColor(isOnSimulator, color)} />
         )}
-        labelStyle={{ color: theme.colors.onSurface, fontWeight: '500' }}
-        onPress={() => router.push('/simulator' as never)}
+        labelStyle={itemLabelStyle(isOnSimulator)}
+        onPress={() => router.push('/(drawer)/simulator' as never)}
       />
       <Divider style={{ marginVertical: 8 }} />
       <DrawerItem
         label="Settings"
-        icon={({ focused, color, size }: IconRenderProps) => (
-          <Icon source="cog-outline" size={size} color={iconColor(focused, color)} />
+        focused={isOnSettings}
+        activeTintColor={theme.colors.primary}
+        activeBackgroundColor={theme.colors.secondaryContainer}
+        icon={({ color, size }: IconRenderProps) => (
+          <Icon source="cog-outline" size={size} color={iconColor(isOnSettings, color)} />
         )}
-        labelStyle={{ color: theme.colors.onSurface, fontWeight: '500' }}
+        labelStyle={itemLabelStyle(isOnSettings)}
         onPress={() => router.push('/(drawer)/settings' as never)}
       />
       {isDemoMode() && (
@@ -145,6 +169,15 @@ export default function DrawerLayout() {
       <Drawer.Screen name="contacts" options={{ title: 'Contacts' }} />
       <Drawer.Screen name="templates" options={{ title: 'Templates' }} />
       <Drawer.Screen name="audit" options={{ title: 'Audit log' }} />
+      {/* Simulator is rendered as a custom DrawerItem above; the Drawer.Screen
+          entry registers the route with the navigator so `activeRouteName`
+          flips to "simulator" when the user opens it, enabling the active
+          highlight. `drawerItemStyle: display: none` keeps the duplicate
+          auto-generated item out of the list. */}
+      <Drawer.Screen
+        name="simulator"
+        options={{ title: 'Test simulator', drawerItemStyle: { display: 'none' } }}
+      />
       <Drawer.Screen name="settings" options={{ title: 'Settings' }} />
     </Drawer>
   );

@@ -7,13 +7,15 @@ import {
   Banner,
   Card,
   Chip,
+  Divider,
   List,
   Text,
+  TouchableRipple,
   useTheme,
 } from 'react-native-paper';
 import { api, ApiError } from '../../lib/api';
 import { ContactAvatar } from '../../components/ContactAvatar';
-import { formatDateTime, formatRelativeTime } from '../../lib/dateFormat';
+import { formatDateTime } from '../../lib/dateFormat';
 import { flagFromE164 } from '../../lib/flagFromE164';
 import { useLocale } from '../../lib/LocaleContext';
 import { findMockContact } from '../../lib/mockContacts';
@@ -119,43 +121,35 @@ export default function CustomerDetailScreen() {
   return (
     <ScrollView contentContainerStyle={styles.scroll}>
       <Card mode="elevated">
-        <Card.Title
-          title={display}
-          subtitle={
-            <View style={styles.subtitleRow}>
-              <Text style={{ fontSize: 18 }}>{flag}</Text>
-              <Text variant="bodyMedium" style={{ color: theme.colors.onSurfaceVariant }}>
-                {customer.phone_e164}
-              </Text>
-              <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
-                · {customer.total_calls} calls
-              </Text>
-            </View>
-          }
-          left={() => (
+        <Card.Content style={styles.headerCard}>
+          <View style={styles.headerRow}>
             <ContactAvatar
               phone={customer.phone_e164}
               name={display}
               avatarUrl={mockAvatarUrl}
               size={56}
             />
-          )}
-          leftStyle={{ marginRight: 16 }}
-          right={() =>
-            customer.preferred_language ? (
-              <Chip mode="flat" compact style={{ marginRight: 12 }}>
-                {customer.preferred_language}
-              </Chip>
-            ) : null
-          }
-        />
-        {customer.last_call_at ? (
-          <Card.Content>
-            <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
-              Last call {formatDateTime(customer.last_call_at, locale)}
-            </Text>
-          </Card.Content>
-        ) : null}
+            <View style={styles.headerText}>
+              <Text variant="titleMedium" numberOfLines={1}>
+                {display}
+              </Text>
+              <View style={styles.subtitleRow}>
+                <Text style={{ fontSize: 18 }}>{flag}</Text>
+                <Text variant="bodyMedium" style={{ color: theme.colors.onSurfaceVariant }}>
+                  {customer.phone_e164}
+                </Text>
+                <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
+                  · {customer.total_calls} calls
+                </Text>
+              </View>
+              {customer.last_call_at ? (
+                <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
+                  Last call {formatDateTime(customer.last_call_at, locale)}
+                </Text>
+              ) : null}
+            </View>
+          </View>
+        </Card.Content>
       </Card>
 
       {customer.tags.length > 0 ? (
@@ -219,21 +213,27 @@ export default function CustomerDetailScreen() {
               No calls yet for this contact.
             </Text>
           ) : (
-            calls.map((c) => {
+            calls.map((c, i) => {
               const sc = statusChipForCall(c, theme);
               return (
-                <List.Item
-                  key={c.id}
-                  title={formatDateTime(c.created_at, locale)}
-                  description={`${c.detected_language ?? '—'} · ${formatRelativeTime(c.created_at, locale)}`}
-                  left={() => <List.Icon icon="phone-incoming" />}
-                  right={() => (
-                    <Chip mode="flat" compact style={[{ marginRight: 8 }, { backgroundColor: sc.bg }]} textStyle={{ color: sc.fg }}>
-                      {sc.label}
-                    </Chip>
-                  )}
-                  onPress={() => router.push(`/call/${c.id}` as never)}
-                />
+                <View key={c.id}>
+                  {i > 0 ? <Divider /> : null}
+                  <TouchableRipple onPress={() => router.push(`/call/${c.id}` as never)}>
+                    <View style={styles.callRow}>
+                      <Text variant="bodyMedium">
+                        {formatDateTime(c.created_at, locale)}
+                      </Text>
+                      <Chip
+                        mode="flat"
+                        compact
+                        style={{ backgroundColor: sc.bg }}
+                        textStyle={{ color: sc.fg }}
+                      >
+                        {sc.label}
+                      </Chip>
+                    </View>
+                  </TouchableRipple>
+                </View>
               );
             })
           )}
@@ -246,11 +246,21 @@ export default function CustomerDetailScreen() {
 const styles = StyleSheet.create({
   scroll: { padding: 16, gap: 16, paddingBottom: 48 },
   chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  headerCard: { padding: 16 },
+  headerRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 16 },
+  headerText: { flex: 1, gap: 6 },
   subtitleRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
     flexWrap: 'wrap',
-    marginTop: 2,
+  },
+  callRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    gap: 12,
   },
 });

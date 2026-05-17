@@ -153,15 +153,8 @@ class ValidationIssue(BaseModel):
     message: str
 
 
-class ProposedMock(BaseModel):
-    action_key: str
-    suggested_mock_target: str
-    rationale: str
-
-
 class ValidationReport(BaseModel):
     issues: list[ValidationIssue] = Field(default_factory=list)
-    proposed_mocks: list[ProposedMock] = Field(default_factory=list)
 
 
 class ActionDefinitionDraft(BaseModel):
@@ -192,7 +185,7 @@ class TemplateWizardResponse(BaseModel):
     fields_schema: list[FieldDefinition]
     action_types: list[ActionDefinitionDraft]
     prompt_hints: list[PromptHintRule] = Field(default_factory=list)
-    # Populated by the wizard endpoint with the deterministic + LLM validation
+    # Populated by the wizard endpoint with the deterministic validation
     # report. The refine UI uses it to surface issues inline; the persist
     # endpoint does not require it to be clean (the operator can override).
     validation: Optional[ValidationReport] = None

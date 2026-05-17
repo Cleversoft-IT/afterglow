@@ -11,7 +11,12 @@ The deterministic step never calls Gemini and must catch:
 """
 from __future__ import annotations
 
-from app.agents.template_validator import validate_template_deterministic
+import inspect
+
+from app.agents.template_validator import (
+    validate_template,
+    validate_template_deterministic,
+)
 from app.schemas.templates import (
     ActionDefinitionDraft,
     FieldDefinition,
@@ -150,6 +155,16 @@ def test_unsupported_when_grammar_warned():
     )
     # All grammar issues are now severity=error (they're blocking).
     assert all(i.severity == "error" for i in issues if "Prompt hint" in i.message)
+
+
+def test_validate_template_is_synchronous():
+    """The Gemini semantic review was removed 2026-05-17. The public
+    `validate_template` entry point must remain a plain sync function — the
+    wizard and the /templates/validate endpoint depend on that contract.
+    """
+    assert not inspect.iscoroutinefunction(validate_template)
+    report = validate_template(_draft())
+    assert report.issues == []
 
 
 def test_clean_template_produces_no_errors():

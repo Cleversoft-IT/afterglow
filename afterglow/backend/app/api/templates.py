@@ -231,7 +231,7 @@ async def validate_draft(
     ctx: SessionContext = Depends(get_session_context),
 ) -> ValidationReport:
     """Re-run the validator on a draft the refine UI just edited."""
-    return await template_validator.validate_template(payload.template)
+    return template_validator.validate_template(payload.template)
 
 
 @router.post("/wizard/chat", response_model=WizardChatResponse)

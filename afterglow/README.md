@@ -151,9 +151,9 @@ prefetches the chunk → briefing returns the memory.
 The app does NOT use a single 5-tab bar. It is shaped like the Google Phone (Pixel) app:
 
 - **Bottom Tabs (2):** **Home** (Pixel-style Recents — top-row with menu burger + search + Contacts icon, sticky locale-aware date headers, chip filter row, CallRow with semantic status labels `Incoming / Missed / Analyzing… / Pipeline error`, real photos or hash-colored fallback avatars, inline `BookingBadge` showing `DD/MM HH:mm · party N`) + **Keypad** (4×3 dialpad, Call FAB is UI-only and shows a Snackbar pointing to the Test simulator).
-- **Drawer (hamburger top-left):** **Calls** (jumps back to Home — always at the top so any drawer screen has a path home), Templates, Audit log, ─── Test simulator, ─── Settings, [Reset demo] (demo mode only, Paper Dialog confirmation). Contacts is reached from the Home top-right `account-multiple-outline` icon, not the drawer (Pixel Dialer pattern).
+- **Drawer (hamburger top-left):** **Calls** (jumps back to Home — always at the top so any drawer screen has a path home), Templates, Audit log, ─── Test simulator, ─── Settings, [Reset demo] (demo mode only, Paper Dialog confirmation). Every drawer item lights up with `primary` on `secondaryContainer` when its screen is active (derived from `props.state.routes[props.state.index].name`). Contacts is reached from the Home top-right `account-multiple-outline` icon, not the drawer (Pixel Dialer pattern). Test simulator lives under the `(drawer)` group too, so it gets the hamburger header + active highlight like the other items.
 - **Contacts screen:** chip filter `All / Clients / Personal` over an alphabetical list that mixes 20 client-side mock UK/US contacts with the server's `Customer` table — a "Client" chip marks customers; about half of the mock contacts carry a hand-picked `randomuser.me` portrait.
-- **Stack screens (out of drawer):** Incoming call (Pixel-inspired full-screen with scrollable caller context), Call detail (status chip + flag emoji + transcript split into `Card` + `List.Accordion`), Customer detail, Template detail (editable name for non-seed, 409 on collision), Template wizard (editable name in draft preview, integration-discovery clarification on turn 1).
+- **Stack screens (out of drawer):** Incoming call (Pixel-inspired full-screen with scrollable caller context), Call detail (header card with avatar + caller name — both tap-through to Customer when `customer_id != null`; flag emoji + phone; locale-formatted date; inline `customer.tags` chip row; status chip via `failure_kind`; no more separate "Open contact" button), Customer detail (mirror header layout; no `preferred_language` chip duplicating the flag; the "Calls (N)" list is divider-separated rows with `date · status chip`, no per-row phone icon), Template detail (editable name for non-seed, 409 on collision), Template wizard (editable name in draft preview, integration-discovery clarification on turn 1).
 - **Home chip filters:** All / Missed / **Bookings** / **Clients** / Saved / Unsaved. **Bookings** shows a secondary chip row `By call date` (default) / `By booking date`; when sorting by booking date the upcoming slots come first (ASC) and past bookings sink. **Clients** keeps only rows linked to a `Customer`; **Saved** widens to include the local phonebook; **Unsaved** is the complement.
 - **Fresh-install welcome:** on a fresh visit (or post `Reset demo`) the first navigation to **Templates** shows a Paper Dialog with two CTAs — `Pick a preset` (contained, recommended for demo) and `Build from prompt` (outlined, opens the wizard). One-shot per session.
 - **Settings:** Appearance (theme) → Format (date/time locale, IT/EN — UI strings stay English) → [Demo controls if demo] → About. The Audit log is reached from the drawer; it's not duplicated in Settings.
@@ -255,10 +255,14 @@ as a `Blob` and feeds the audio element an
 **stateless, agentic, draft-first conversation**. The client owns the
 message history + running draft; each turn the server returns the next
 assistant message, an optional running `slots_filled`, a candidate
-`TemplateWizardResponse` and a `ValidationReport`
-(`agents/template_validator.py` runs deterministic checks — snake_case
-keys, depends_on cycles, JSONSchema validity, actions missing from the
-action catalog — plus a small Gemini semantic pass).
+`TemplateWizardResponse` and a `ValidationReport`. The validator
+(`agents/template_validator.py`) is a synchronous deterministic guardrail
+— snake_case keys, duplicate keys, depends_on cycles, dot.namespaced
+action keys, actions missing from the action catalog, invalid
+JSONSchema in `payload_schema`, and `prompt_hints[].when` outside the
+runtime mini-grammar. No LLM call, no `proposed_mocks`: hallucinated
+action keys are stripped server-side in `wizard_chat` itself and
+surfaced via `proposed_actions_from_catalog` on the wizard response.
 
 **Agentic behaviour.** Gemini decides at every turn whether the available
 context is rich enough to draft, or whether one more focused question
