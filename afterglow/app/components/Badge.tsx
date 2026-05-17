@@ -1,5 +1,6 @@
 import { Chip, useTheme } from 'react-native-paper';
 import type { ReactNode } from 'react';
+import type { AppTheme } from '../lib/paperTheme';
 
 type Tone = 'neutral' | 'success' | 'warning' | 'danger' | 'brand';
 
@@ -10,10 +11,10 @@ export function Badge({
   tone?: Tone;
   children: ReactNode;
 }) {
-  const theme = useTheme();
+  const theme = useTheme<AppTheme>();
   const colorByTone: Record<Tone, { bg: string; fg: string }> = {
     neutral: { bg: theme.colors.surfaceVariant, fg: theme.colors.onSurfaceVariant },
-    success: { bg: theme.colors.tertiaryContainer, fg: theme.colors.onTertiaryContainer },
+    success: { bg: theme.colors.successContainer, fg: theme.colors.onSuccessContainer },
     warning: { bg: theme.colors.secondaryContainer, fg: theme.colors.onSecondaryContainer },
     danger: { bg: theme.colors.errorContainer, fg: theme.colors.onErrorContainer },
     brand: { bg: theme.colors.primaryContainer, fg: theme.colors.onPrimaryContainer },

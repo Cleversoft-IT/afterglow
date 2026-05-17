@@ -9,7 +9,6 @@ import {
   Banner,
   Chip,
   List,
-  type MD3Theme,
   Text,
   useTheme,
 } from 'react-native-paper';
@@ -19,11 +18,12 @@ import {
   friendlyStepLabel,
   humanLabelFromPayload,
 } from '../../lib/auditLabels';
+import type { AppTheme } from '../../lib/paperTheme';
 import type { AuditLogEntry } from '../../lib/types';
 
-function statusVisuals(status: string, theme: MD3Theme): { icon: string; bg: string; fg: string } {
+function statusVisuals(status: string, theme: AppTheme): { icon: string; bg: string; fg: string } {
   if (status === 'success') {
-    return { icon: 'check', bg: theme.colors.tertiaryContainer, fg: theme.colors.onTertiaryContainer };
+    return { icon: 'check', bg: theme.colors.successContainer, fg: theme.colors.onSuccessContainer };
   }
   if (status === 'error') {
     return { icon: 'alert-circle', bg: theme.colors.errorContainer, fg: theme.colors.onErrorContainer };
@@ -35,7 +35,7 @@ function statusVisuals(status: string, theme: MD3Theme): { icon: string; bg: str
 }
 
 export default function AuditScreen() {
-  const theme = useTheme();
+  const theme = useTheme<AppTheme>();
   const navigation = useNavigation();
   const [rows, setRows] = useState<AuditLogEntry[]>([]);
   const [loading, setLoading] = useState(true);

@@ -236,7 +236,13 @@ export default function IncomingCallScreen() {
 
   const hangUp = () => {
     audio.stopAll();
-    router.back();
+    // router.back() leaves a black screen when there's no back-history (e.g.
+    // direct deep link to /incoming-call). Always land somewhere safe.
+    if (router.canGoBack()) {
+      router.back();
+    } else {
+      router.replace('/(drawer)/(tabs)' as never);
+    }
   };
 
   const acceptHuman = () => {
@@ -368,7 +374,7 @@ export default function IncomingCallScreen() {
       <View style={styles.avatarZone}>
         <Animated.View style={{ transform: [{ scale: phase === 'ringing' ? pulse : 1 }] }}>
           <Avatar.Text
-            size={160}
+            size={phase === 'ringing' ? 128 : 160}
             label={initials || '?'}
             color="#FFFFFF"
             style={{ backgroundColor: callGreen }}
@@ -542,6 +548,7 @@ const styles = StyleSheet.create({
   header: {
     paddingTop: 56,
     paddingHorizontal: 24,
+    paddingBottom: 24,
     alignItems: 'center',
   },
   callerName: {

@@ -127,7 +127,15 @@ export function usePhoneAudio(): PhoneAudio {
         () => onError(new Error('Failed to play call audio')),
         { once: true },
       );
-      el.play().catch((err) => onError(err instanceof Error ? err : new Error(String(err))));
+      el.play().catch((err) => {
+        // Hangup mid-playback rejects play() with AbortError "interrupted by
+        // a call to pause()". Treat it as a graceful stop, not an error.
+        const message = err?.message ?? '';
+        if (err?.name === 'AbortError' || /interrupted by a call to pause/i.test(message)) {
+          return;
+        }
+        onError(err instanceof Error ? err : new Error(String(err)));
+      });
     },
     [],
   );

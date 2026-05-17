@@ -8,21 +8,21 @@ import {
   Card,
   Chip,
   List,
-  type MD3Theme,
   Text,
   useTheme,
 } from 'react-native-paper';
 import { api, ApiError } from '../../lib/api';
 import { ContactAvatar } from '../../components/ContactAvatar';
 import { formatRelativeTime } from '../../lib/dateGrouping';
+import type { AppTheme } from '../../lib/paperTheme';
 import type { CallListItem, CustomerCard } from '../../lib/types';
 
-function statusChip(status: string, theme: MD3Theme): {
+function statusChip(status: string, theme: AppTheme): {
   bg: string;
   fg: string;
 } {
   if (status === 'completed') {
-    return { bg: theme.colors.tertiaryContainer, fg: theme.colors.onTertiaryContainer };
+    return { bg: theme.colors.successContainer, fg: theme.colors.onSuccessContainer };
   }
   if (status === 'failed') {
     return { bg: theme.colors.errorContainer, fg: theme.colors.onErrorContainer };
@@ -31,7 +31,7 @@ function statusChip(status: string, theme: MD3Theme): {
 }
 
 export default function CustomerDetailScreen() {
-  const theme = useTheme();
+  const theme = useTheme<AppTheme>();
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const [customer, setCustomer] = useState<CustomerCard | null>(null);

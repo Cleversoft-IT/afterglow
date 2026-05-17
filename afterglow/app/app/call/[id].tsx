@@ -10,15 +10,15 @@ import {
   Chip,
   Divider,
   IconButton,
-  type MD3Theme,
   Text,
   useTheme,
 } from 'react-native-paper';
 import { api, ApiError } from '../../lib/api';
 import { ContactAvatar } from '../../components/ContactAvatar';
+import type { AppTheme } from '../../lib/paperTheme';
 import type { CallDetailView, FieldDefinitionLite } from '../../lib/types';
 
-function statusChip(status: string, theme: MD3Theme): {
+function statusChip(status: string, theme: AppTheme): {
   label: string;
   style: { backgroundColor: string };
   textColor: string;
@@ -26,8 +26,8 @@ function statusChip(status: string, theme: MD3Theme): {
   if (status === 'completed') {
     return {
       label: status,
-      style: { backgroundColor: theme.colors.tertiaryContainer },
-      textColor: theme.colors.onTertiaryContainer,
+      style: { backgroundColor: theme.colors.successContainer },
+      textColor: theme.colors.onSuccessContainer,
     };
   }
   if (status === 'failed') {
@@ -52,7 +52,7 @@ function formatValue(v: unknown): string {
 }
 
 export default function CallDetailScreen() {
-  const theme = useTheme();
+  const theme = useTheme<AppTheme>();
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const [call, setCall] = useState<CallDetailView | null>(null);

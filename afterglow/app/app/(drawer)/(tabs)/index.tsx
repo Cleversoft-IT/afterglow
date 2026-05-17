@@ -155,7 +155,14 @@ export default function HomeScreen() {
           paddingBottom: 8,
           backgroundColor: theme.colors.background,
         },
-        chipsRow: { paddingHorizontal: 16, paddingVertical: 12, gap: 8 },
+        searchbar: { backgroundColor: theme.colors.surfaceVariant },
+        chipsScroll: { flexGrow: 0, flexShrink: 0, backgroundColor: theme.colors.background },
+        chipsRow: {
+          paddingHorizontal: 16,
+          paddingVertical: 8,
+          gap: 8,
+          alignItems: 'center',
+        },
         sectionHeader: {
           paddingHorizontal: 16,
           paddingTop: 16,
@@ -192,20 +199,30 @@ export default function HomeScreen() {
           traileringIcon={query ? 'close' : 'microphone'}
           onTraileringIconPress={query ? () => setQuery('') : undefined}
           elevation={0}
+          style={styles.searchbar}
         />
       </View>
 
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
+        style={styles.chipsScroll}
         contentContainerStyle={styles.chipsRow}
       >
         {FILTERS.map((k) => (
           <Chip
             key={k}
+            mode="flat"
+            compact
             selected={filter === k}
             onPress={() => setFilter(k)}
             showSelectedCheck={false}
+            selectedColor={filter === k ? theme.colors.onSecondaryContainer : undefined}
+            style={
+              filter === k
+                ? { backgroundColor: theme.colors.secondaryContainer }
+                : { backgroundColor: theme.colors.surfaceVariant }
+            }
           >
             {FILTER_LABEL[k]}
           </Chip>

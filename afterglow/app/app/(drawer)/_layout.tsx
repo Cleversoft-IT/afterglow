@@ -53,27 +53,32 @@ function DrawerContent(props: DrawerContentComponentProps) {
       <DrawerItem
         label="Contacts"
         icon={({ color, size }) => <Icon source="account-multiple-outline" size={size} color={color} />}
+        labelStyle={{ color: theme.colors.onSurface, fontWeight: '500' }}
         onPress={() => router.push('/(drawer)/contacts' as never)}
       />
       <DrawerItem
         label="Templates"
         icon={({ color, size }) => <Icon source="view-grid-outline" size={size} color={color} />}
+        labelStyle={{ color: theme.colors.onSurface, fontWeight: '500' }}
         onPress={() => router.push('/(drawer)/templates' as never)}
       />
       <DrawerItem
         label="Audit log"
         icon={({ color, size }) => <Icon source="text-box-search-outline" size={size} color={color} />}
+        labelStyle={{ color: theme.colors.onSurface, fontWeight: '500' }}
         onPress={() => router.push('/(drawer)/audit' as never)}
       />
       <DrawerItem
         label="Test simulator"
         icon={({ color, size }) => <Icon source="phone-in-talk-outline" size={size} color={color} />}
+        labelStyle={{ color: theme.colors.onSurface, fontWeight: '500' }}
         onPress={() => router.push('/simulator' as never)}
       />
       <Divider style={{ marginVertical: 8 }} />
       <DrawerItem
         label="Settings"
         icon={({ color, size }) => <Icon source="cog-outline" size={size} color={color} />}
+        labelStyle={{ color: theme.colors.onSurface, fontWeight: '500' }}
         onPress={() => router.push('/(drawer)/settings' as never)}
       />
       {isDemoMode() && (
@@ -89,10 +94,19 @@ function DrawerContent(props: DrawerContentComponentProps) {
 }
 
 export default function DrawerLayout() {
+  const theme = useTheme();
   return (
     <Drawer
       drawerContent={DrawerContent}
-      screenOptions={{ headerShown: false, drawerType: 'front' }}
+      screenOptions={{
+        headerShown: false,
+        drawerType: 'front',
+        drawerStyle: { backgroundColor: theme.colors.surface },
+        drawerActiveTintColor: theme.colors.primary,
+        drawerInactiveTintColor: theme.colors.onSurfaceVariant,
+        drawerActiveBackgroundColor: theme.colors.secondaryContainer,
+        sceneStyle: { backgroundColor: theme.colors.background },
+      }}
     >
       <Drawer.Screen name="(tabs)" options={{ drawerItemStyle: { display: 'none' } }} />
       <Drawer.Screen name="contacts" options={{ title: 'Contacts' }} />
