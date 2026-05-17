@@ -292,26 +292,39 @@ html, body, #root {
   box-shadow: 0 4px 14px -4px oklch(0.15 0.05 65 / 0.5);
 }
 
-/* ── Phone frame — touch-ring cursor (Chrome DevTools mobile vibe)
-   Mimics the device-emulation cursor: a soft circle the size of a
-   fingertip with a centre dot. CSS `cursor` does not penetrate a
-   cross-origin iframe, so the simulated cursor is only visible on
-   the bezel area; inside the iframe the embedded app's own cursor
-   takes over. Applied here and on the iframe element itself in
-   case the browser honours it on the iframe chrome. */
-.phone-frame,
-.phone-frame iframe {
-  cursor:
-    url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='38' height='38' viewBox='0 0 38 38'%3E%3Ccircle cx='19' cy='19' r='16' fill='rgba(15,23,42,0.10)' stroke='rgba(15,23,42,0.55)' stroke-width='1.5'/%3E%3Ccircle cx='19' cy='19' r='2.5' fill='rgba(15,23,42,0.70)'/%3E%3C/svg%3E")
-    19 19,
-    pointer;
+/* ── Phone frame — interaction-ready hover state ──────────
+   CSS `cursor` and JS pointer events can't cross a cross-origin
+   iframe boundary, so we can't simulate a touch cursor inside
+   the embedded app. Instead, when the user hovers the phone, the
+   frame brightens its outer ring and the surrounding glow to
+   signal "you can interact with this". The ancestor `:hover`
+   selector still fires when the cursor is over the iframe, so
+   the effect works seamlessly across the whole device. */
+.phone-frame {
+  transition: box-shadow 220ms ease;
 }
-.dark .phone-frame,
-.dark .phone-frame iframe {
-  cursor:
-    url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='38' height='38' viewBox='0 0 38 38'%3E%3Ccircle cx='19' cy='19' r='16' fill='rgba(255,255,255,0.10)' stroke='rgba(255,255,255,0.60)' stroke-width='1.5'/%3E%3Ccircle cx='19' cy='19' r='2.5' fill='rgba(255,255,255,0.75)'/%3E%3C/svg%3E")
-    19 19,
-    pointer;
+.phone-stage:hover .phone-frame {
+  box-shadow:
+    0 50px 100px -32px rgba(0, 0, 0, 0.55),
+    0 0 0 1px rgba(255, 255, 255, 0.12),
+    0 0 0 3px oklch(0.56 0.20 260 / 0.35);
+}
+.demo-phone-glow {
+  transition: opacity 260ms ease, transform 260ms ease;
+  opacity: 0.7;
+}
+.phone-stage:hover .demo-phone-glow {
+  opacity: 1;
+  transform: scale(1.08);
+}
+@media (prefers-reduced-motion: reduce) {
+  .phone-frame,
+  .demo-phone-glow {
+    transition: none;
+  }
+  .phone-stage:hover .demo-phone-glow {
+    transform: none;
+  }
 }
 
 /* ── Video placeholder ────────────────────────────────── */
