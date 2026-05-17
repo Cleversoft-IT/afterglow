@@ -233,6 +233,15 @@ from new customer" button, so the audio always matches the operator's
 expectation). Regenerate them with
 `python afterglow/scripts/generate_demo_audio.py`.
 
+Wizard-built templates instead produce a single flat script + WAV via
+`POST /templates/{id}/simulation/{script,generate-audio,upload-audio}`,
+so the Simulator only shows **"Call from new customer"** for them (the
+generated phone has no matching customer in the demo DB). The WAV is
+served from a session-scoped endpoint — `<audio src=URL>` cannot carry
+the `X-Demo-Session` header cross-origin, so the app fetches the bytes
+as a `Blob` and feeds the audio element an
+`URL.createObjectURL(blob)`.
+
 ### Prompt-to-template wizard
 
 `POST /api/v1/templates/wizard` runs a four-step loop:

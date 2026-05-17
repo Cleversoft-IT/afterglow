@@ -14,3 +14,5 @@
 - [Locale toggle = dates only](feedback_locale_dates_only.md) — Settings → Format è SOLO formati data/ora (Intl.DateTimeFormat-based); UI strings restano inglesi per feedback-code-language
 - [REAL_ON_DEVICE whitelist UI-only](feedback_real_on_device_whitelist.md) — il badge "Simulated" si nasconde per booking/appointment in Call Detail via whitelist client-side; backend integration_kind resta `mock_external`
 - [Mock avatars: hardcoded URLs](feedback_mock_avatars_hardcoded.md) — usa `randomuser.me/api/portraits/{women,men}/N.jpg` scelti a mano; DiceBear seed-RNG può rendere "Amelia" mascolina anche con `top=` filtro
+- [Cross-origin media needs blob URL](feedback_audio_blob_url_for_session_endpoints.md) — endpoint con `X-Demo-Session` non si possono dare a `<audio src=URL>` cross-origin: fetch come Blob + `URL.createObjectURL`
+- [Wizard templates: new-caller only](project_wizard_template_new_only.md) — il Simulator dei template wizard-built mostra solo "Call from new customer"; "existing" richiederebbe seedare un customer per il telefono dello script

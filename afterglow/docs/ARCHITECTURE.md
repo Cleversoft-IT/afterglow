@@ -41,11 +41,16 @@ color so the active highlight stays and dark mode never loses legibility.
 
 **Simulator / incoming-call audio** reads the active template's
 `simulation_config`. Seed templates ship bundled recordings under
-`app/assets/audio/`; wizard-generated templates can generate a call script
-and MP3 through the backend's simulation endpoints (`simulation_script.py` +
-Speechmatics TTS) or accept an uploaded recording. The selected recording is
-then submitted to `POST /api/v1/calls` with the current `X-Demo-Session`
-header.
+`app/assets/audio/` (two MP3s per domain, one per `scenarios.existing` /
+`scenarios.new`); wizard-generated templates can generate a single call
+script + WAV through the backend's simulation endpoints
+(`simulation_script.py` + Speechmatics TTS) or accept an uploaded recording.
+Because wizard-built templates only produce a flat script (one
+`caller_name`/`caller_phone_e164`, no per-mode scenarios) and that phone
+doesn't match any seeded customer, the Simulator hides the "Call from
+existing customer" button for them and exposes only "Call from new
+customer". The selected recording is then submitted to `POST /api/v1/calls`
+with the current `X-Demo-Session` header.
 
 **Home (Recents) layout** mirrors the Pixel call log: an `Appbar` pill
 `Searchbar` with hamburger leading + voice trailing, a horizontal chip filter
@@ -184,6 +189,20 @@ handler in `app/incoming-call.tsx` also falls back to
 `router.replace('/(drawer)/(tabs)')` when `router.canGoBack()` is
 false, so a deep-link / cold-load hangup no longer leaves a black
 screen behind a stale `play()` rejection toast.
+
+**Custom-template audio via blob URL.** The
+`/api/v1/templates/{id}/simulation/audio` endpoint is session-scoped
+(`X-Demo-Session` + `visibility_filter_seedable`), but
+`<audio src="…">` cannot carry custom headers and the app + backend live
+on different sslip.io subdomains. Pointing the audio element at the bare
+backend URL therefore 404s for wizard-built templates (session-owned,
+not visible to a header-less request) and the browser reports the
+generic "Failed to load because no supported source was found". The fix
+is in `api.fetchSimulationAudio(id, mode)`: it pulls the WAV as a
+`Blob` through the session-aware fetch wrapper, and
+`usePhoneAudio.prefetchBlob(key, blob)` wraps it in
+`URL.createObjectURL(blob)` before handing the URL to `<audio>` —
+object URLs need no auth. Owned object URLs are revoked on unmount.
 
 **Locale (date/time only).** `app/lib/LocaleContext.tsx` carries a binary
 `it | en` preference (default `it`, persisted in `localStorage` under
