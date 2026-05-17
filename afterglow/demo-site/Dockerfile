@@ -12,6 +12,11 @@ RUN --mount=type=cache,target=/root/.npm \
 ARG VITE_APP_URL=https://app.95-179-245-107.sslip.io
 ENV VITE_APP_URL=${VITE_APP_URL}
 
+# Cap Node heap to keep `vite build` from getting OOM-killed on
+# the small Coolify VM (build silently dies after "computing gzip
+# size" otherwise — log just stops mid-chunk).
+ENV NODE_OPTIONS=--max-old-space-size=1024
+
 COPY . .
 RUN npm run build
 
