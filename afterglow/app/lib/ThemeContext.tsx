@@ -1,43 +1,52 @@
 import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react';
+import { useColorScheme } from 'react-native';
 import {
   getColors,
   getShadows,
   type ColorPalette,
   type ShadowPalette,
   type ThemeMode,
+  type ThemePreference,
 } from './theme';
-import { readInitialThemeMode, writeStoredThemeMode } from './themeStorage';
+import { readInitialThemePreference, writeStoredThemePreference } from './themeStorage';
 
 type ThemeContextValue = {
-  mode: ThemeMode;
+  mode: ThemePreference;          // user-facing preference (auto/light/dark)
+  resolvedMode: ThemeMode;        // concrete mode actually rendered (light/dark)
   colors: ColorPalette;
   shadows: ShadowPalette;
-  setMode: (mode: ThemeMode) => void;
+  setMode: (mode: ThemePreference) => void;
   isDark: boolean;
 };
 
 const ThemeContext = createContext<ThemeContextValue | null>(null);
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
-  const [mode, setModeState] = useState<ThemeMode>(readInitialThemeMode);
+  const [mode, setModeState] = useState<ThemePreference>(readInitialThemePreference);
+  const systemScheme = useColorScheme(); // 'light' | 'dark' | null
 
-  const setMode = useCallback((next: ThemeMode) => {
+  const resolvedMode: ThemeMode = mode === 'auto'
+    ? (systemScheme === 'dark' ? 'dark' : 'light')
+    : mode;
+
+  const setMode = useCallback((next: ThemePreference) => {
     setModeState(next);
-    writeStoredThemeMode(next);
+    writeStoredThemePreference(next);
   }, []);
 
-  const colors = useMemo(() => getColors(mode), [mode]);
-  const shadows = useMemo(() => getShadows(mode), [mode]);
+  const colors = useMemo(() => getColors(resolvedMode), [resolvedMode]);
+  const shadows = useMemo(() => getShadows(resolvedMode), [resolvedMode]);
 
   const value = useMemo(
     () => ({
       mode,
+      resolvedMode,
       colors,
       shadows,
       setMode,
-      isDark: mode === 'dark',
+      isDark: resolvedMode === 'dark',
     }),
-    [mode, colors, shadows, setMode],
+    [mode, resolvedMode, colors, shadows, setMode],
   );
 
   return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;

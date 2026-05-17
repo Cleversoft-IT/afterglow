@@ -15,7 +15,7 @@ import {
 import { api, ApiError, isDemoMode } from '../../lib/api';
 import { callRed } from '../../lib/paperTheme';
 import { useTheme as useAppTheme } from '../../lib/ThemeContext';
-import type { ThemeMode } from '../../lib/theme';
+import type { ThemePreference } from '../../lib/theme';
 
 export default function SettingsScreen() {
   const theme = useTheme();
@@ -62,8 +62,9 @@ export default function SettingsScreen() {
             </Text>
             <SegmentedButtons
               value={mode}
-              onValueChange={(next) => setMode(next as ThemeMode)}
+              onValueChange={(next) => setMode(next as ThemePreference)}
               buttons={[
+                { value: 'auto', label: 'Auto', icon: 'theme-light-dark' },
                 { value: 'light', label: 'Light', icon: 'white-balance-sunny' },
                 { value: 'dark', label: 'Dark', icon: 'weather-night' },
               ]}

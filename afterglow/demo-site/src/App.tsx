@@ -1,7 +1,11 @@
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Bot, Zap, Brain, Layers, Play, ArrowRight, type LucideIcon } from 'lucide-react';
+import {
+  Bot, Zap, Brain, Layers, Play, ArrowRight, ExternalLink,
+  Sun, Moon, Monitor,
+  type LucideIcon,
+} from 'lucide-react';
+import { useTheme, type ThemeMode } from '@/lib/theme';
 
 const APP_URL = import.meta.env.VITE_APP_URL ?? 'https://app.95-179-245-107.sslip.io';
 
@@ -79,11 +83,49 @@ const partners = [
   },
 ];
 
+/* ─── Theme toggle (Auto / Light / Dark) ────────────────── */
+function ThemeToggle() {
+  const { mode, setMode } = useTheme();
+  const options: { value: ThemeMode; label: string; icon: LucideIcon }[] = [
+    { value: 'auto',  label: 'Auto',  icon: Monitor },
+    { value: 'light', label: 'Light', icon: Sun },
+    { value: 'dark',  label: 'Dark',  icon: Moon },
+  ];
+  return (
+    <div
+      role="group"
+      aria-label="Theme"
+      className="inline-flex items-center gap-0.5 rounded-full border border-border/60 bg-card/60 p-0.5"
+    >
+      {options.map(({ value, label, icon: Icon }) => {
+        const active = mode === value;
+        return (
+          <button
+            key={value}
+            type="button"
+            aria-pressed={active}
+            aria-label={`${label} theme`}
+            onClick={() => setMode(value)}
+            className={
+              'flex h-7 w-7 items-center justify-center rounded-full transition-colors ' +
+              (active
+                ? 'bg-primary text-primary-foreground'
+                : 'text-muted-foreground hover:text-foreground')
+            }
+          >
+            <Icon className="w-3.5 h-3.5" />
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 /* ─── Navbar ────────────────────────────────────────────── */
 function Navbar() {
   return (
-    <nav className="fixed top-9 inset-x-0 z-50 border-b border-border/50 bg-background/80 backdrop-blur-md">
-      <div className="mx-auto max-w-5xl px-6 h-14 flex items-center justify-between">
+    <nav className="border-b border-border/50 bg-background/80 backdrop-blur-md">
+      <div className="mx-auto max-w-5xl px-6 h-14 flex items-center justify-between gap-3">
         <span className="font-extrabold text-base tracking-tight text-foreground">
           after<span className="text-primary">glow</span>
         </span>
@@ -92,28 +134,14 @@ function Navbar() {
           <a href="#demo" className="hover:text-foreground transition-colors">Live demo</a>
           <a href="#built-on" className="hover:text-foreground transition-colors">Tech stack</a>
         </div>
-        <Button asChild size="sm" className="rounded-full hidden md:flex">
-          <a href="#demo">Try it live</a>
-        </Button>
+        <div className="flex items-center gap-3">
+          <ThemeToggle />
+          <Button asChild size="sm" className="rounded-full hidden md:flex">
+            <a href="#demo">Try it live</a>
+          </Button>
+        </div>
       </div>
     </nav>
-  );
-}
-
-/* ─── Hackathon banner ──────────────────────────────────── */
-function HackathonBanner() {
-  return (
-    <div className="fixed top-0 inset-x-0 z-[60] bg-primary/10 border-b border-primary/20 backdrop-blur-sm">
-      <div className="mx-auto max-w-5xl px-6 py-2 flex items-center justify-center gap-2 text-center">
-        <span className="text-primary text-[11px] font-bold">⚡</span>
-        <p className="text-xs text-foreground/80 leading-snug">
-          <span className="font-semibold text-foreground">Team Claudio Opuscoli</span>
-          {' '}· built entirely during the{' '}
-          <span className="font-semibold text-foreground">lablab.ai Milano AI Week Hackathon</span>
-          {' '}· every line of code written during the hackathon days.
-        </p>
-      </div>
-    </div>
   );
 }
 
@@ -130,7 +158,6 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
 export default function App() {
   return (
     <div className="min-h-screen bg-background text-foreground antialiased">
-      <HackathonBanner />
       <Navbar />
 
       {/* ── Hero — full-viewport width so bg bleeds edge-to-edge */}
@@ -139,15 +166,8 @@ export default function App() {
         <div className="dot-grid" aria-hidden="true" />
         <div className="hero-bottom-fade" aria-hidden="true" />
 
-        <div className="relative mx-auto max-w-5xl px-6 pt-[112px] pb-24 grid grid-cols-1 md:grid-cols-2 gap-12 items-center min-h-dvh">
+        <div className="relative mx-auto max-w-5xl px-6 pt-12 md:pt-20 pb-20 md:pb-24 grid grid-cols-1 md:grid-cols-2 gap-12 items-center">
           <div className="flex flex-col items-start gap-7">
-            <Badge
-              variant="outline"
-              className="uppercase tracking-[4px] text-[11px] font-bold text-primary border-primary/40 bg-primary/10"
-            >
-              Afterglow · AI Hackathon 2026
-            </Badge>
-
             <h1 className="text-5xl md:text-[62px] font-extrabold leading-[1.05] tracking-tight">
               AI for what happens
               <br />
@@ -192,7 +212,7 @@ export default function App() {
       <div className="mx-auto max-w-5xl px-6">
 
         {/* ── Problem / Solution ────────────────────────── */}
-        <section className="py-16">
+        <section className="py-20 md:py-24">
           <SectionLabel>Why it exists</SectionLabel>
           <div className="grid grid-cols-1 md:grid-cols-[1fr_auto_1fr] gap-6 items-stretch">
             <div className="rounded-xl border border-border/60 p-8 bg-card/60">
@@ -236,7 +256,7 @@ export default function App() {
         </section>
 
         {/* ── How it works ──────────────────────────────── */}
-        <section id="how" className="py-16 border-t border-border/40">
+        <section id="how" className="py-20 md:py-24 border-t border-border/40">
           <SectionLabel>01 — The pipeline</SectionLabel>
           <h2 className="text-3xl md:text-4xl font-extrabold tracking-tight mb-10">
             How it works
@@ -266,16 +286,24 @@ export default function App() {
         </section>
 
         {/* ── Live demo ─────────────────────────────────── */}
-        <section id="demo" className="py-16 border-t border-border/40">
+        <section id="demo" className="py-20 md:py-24 border-t border-border/40">
           <SectionLabel>02 — Try it now</SectionLabel>
           <h2 className="text-3xl md:text-4xl font-extrabold tracking-tight mb-3">
             Live demo
           </h2>
-          <p className="text-muted-foreground text-sm mb-14 max-w-xl leading-relaxed">
+          <p className="text-muted-foreground text-sm mb-8 max-w-xl leading-relaxed">
             The phone below is the real Afterglow app, running against the production backend
             on Vultr. Activate a template, tap the blue button, and inspect the call.
           </p>
-          <div className="flex justify-center">
+
+          {/* Desktop+: embedded device frame, with "open in new tab" on top */}
+          <div className="hidden md:flex flex-col items-center gap-5">
+            <Button asChild variant="outline" size="sm" className="rounded-full gap-2">
+              <a href={APP_URL} target="_blank" rel="noopener noreferrer">
+                Open full demo in a new tab
+                <ExternalLink className="w-3.5 h-3.5" />
+              </a>
+            </Button>
             <div className="relative">
               <div className="demo-phone-glow" aria-hidden="true" />
               <div className="relative phone-frame">
@@ -288,10 +316,23 @@ export default function App() {
               </div>
             </div>
           </div>
+
+          {/* Mobile: no iframe-in-phone-in-phone — single prominent CTA */}
+          <div className="md:hidden flex flex-col items-center gap-4 rounded-2xl border border-border/60 bg-card/60 p-8">
+            <p className="text-sm text-muted-foreground text-center leading-relaxed max-w-xs">
+              The embedded preview is hidden on mobile — open the real app full-screen instead.
+            </p>
+            <Button asChild size="lg" className="rounded-full gap-2 w-full sm:w-auto">
+              <a href={APP_URL} target="_blank" rel="noopener noreferrer">
+                Open the live app
+                <ExternalLink className="w-4 h-4" />
+              </a>
+            </Button>
+          </div>
         </section>
 
         {/* ── What makes it different ───────────────────── */}
-        <section className="py-16 border-t border-border/40">
+        <section className="py-20 md:py-24 border-t border-border/40">
           <SectionLabel>03 — Differentiators</SectionLabel>
           <h2 className="text-3xl md:text-4xl font-extrabold tracking-tight mb-12">
             What makes it different
@@ -317,7 +358,7 @@ export default function App() {
         </section>
 
         {/* ── Built on ──────────────────────────────────── */}
-        <section id="built-on" className="py-16 border-t border-border/40">
+        <section id="built-on" className="py-20 md:py-24 border-t border-border/40">
           <SectionLabel>04 — The stack</SectionLabel>
           <h2 className="text-3xl md:text-4xl font-extrabold tracking-tight mb-12">
             Built on
@@ -346,7 +387,7 @@ export default function App() {
         </section>
 
         {/* ── Team ──────────────────────────────────────── */}
-        <section className="py-16 border-t border-border/40">
+        <section className="py-20 md:py-24 border-t border-border/40">
           <SectionLabel>05 — The team</SectionLabel>
           <h2 className="text-3xl md:text-4xl font-extrabold tracking-tight mb-12">
             Team Claudio Opuscoli
@@ -370,7 +411,7 @@ export default function App() {
         </section>
 
         {/* ── Footer ────────────────────────────────────── */}
-        <footer className="py-10 border-t border-border/40 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-muted-foreground">
+        <footer className="py-12 md:py-14 border-t border-border/40 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-muted-foreground">
           <span className="font-bold text-sm text-foreground/70 tracking-tight">
             after<span className="text-primary">glow</span>
           </span>

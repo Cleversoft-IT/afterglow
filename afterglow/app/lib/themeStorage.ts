@@ -1,30 +1,30 @@
-import type { ThemeMode } from './theme';
+import type { ThemePreference } from './theme';
 
 const STORAGE_KEY = 'afterglow.theme_mode';
 
-let memoryMode: ThemeMode | null = null;
+let memoryPref: ThemePreference | null = null;
 
-export function readStoredThemeMode(): ThemeMode | null {
-  if (memoryMode) return memoryMode;
+export function readStoredThemePreference(): ThemePreference | null {
+  if (memoryPref) return memoryPref;
   try {
     if (typeof localStorage === 'undefined') return null;
     const value = localStorage.getItem(STORAGE_KEY);
-    if (value === 'light' || value === 'dark') return value;
+    if (value === 'auto' || value === 'light' || value === 'dark') return value;
   } catch {
     /* private mode / unavailable storage */
   }
   return null;
 }
 
-export function readInitialThemeMode(): ThemeMode {
-  return readStoredThemeMode() ?? 'dark';
+export function readInitialThemePreference(): ThemePreference {
+  return readStoredThemePreference() ?? 'auto';
 }
 
-export function writeStoredThemeMode(mode: ThemeMode): void {
-  memoryMode = mode;
+export function writeStoredThemePreference(pref: ThemePreference): void {
+  memoryPref = pref;
   try {
     if (typeof localStorage !== 'undefined') {
-      localStorage.setItem(STORAGE_KEY, mode);
+      localStorage.setItem(STORAGE_KEY, pref);
     }
   } catch {
     /* ignore */

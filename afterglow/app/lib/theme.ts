@@ -1,6 +1,7 @@
 // Design tokens — light/dark palettes share spacing, radius, and typography.
 
 export type ThemeMode = 'light' | 'dark';
+export type ThemePreference = 'auto' | 'light' | 'dark';
 
 export type ColorPalette = {
   bg: string;

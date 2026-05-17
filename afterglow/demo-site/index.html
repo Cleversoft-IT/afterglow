@@ -5,6 +5,19 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Afterglow — AI for what happens after the call</title>
     <meta name="description" content="Afterglow turns the seconds after a phone call into structured data, customer memory, and autonomously executed actions." />
+    <script>
+      (function () {
+        try {
+          var m = localStorage.getItem('afterglow.demo.theme_mode');
+          var resolved =
+            m === 'light' ? 'light' :
+            m === 'dark'  ? 'dark'  :
+            (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+          if (resolved === 'dark') document.documentElement.classList.add('dark');
+          document.documentElement.style.colorScheme = resolved;
+        } catch (_) { /* no-op */ }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>
