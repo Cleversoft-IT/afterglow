@@ -43,10 +43,21 @@ export default function RootLayout() {
 }
 
 function RootLayoutInner() {
-  const { isDark } = useThemePreference();
-  const paperTheme: AppTheme = isDark ? paperDarkTheme : paperLightTheme;
+  const { isDark: resolvedIsDark } = useThemePreference();
   const [fontsLoaded] = useFonts(Ionicons.font);
-  const [gateChecked, setGateChecked] = useState(!isDemoMode());
+
+  // Hydration guard. Expo Router's static web export prerenders this layout
+  // at build time with no localStorage / matchMedia available — the HTML
+  // baked into the bundle always uses the light theme and assumes no demo
+  // session is active. If the client's first render diverges from that
+  // markup (dark theme stored, or demo iframe already mounted), React logs
+  // the minified hydration error #418. We mirror the build-time state on
+  // the first client render, then flip to the real values from the
+  // useEffect below.
+  const [hydrated, setHydrated] = useState(false);
+  const isDark = hydrated ? resolvedIsDark : false;
+  const paperTheme: AppTheme = isDark ? paperDarkTheme : paperLightTheme;
+  const [gateChecked, setGateChecked] = useState(true);
 
   const styles = useMemo(
     () =>
@@ -77,7 +88,9 @@ function RootLayoutInner() {
   }, [isDark, paperTheme]);
 
   useEffect(() => {
+    setHydrated(true);
     if (!isDemoMode()) return;
+    setGateChecked(false);
     let cancelled = false;
     api
       .getActiveTemplate()
