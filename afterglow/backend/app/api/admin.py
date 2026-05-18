@@ -24,6 +24,7 @@ from app.agents import memory_retrieval
 from app.config import get_settings
 from app.db.engine import get_session
 from app.db.models import CustomerMemoryChunk
+from app.integrations import vultr_inference
 
 router = APIRouter(prefix="/api/v1/admin", tags=["admin"])
 
@@ -94,6 +95,33 @@ async def rag_probe(
             preseed_available=False,
         )
     )
+
+    # Raw round-trip so the caller can see what Vultr actually returned
+    # before any post-processing (`<think>` strip, NO_MEMORY collapse).
+    raw_messages = [
+        {
+            "role": "system",
+            "content": (
+                "You retrieve facts from a customer-memory store. "
+                "Return ONLY the relevant facts about the given phone number, "
+                "in 2-4 short sentences. If no facts are found, reply with 'NO_MEMORY'."
+            ),
+        },
+        {
+            "role": "user",
+            "content": f"Domain: {domain}\nPhone number: {phone}\nReturn any prior call facts.",
+        },
+    ]
+    raw = await vultr_inference.chat_completion_rag(raw_messages, collection=collection_id)
+    raw_content = ""
+    raw_usage = {}
+    try:
+        raw_content = raw["choices"][0]["message"]["content"] or ""
+    except (KeyError, IndexError, TypeError):
+        pass
+    if isinstance(raw, dict):
+        raw_usage = raw.get("usage") or {}
+
     return {
         "phone": phone,
         "domain": domain,
@@ -102,4 +130,6 @@ async def rag_probe(
         "input_tokens": input_tokens,
         "output_tokens": output_tokens,
         "hit": bool(prior_facts.strip()),
+        "raw_response_preview": raw_content[:1200],
+        "raw_usage": raw_usage,
     }
