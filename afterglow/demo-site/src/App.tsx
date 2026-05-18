@@ -6,6 +6,7 @@ import {
   Sun, Moon, Monitor, Maximize2, Sparkles, ChevronDown,
   type LucideIcon,
 } from 'lucide-react';
+import { DemoGuide } from './components/DemoGuide';
 
 const REPO_URL = 'https://github.com/Cleversoft-IT/hackaton-lablab';
 
@@ -89,7 +90,7 @@ const partners = [
     name: 'Google Gemini + ADK',
     pills: ['Gemini 3.1 Flash Lite', 'Structured output', 'ADK agentic loop', 'Typed tool calls'],
     description:
-      'A single Gemini structured-output call extracts fields, classifies intent and drafts the plan. Google ADK then drives the agentic loop: re-reads the analysis and emits typed tool calls that the executor validates and runs autonomously.',
+      'A single Gemini/ADK agent runs the post-call loop turn by turn — on-demand Vultr RAG, transcript search, action execution with self-correction on failures — up to 12 turns. The final finalize_call returns the full structured analysis (fields, intent, sentiment, briefing) in one shot.',
   },
   {
     name: 'Speechmatics',
@@ -212,6 +213,7 @@ function DemoSection() {
   const scale = usePhoneScale();
   const scaledDown = scale < 0.999;
   const pct = Math.round(scale * 100);
+  const [guideOpen, setGuideOpen] = useState(false);
 
   return (
     <section
@@ -249,6 +251,21 @@ function DemoSection() {
               </p>
             </div>
           </div>
+
+          <Button
+            variant="default"
+            size="lg"
+            className="rounded-full gap-2 w-fit"
+            onClick={() => setGuideOpen(true)}
+          >
+            <Sparkles className="w-4 h-4" />
+            How to get the most out of this demo
+          </Button>
+          <DemoGuide
+            open={guideOpen}
+            onOpenChange={setGuideOpen}
+            appUrl={APP_URL}
+          />
 
           <details className="demo-disclosure group">
             <summary className="demo-disclosure-summary">
