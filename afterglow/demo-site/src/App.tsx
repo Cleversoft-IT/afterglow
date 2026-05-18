@@ -87,7 +87,7 @@ const partners = [
   },
   {
     name: 'Google Gemini + ADK',
-    pills: ['Gemini 2.0 Flash', 'Structured output', 'ADK agentic loop', 'Typed tool calls'],
+    pills: ['Gemini 3.1 Flash Lite', 'Structured output', 'ADK agentic loop', 'Typed tool calls'],
     description:
       'A single Gemini structured-output call extracts fields, classifies intent and drafts the plan. Google ADK then drives the agentic loop: re-reads the analysis and emits typed tool calls that the executor validates and runs autonomously.',
   },

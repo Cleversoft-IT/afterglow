@@ -184,10 +184,9 @@ chunk → next call prefetches the chunk → briefing returns the memory.
   `app/integrations/jsonschema_to_pydantic.py`, so the model never sees an
   untyped `dict`; Gemini emits structured-output JSON that matches the
   schema.
-- Default model: `gemini-3.1-flash-lite`. We pin the explicit model
-  instead of using moving aliases such as `gemini-flash-latest` /
-  `gemini-latest-flash`, which can shift under us; same value is
-  configured in Coolify for the backend.
+- Model: `gemini-3.1-flash-lite` exclusively. We pin the explicit
+  version instead of moving aliases — same value is configured in
+  Coolify for the backend.
 - `finalize_call(payload: FinalizeCallPayload)` is the loop's stop
   signal — its schema is the *only* structured-output Gemini still emits
   directly (the rest is tool calls); `FinalizeCallPayload.fields` is the
