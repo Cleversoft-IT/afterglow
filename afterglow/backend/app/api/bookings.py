@@ -1,10 +1,10 @@
 """Bookings API — list reservation actions across verticals.
 
-"Booking" in the UI covers both restaurant reservations (booking.create) and
-clinical/auto-service appointments (appointment.create) — they share the same
-operator workflow: a slot got reserved as a result of the call. Cancellations
-follow the same pattern. The Home Bookings filter and the customer detail
-"Upcoming bookings" row both feed off this endpoint."""
+"Booking" covers every slot-reservation flow (restaurant table, dental visit,
+body-shop inspection, salon, gym, etc.). One action key, one mock handler,
+one consumer in the UI (`BookingBadge` reads `booking_date`/`booking_time`
+from the payload). Cancellations follow the same pattern via
+`booking.cancel`."""
 from __future__ import annotations
 
 from typing import Optional
@@ -25,12 +25,7 @@ from app.schemas.bookings import BookingListItem
 
 router = APIRouter(prefix="/api/v1/bookings", tags=["bookings"])
 
-BOOKING_ACTION_TYPES = (
-    "booking.create",
-    "booking.cancel",
-    "appointment.create",
-    "appointment.cancel",
-)
+BOOKING_ACTION_TYPES = ("booking.create", "booking.cancel")
 
 
 @router.get("", response_model=list[BookingListItem])

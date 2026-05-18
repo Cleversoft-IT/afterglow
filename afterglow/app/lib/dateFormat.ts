@@ -95,5 +95,18 @@ export function formatRelativeTime(iso: string, loc: Locale, now: Date = new Dat
   if (mins < 60) return loc === 'it' ? `${mins} min fa` : `${mins} min ago`;
   const hours = Math.round(mins / 60);
   if (hours < 24) return loc === 'it' ? `${hours} h fa` : `${hours}h ago`;
-  return formatTime(iso, loc);
+  const days = Math.round(hours / 24);
+  if (days === 1) return loc === 'it' ? 'ieri' : 'yesterday';
+  if (days < 7) return loc === 'it' ? `${days} giorni fa` : `${days} days ago`;
+  const weeks = Math.round(days / 7);
+  if (weeks < 4) {
+    if (weeks === 1) return loc === 'it' ? 'una settimana fa' : 'a week ago';
+    return loc === 'it' ? `${weeks} settimane fa` : `${weeks} weeks ago`;
+  }
+  const months = Math.round(days / 30);
+  if (months === 1) return loc === 'it' ? 'un mese fa' : 'a month ago';
+  if (months < 12) return loc === 'it' ? `${months} mesi fa` : `${months} months ago`;
+  const years = Math.round(days / 365);
+  if (years === 1) return loc === 'it' ? 'un anno fa' : 'a year ago';
+  return loc === 'it' ? `${years} anni fa` : `${years} years ago`;
 }

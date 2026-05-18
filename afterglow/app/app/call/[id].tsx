@@ -26,11 +26,7 @@ import type { CallDetailView, FieldDefinitionLite } from '../../lib/types';
 // We don't want the UI to flag them as "Simulated" even though the backend
 // catalog classifies them as `mock_external` — that classification is
 // pipeline-internal, not user-facing.
-const REAL_ON_DEVICE = new Set([
-  'booking.create',
-  'appointment.create',
-  'appointment.create_inspection',
-]);
+const REAL_ON_DEVICE = new Set(['booking.create']);
 
 function statusChip(call: CallDetailView, theme: AppTheme): {
   label: string;

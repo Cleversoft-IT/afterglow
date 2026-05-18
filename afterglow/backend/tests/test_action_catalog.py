@@ -57,3 +57,31 @@ def test_is_simulated_unknown_key_defaults_true():
     # honest signal even when a template ships a stale action key.
     assert action_catalog.is_simulated("rocket.launch") is True
     assert action_catalog.can_undo("rocket.launch") is False
+
+
+def test_appointment_namespace_removed():
+    """Round 8 unification — appointment.* was merged into booking.* so the
+    Bookings tab and BookingBadge only ever consume one shape. Any
+    regression that reintroduces appointment.create or
+    appointment.create_inspection breaks the seed contract."""
+    assert "appointment.create" not in action_catalog.CATALOG
+    assert "appointment.create_inspection" not in action_catalog.CATALOG
+    assert "appointment.cancel" not in action_catalog.CATALOG
+
+
+def test_booking_compatible_domains_cover_demo_verticals():
+    """booking.create must work for restaurant + dentist + bodyshop (the
+    three seed templates) plus the wizard-suggested verticals. Loss of any
+    of these breaks the wizard's domain → catalog matching."""
+    expected = {
+        "restaurant", "hotel", "salon", "gym", "events",
+        "dentist", "bodyshop", "clinic", "*",
+    }
+    entry = action_catalog.CATALOG["booking.create"]
+    missing = expected - set(entry.compatible_domains)
+    assert missing == set(), f"booking.create lost domains: {missing}"
+    cancel = action_catalog.CATALOG["booking.cancel"]
+    missing_cancel = expected - set(cancel.compatible_domains)
+    assert missing_cancel == set(), (
+        f"booking.cancel lost domains: {missing_cancel}"
+    )

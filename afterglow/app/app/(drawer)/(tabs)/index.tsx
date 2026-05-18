@@ -54,9 +54,16 @@ export default function HomeScreen() {
   const [calls, setCalls] = useState<CallListItem[]>([]);
   const [bookings, setBookings] = useState<BookingListItem[]>([]);
   const [filter, setFilter] = useState<CallFilterKey>('all');
-  const [bookingsSortMode, setBookingsSortMode] = useState<'call_date' | 'booking_date'>(
-    'call_date',
-  );
+  // Bookings sort: key + direction. Defaults are asymmetric on purpose:
+  // - call_date defaults to `desc` (newest call first — current Home order).
+  // - booking_date defaults to `asc` (next-upcoming slot first — what the
+  //   operator wants to see when they're scanning what's next).
+  // Tap on the active chip toggles `dir`; tap on the other chip switches
+  // key + uses that key's default `dir`.
+  const [bookingsSort, setBookingsSort] = useState<{
+    key: 'call_date' | 'booking_date';
+    dir: 'asc' | 'desc';
+  }>({ key: 'call_date', dir: 'desc' });
   const [query, setQuery] = useState('');
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -147,10 +154,11 @@ export default function HomeScreen() {
       return haystack.includes(q);
     });
 
-    if (filter === 'bookings' && bookingsSortMode === 'booking_date') {
+    if (filter === 'bookings' && bookingsSort.key === 'booking_date') {
       // Sort by the actual booking slot (date+time from payload), not the
-      // call timestamp. Upcoming slots come first; past bookings sink
-      // toward the end. Calls whose payload lacks a valid date land last.
+      // call timestamp. With `asc` upcoming slots come first; past
+      // bookings sink toward the end. With `desc` the order flips:
+      // most-recent past bookings come first, future slots sink.
       const now = Date.now();
       const slotMs = (c: CallListItem): number => {
         const b = bookingByCallId.get(c.id);
@@ -162,20 +170,44 @@ export default function HomeScreen() {
         const ms = Date.parse(`${date}T${time}`);
         return Number.isNaN(ms) ? Infinity : ms;
       };
+      const dir = bookingsSort.dir;
       const sorted = [...filtered].sort((a, b) => {
         const aMs = slotMs(a);
         const bMs = slotMs(b);
-        // Future slots ascending (next first); past slots after future.
         const aFuture = aMs >= now;
         const bFuture = bMs >= now;
-        if (aFuture !== bFuture) return aFuture ? -1 : 1;
+        if (dir === 'asc') {
+          // Future first ascending; past after, descending.
+          if (aFuture !== bFuture) return aFuture ? -1 : 1;
+          return aFuture ? aMs - bMs : bMs - aMs;
+        }
+        // dir === 'desc': past first descending; future after, ascending.
+        if (aFuture !== bFuture) return aFuture ? 1 : -1;
         return aFuture ? aMs - bMs : bMs - aMs;
       });
-      return groupByDay(sorted, locale);
+      // Group by booking_date instead of created_at — section headers
+      // line up with the slot, not the call timestamp. Fallback to
+      // created_at when the booking is missing (defensive: filter
+      // already requires `booking` to exist for this branch, but keeps
+      // the contract clean).
+      const keyForBooking = (c: CallListItem): string => {
+        const b = bookingByCallId.get(c.id);
+        const p = b?.payload as Record<string, unknown> | undefined;
+        const date = typeof p?.booking_date === 'string' ? p.booking_date : null;
+        if (!date) return c.created_at;
+        // Use noon to avoid TZ flips; relativeDay only looks at the calendar day.
+        return `${date}T12:00:00Z`;
+      };
+      return groupByDay(sorted, locale, undefined, keyForBooking);
+    }
+
+    if (filter === 'bookings' && bookingsSort.dir === 'asc') {
+      // call_date ascending: oldest call first. Reverse the API order.
+      return groupByDay([...filtered].reverse(), locale);
     }
 
     return groupByDay(filtered, locale);
-  }, [calls, bookingByCallId, filter, bookingsSortMode, query, locale]);
+  }, [calls, bookingByCallId, filter, bookingsSort, query, locale]);
 
   const styles = useMemo(
     () =>
@@ -300,26 +332,51 @@ export default function HomeScreen() {
           <Text variant="labelSmall" style={{ color: theme.colors.onSurfaceVariant, marginRight: 4 }}>
             Sort by:
           </Text>
-          {(['call_date', 'booking_date'] as const).map((mode) => (
-            <Chip
-              key={mode}
-              mode="outlined"
-              compact
-              selected={bookingsSortMode === mode}
-              onPress={() => setBookingsSortMode(mode)}
-              showSelectedCheck={false}
-              selectedColor={
-                bookingsSortMode === mode ? theme.colors.onSecondaryContainer : undefined
+          {(['call_date', 'booking_date'] as const).map((mode) => {
+            const isActive = bookingsSort.key === mode;
+            // Tap on the active chip flips the direction; tap on the other
+            // chip switches key + uses that key's default direction.
+            const onPress = () => {
+              if (isActive) {
+                setBookingsSort((s) => ({
+                  ...s,
+                  dir: s.dir === 'asc' ? 'desc' : 'asc',
+                }));
+              } else {
+                setBookingsSort({
+                  key: mode,
+                  dir: mode === 'booking_date' ? 'asc' : 'desc',
+                });
               }
-              style={
-                bookingsSortMode === mode
-                  ? { backgroundColor: theme.colors.secondaryContainer }
-                  : undefined
-              }
-            >
-              {mode === 'call_date' ? 'By call date' : 'By booking date'}
-            </Chip>
-          ))}
+            };
+            return (
+              <Chip
+                key={mode}
+                mode="outlined"
+                compact
+                selected={isActive}
+                onPress={onPress}
+                showSelectedCheck={false}
+                icon={
+                  isActive
+                    ? bookingsSort.dir === 'asc'
+                      ? 'arrow-up'
+                      : 'arrow-down'
+                    : undefined
+                }
+                selectedColor={
+                  isActive ? theme.colors.onSecondaryContainer : undefined
+                }
+                style={
+                  isActive
+                    ? { backgroundColor: theme.colors.secondaryContainer }
+                    : undefined
+                }
+              >
+                {mode === 'call_date' ? 'By call date' : 'By booking date'}
+              </Chip>
+            );
+          })}
         </ScrollView>
       ) : null}
 

@@ -522,7 +522,7 @@ function CallerContext({
         ) : null}
         {lastCall ? (
           <Chip compact mode="outlined" icon="clock-outline">
-            {`last ${lastCall}`}
+            {lastCall}
           </Chip>
         ) : null}
       </View>

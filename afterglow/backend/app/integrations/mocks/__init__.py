@@ -40,12 +40,11 @@ from app.integrations.mocks.sms import send_sms_mock
 from app.integrations.mocks.whatsapp import request_photos_mock, send_whatsapp_mock
 
 MOCK_REGISTRY = {
-    # Booking bucket
+    # Booking bucket — single namespace covers every vertical (restaurant /
+    # dentist / bodyshop / salon / gym / hotel / events / clinic).
     "booking.create": create_booking_mock,
     "booking.cancel": cancel_booking_mock,
     "booking.reschedule": reschedule_booking_mock,
-    "appointment.create": create_booking_mock,
-    "appointment.create_inspection": create_booking_mock,
     # WhatsApp bucket
     "whatsapp.send_confirmation": send_whatsapp_mock,
     "whatsapp.request_photos": request_photos_mock,

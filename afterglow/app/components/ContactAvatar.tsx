@@ -9,10 +9,11 @@ type Props = {
   avatarUrl?: string | null;
   size?: number;
   backgroundColor?: string;
-  // When true, the avatar gets a 2dp primary-colored border to flag the
-  // contact as a known customer (has a Customer row in the DB). Acts as
-  // a visual legend together with the "Clients" filter chip, which
-  // shares the same border treatment in the Home filter row.
+  // When true, the avatar gets a 2dp primary-colored ring (tonal ring
+  // pattern: outer View backgroundColor = ring color, padding = ring
+  // width, child Avatar at its natural `size`). Acts as a visual legend
+  // together with the "Clients" filter chip, which shares the same
+  // primary border treatment in Home + Contacts.
   isCustomer?: boolean;
 };
 
@@ -29,18 +30,25 @@ export function ContactAvatar({
   const bg = backgroundColor ?? colorFromPhone(phone);
   const initials = initialsFromName(name ?? '');
 
-  const borderStyle = {
-    width: size,
-    height: size,
-    borderRadius: size / 2,
-    borderWidth: isCustomer ? 2 : 1,
-    borderColor: isCustomer ? theme.colors.primary : 'rgba(0,0,0,0.08)',
+  // Tonal ring: the wrapper is `outerSize` (= size + ringWidth*2) with
+  // `backgroundColor` = ring color and `padding` = ringWidth. The inner
+  // Avatar renders at its natural `size`. No clipping, no white gap
+  // between ring and avatar, perfect concentric circles. Standard
+  // Material / iOS pattern for tonal rings on avatars.
+  const ringWidth = isCustomer ? 2 : 1;
+  const outerSize = size + ringWidth * 2;
+  const wrapperStyle = {
+    width: outerSize,
+    height: outerSize,
+    borderRadius: outerSize / 2,
+    padding: ringWidth,
+    backgroundColor: isCustomer ? theme.colors.primary : 'rgba(0,0,0,0.08)',
   };
 
   // Prefer remote photo if provided AND it hasn't 404'd this session.
   if (avatarUrl && !imageFailed) {
     return (
-      <View style={[styles.borderWrapper, borderStyle]}>
+      <View style={[styles.wrapper, wrapperStyle]}>
         <Avatar.Image
           size={size}
           source={{ uri: avatarUrl }}
@@ -52,7 +60,7 @@ export function ContactAvatar({
 
   if (!initials) {
     return (
-      <View style={[styles.borderWrapper, borderStyle]}>
+      <View style={[styles.wrapper, wrapperStyle]}>
         <Avatar.Icon
           icon="account"
           size={size}
@@ -64,7 +72,7 @@ export function ContactAvatar({
   }
 
   return (
-    <View style={[styles.borderWrapper, borderStyle]}>
+    <View style={[styles.wrapper, wrapperStyle]}>
       <Avatar.Text
         size={size}
         label={initials}
@@ -76,7 +84,8 @@ export function ContactAvatar({
 }
 
 const styles = StyleSheet.create({
-  borderWrapper: {
-    overflow: 'hidden',
+  wrapper: {
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 });

@@ -332,13 +332,16 @@ CATALOG: dict[str, ActionCatalogEntry] = {
     "booking.create": ActionCatalogEntry(
         key="booking.create",
         label="Create booking",
-        description="Schedule a reservation in the venue's booking system.",
+        description="Reserve a slot in the venue's booking system (restaurant table, dental visit, body-shop inspection, salon, gym, etc.).",
         integration_kind="mock_external",
         mock_target="booking",
         can_undo=True,
         mutates=True,
         default_payload_schema=_BOOKING_PAYLOAD_SCHEMA,
-        compatible_domains=["restaurant", "hotel", "salon", "gym", "events", "*"],
+        compatible_domains=[
+            "restaurant", "hotel", "salon", "gym", "events",
+            "dentist", "bodyshop", "clinic", "*",
+        ],
     ),
     "booking.cancel": ActionCatalogEntry(
         key="booking.cancel",
@@ -349,29 +352,10 @@ CATALOG: dict[str, ActionCatalogEntry] = {
         can_undo=False,  # cancellation is the undo itself
         mutates=True,
         default_payload_schema=_BOOKING_CANCEL_PAYLOAD_SCHEMA,
-        compatible_domains=["restaurant", "hotel", "salon", "gym", "events", "*"],
-    ),
-    "appointment.create": ActionCatalogEntry(
-        key="appointment.create",
-        label="Create appointment",
-        description="Schedule an appointment slot.",
-        integration_kind="mock_external",
-        mock_target="booking",
-        can_undo=True,
-        mutates=True,
-        default_payload_schema=_BOOKING_PAYLOAD_SCHEMA,
-        compatible_domains=["dentist", "clinic", "salon", "*"],
-    ),
-    "appointment.create_inspection": ActionCatalogEntry(
-        key="appointment.create_inspection",
-        label="Schedule inspection",
-        description="Reserve a slot for a damage inspection or quote.",
-        integration_kind="mock_external",
-        mock_target="booking",
-        can_undo=True,
-        mutates=True,
-        default_payload_schema=_INSPECTION_PAYLOAD_SCHEMA,
-        compatible_domains=["bodyshop", "*"],
+        compatible_domains=[
+            "restaurant", "hotel", "salon", "gym", "events",
+            "dentist", "bodyshop", "clinic", "*",
+        ],
     ),
     "whatsapp.send_confirmation": ActionCatalogEntry(
         key="whatsapp.send_confirmation",
@@ -395,7 +379,7 @@ CATALOG: dict[str, ActionCatalogEntry] = {
     "sms.send_reminder": ActionCatalogEntry(
         key="sms.send_reminder",
         label="Send SMS reminder",
-        description="Send the caller an SMS reminder for the upcoming appointment.",
+        description="Send the caller an SMS reminder for the upcoming booking.",
         integration_kind="mock_external",
         mock_target="sms",
         can_undo=False,
@@ -452,7 +436,7 @@ CATALOG: dict[str, ActionCatalogEntry] = {
     "sms.send_confirmation": ActionCatalogEntry(
         key="sms.send_confirmation",
         label="Send SMS confirmation",
-        description="Send the caller an SMS confirming the booking or appointment.",
+        description="Send the caller an SMS confirming the booking.",
         integration_kind="mock_external",
         mock_target="sms",
         can_undo=False,  # sent messages cannot be unsent
@@ -481,7 +465,7 @@ CATALOG: dict[str, ActionCatalogEntry] = {
     "calendar.send_invite": ActionCatalogEntry(
         key="calendar.send_invite",
         label="Send calendar invite",
-        description="Send the caller an ICS calendar invite for a meeting or appointment.",
+        description="Send the caller an ICS calendar invite for a meeting or booking.",
         integration_kind="mock_external",
         mock_target="calendar",
         can_undo=False,  # an invite already delivered can't be unsent

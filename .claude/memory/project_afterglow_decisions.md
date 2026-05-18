@@ -1,6 +1,6 @@
 ---
 name: project-afterglow-decisions
-description: Decisioni di prodotto/architettura di Afterglow. Pivot da non rinegoziare senza ridiscutere. Aggiornato 2026-05-18 (round 7 UI polish + seed credibility) — avatar legend brand (primary border per customer), CallListItem.customer_tags additivo, no-op tap su call non-client, Home chip primaryContainer, wizard ProgressBar, simulator card multilinea, prettyValue helper, template badge wrap, seed densification ~50 personal calls 9-17 mag con 1 pipeline_error e Customer.total_calls ricomputato. 2026-05-18 (round 6 UI consistency) — drawer active highlight uniforme, Test simulator dentro (drawer), call/customer detail con Card.Content + Pressable + tags inline, calls list senza icone phone-incoming. 2026-05-17 (round 5 fix cluster) — failure_kind computed, default_payload_schema arricchito al persistence boundary, Integration discovery HARD RULE nel wizard, template rename end-to-end, validator source-based filter, sidebar pulito + Contacts top-right Home + welcome dialog fresh install. 2026-05-17 (legacy cleanup) — wizard one-shot rimosso, conversational wizard chat unica via; residui PII/sanitizer ripuliti da docstring/prompts. 2026-05-17 (template simplification) — schema Template ridotto al solo product surface; mock_target/mutates spostati nel catalog. 2026-05-17 (notte) — simulator dei custom template wizard-built: solo bottone "new" + audio cross-origin via blob URL. 2026-05-17 (sera) — round 3 UI audit (drawer "Calls" voice, locale IT/EN via Intl.DateTimeFormat, BookingBadge inline, TranscriptList accordion, REAL_ON_DEVICE whitelist UI-only, randomuser.me portraits hard-coded, web first-paint sync, drawer reset via Paper Dialog, eager customer FK al submit). 2026-05-17 — frontend Material 3 rewrite + UI bug cluster post-rewrite. 2026-05-16 — feedback round 2 (action catalog, dialer non bloccante, Undo/Redo flip-only, simulator 2-mode con MP3 distinti existing/new e 4 customer seedati).
+description: Decisioni di prodotto/architettura di Afterglow. Pivot da non rinegoziare senza ridiscutere. Aggiornato 2026-05-18 (round 8 — avatar tonal ring + appointment unification + 5 UX fix) — ContactAvatar usa tonal ring pattern (no border, no gap); `appointment.*` rimosso del tutto in favore di `booking.create` unificato per tutti i verticali con `booking_date`+`booking_time` in preconditions+required; formatRelativeTime estesa a giorni/settimane/mesi; bookings sort con dir asc/desc toggle + group-by booking_date; Contacts Clients chip parità Home; ringing screen microcopy "12h ago" senza prefix "last". 2026-05-18 (round 7 UI polish + seed credibility) — avatar legend brand (primary border per customer), CallListItem.customer_tags additivo, no-op tap su call non-client, Home chip primaryContainer, wizard ProgressBar, simulator card multilinea, prettyValue helper, template badge wrap, seed densification ~50 personal calls 9-17 mag con 1 pipeline_error e Customer.total_calls ricomputato. 2026-05-18 (round 6 UI consistency) — drawer active highlight uniforme, Test simulator dentro (drawer), call/customer detail con Card.Content + Pressable + tags inline, calls list senza icone phone-incoming. 2026-05-17 (round 5 fix cluster) — failure_kind computed, default_payload_schema arricchito al persistence boundary, Integration discovery HARD RULE nel wizard, template rename end-to-end, validator source-based filter, sidebar pulito + Contacts top-right Home + welcome dialog fresh install. 2026-05-17 (legacy cleanup) — wizard one-shot rimosso, conversational wizard chat unica via; residui PII/sanitizer ripuliti da docstring/prompts. 2026-05-17 (template simplification) — schema Template ridotto al solo product surface; mock_target/mutates spostati nel catalog. 2026-05-17 (notte) — simulator dei custom template wizard-built: solo bottone "new" + audio cross-origin via blob URL. 2026-05-17 (sera) — round 3 UI audit (drawer "Calls" voice, locale IT/EN via Intl.DateTimeFormat, BookingBadge inline, TranscriptList accordion, REAL_ON_DEVICE whitelist UI-only, randomuser.me portraits hard-coded, web first-paint sync, drawer reset via Paper Dialog, eager customer FK al submit). 2026-05-17 — frontend Material 3 rewrite + UI bug cluster post-rewrite. 2026-05-16 — feedback round 2 (action catalog, dialer non bloccante, Undo/Redo flip-only, simulator 2-mode con MP3 distinti existing/new e 4 customer seedati).
 metadata:
   type: project
 ---
@@ -305,7 +305,7 @@ Secondo giro di test su `app.95-179-245-107.sslip.io` post-rewrite ha esposto bu
 
 **I. TranscriptList component (Card + List.Accordion).** `app/components/TranscriptList.tsx` parsa `raw_transcript.text` su pattern `^(Operator|Caller|Operatore|Chiamante):` e renderizza i turni dentro un `List.Accordion` "View turns" — speaker label in `labelSmall` bold (Operator = primary, Caller = success), testo in `bodyMedium`. Sostituisce il vecchio single `<Text>` one-line. Il pattern visivo replica lo `ScriptPreview` di `simulator.tsx` (Card+Accordion+Text), **NON i bubble del wizard chat**.
 
-**J. `REAL_ON_DEVICE` whitelist UI-only.** `app/app/call/[id].tsx` ha `const REAL_ON_DEVICE = new Set(['booking.create','appointment.create','appointment.create_inspection'])`; le azioni in questo set NON mostrano il badge `Simulated` anche se il backend le classifica come `integration_kind="mock_external"` in `action_catalog.py`. Razionale: il pitch è "il booking succede sul dispositivo dell'operatore", non su un sistema esterno simulato — il badge confondeva i giudici. **È SOLO una scelta UI**: backend, audit_log e `result.mock` restano invariati. Non documentare come "real backend execution".
+**J. `REAL_ON_DEVICE` whitelist UI-only.** `app/app/call/[id].tsx` ha `const REAL_ON_DEVICE = new Set(['booking.create'])`; le azioni in questo set NON mostrano il badge `Simulated` anche se il backend le classifica come `integration_kind="mock_external"` in `action_catalog.py`. Razionale: il pitch è "il booking succede sul dispositivo dell'operatore", non su un sistema esterno simulato — il badge confondeva i giudici. **È SOLO una scelta UI**: backend, audit_log e `result.mock` restano invariati. Non documentare come "real backend execution". (Round 8: ridotto a una sola key dopo aver unificato `appointment.*` in `booking.*`.)
 
 **K. Status chip capitalize + icona.** Status `completed/failed/pending` in `app/app/call/[id].tsx` ora capitalize'd (`Completed/Failed/Pending`) + icona (`check-circle-outline / alert-circle-outline / progress-clock`). Eliminato il pleonasmo machine-key sotto label nei field e action: `<Text fontFamily="monospace">{k}</Text>` rimosso, resta solo `def?.label ?? k`.
 
@@ -576,9 +576,9 @@ del round 6).
       `_emit_seeded_call_core`-compatibile dai blueprint in
       `_AI_BOOKING_BLUEPRINTS`; ogni AI call emette
       `Call+ExtractedFields+ExecutedAction+AuditLog` con
-      `booking.create` (restaurant) o `appointment.create` (dentist/
-      bodyshop). La `booking_date` è `created_at + 2 days` per avere
-      slot future-dated rispetto alla call.
+      `booking.create` (round 8 ha unificato anche dentist e bodyshop
+      sotto questa key). La `booking_date` è `created_at + 2 days` per
+      avere slot future-dated rispetto alla call.
     - **22 completed personal** (human-handled, niente extracted).
     - **11 missed** (`error="empty_or_noise_audio"`).
     - **1 pipeline_error** (`error="action_planner: simulated failure"`).
@@ -586,11 +586,10 @@ del round 6).
     Laura Bennett 1× — `customer_id` risolto da phone via query.
     `Customer.total_calls` e `last_call_at` ricomputati post-insert
     (`func.count + func.max`).
-    **Estensione `BOOKING_ACTION_TYPES`**: per coprire i verticali
-    non-restaurant senza forzature, il filtro del Bookings endpoint
-    ora include `appointment.create` e `appointment.cancel` oltre a
-    `booking.create` / `booking.cancel`. Una appointment è una
-    prenotazione dal punto di vista operatore — stesso workflow.
+    **`BOOKING_ACTION_TYPES`**: round 7 estendeva la lista a
+    `appointment.*` come fallback per dentist/bodyshop; **round 8 ha
+    eliminato `appointment.*` del tutto**, tornando a `("booking.create",
+    "booking.cancel")`. Vedi sub-decisione `1.tredici` per i dettagli.
     **Quando aggiungi customer al seed**, aggiungili a
     `_CUSTOMER_PHONES_BY_NAME` (recompute) **e** opzionalmente a
     `_AI_BOOKING_BLUEPRINTS` (per generargli AI calls).
@@ -630,6 +629,115 @@ del round 6).
   `app/lib/types.ts`.
 - BE: `backend/app/schemas/calls.py`, `backend/app/api/calls.py`,
   `backend/app/db/seed.py` + nuovo `backend/tests/test_calls_list_schema.py`.
+
+### 1.tredici. Round 8 — avatar tonal ring + appointment unification (2026-05-18 sera)
+
+Cluster di rifiniture post-pitch-test: avatar customer aveva un sottile
+gap percepito e iniziali decentrate (border-width tagliava lo spazio
+child a `size - 2*border` mentre `Avatar.Text size=size` rimaneva
+centered su altro asse); inoltre `appointment.*` come doppione di
+`booking.*` confondeva il prodotto.
+
+**Decisioni durature:**
+
+1. **Tonal ring pattern per ContactAvatar.** Wrapper outerSize =
+   size + ringWidth*2 con `backgroundColor` = colore ring e `padding`
+   = ringWidth. Child Avatar al centro col suo `size` naturale. Niente
+   border, niente clipping, niente gap percepito (il colore del ring
+   tocca direttamente lo sfondo del child). Pattern standard
+   Material/iOS per avatar tonal ring. `ringWidth = isCustomer ? 2 :
+   1`, colore `theme.colors.primary` per customer e
+   `rgba(0,0,0,0.08)` per phonebook. **Quando estendi a un nuovo
+   tipo di "highlight" sull'avatar, riusa lo stesso pattern: cambia
+   solo `ringWidth` + `backgroundColor`** (es. emergency rosso,
+   pending grigio mid-tone).
+
+2. **`appointment.*` rimosso del tutto.** Catalog, mocks, API
+   `BOOKING_ACTION_TYPES`, wizard prompt, seed templates, seeded
+   calls, AI blueprints, `_make_ai_booking_spec`, REAL_ON_DEVICE: una
+   sola action key `booking.create` (più `booking.cancel`) attraverso
+   tutti i verticali (restaurant/dentist/bodyshop/clinic/salon/gym/
+   hotel/events). Mock handler unico (`create_booking_mock`).
+   `booking.create.compatible_domains` esteso a includere
+   `dentist`, `bodyshop`, `clinic` (i 3 esistenti restano:
+   restaurant, hotel, salon, gym, events). **Mai più due action key
+   per la stessa operazione semantica con payload divergenti.**
+
+3. **`payload.booking_date` + `payload.booking_time` (HH:MM) sono il
+   contratto del BookingBadge.** Tutti i seed templates con
+   `booking.create` hanno `booking_date` + `booking_time` in
+   `preconditions` AND `payload_schema.required` — il planner non
+   emette l'action senza slot. `booking_time` è SEMPRE `HH:MM` in
+   24h; la nuance "morning/after lunch" vive in un campo separato
+   `booking_notes` (string libera, non-required). Anti-regression
+   in `tests/test_seed_templates.py` (3 contract assertions:
+   preconditions, payload_schema.required, no-appointment-key-leak)
+   + `tests/test_action_catalog.py` (appointment.* not in CATALOG +
+   compatible_domains coverage).
+
+4. **`formatRelativeTime` estesa per >24h.** "ieri" / "N giorni fa"
+   / "una settimana fa" / "N settimane fa" / "un mese fa" / "N mesi
+   fa" / "un anno fa" / "N anni fa" (it + en). Il vecchio fallback
+   `formatTime(iso)` (solo HH:MM) era la causa del bug customer
+   detail: row > 24h mostravano l'orario due volte. **Non
+   reintrodurre il fallback time-only senza un contesto giorno
+   esplicito** (la formula assoluta sopra è già `bodyMedium` =
+   `formatDateTime`).
+
+5. **`groupByDay` accetta `keyFn?` opzionale.** Permette al
+   chiamante di raggruppare per una data alternativa (es. booking
+   date invece di created_at). Il chiamante è responsabile del
+   fallback su `created_at` quando la data alternativa è missing.
+
+6. **Bookings sort: `{key, dir}` con default asimmetrici.** call_date
+   default `desc` (newest call first), booking_date default `asc`
+   (next-upcoming slot first, naturale per "cosa devo gestire
+   prossimamente"). Tap sul chip attivo flippa `dir`. Tap sul chip
+   non-attivo switcha `key` + applica il suo default `dir`. Icona
+   arrow up/down sul chip attivo. **L'asimmetria è intenzionale**:
+   evita 2 tap per ottenere il default semantico desiderato.
+
+7. **Contacts Clients chip = parità Home.** `borderWidth: 1` +
+   `borderColor: theme.colors.primary` permanente; bg
+   `primaryContainer` se selected, `transparent` se non selected.
+   Stessa legenda visiva del Home — niente difference tra le due
+   screen.
+
+8. **Ringing screen microcopy.** Chip orologio nel ringing screen
+   mostra solo `relativeTime` (es. "12h ago"), non `"last 12h
+   ago"`. L'icona clock-outline e il contesto del ringing screen
+   rendono il significato chiaro senza l'articolo "last" che
+   suonava sgrammaticato.
+
+**Patterns da preservare:**
+
+- Quando aggiungi una nuova action di tipo "reservation/booking",
+  usa `booking.create`. Non creare `<verticale>.create` paralleli.
+- Quando aggiungi un seed template, il suo `booking.create` deve
+  avere `booking_date` + `booking_time` (HH:MM) sia in
+  `preconditions` sia in `payload_schema.required` — i contract test
+  in `tests/test_seed_templates.py` lo verificano.
+- Avatar visivi: usa il tonal ring pattern per qualsiasi nuovo
+  "highlight" sull'avatar (mai border classico).
+
+**File toccati (round 8):**
+- FE: `app/components/ContactAvatar.tsx`,
+  `app/app/(drawer)/(tabs)/index.tsx`,
+  `app/app/(drawer)/contacts.tsx`,
+  `app/app/call/[id].tsx`,
+  `app/app/incoming-call.tsx`,
+  `app/lib/dateFormat.ts`,
+  `app/lib/dateGrouping.ts`.
+- BE: `backend/app/integrations/action_catalog.py`,
+  `backend/app/integrations/mocks/__init__.py`,
+  `backend/app/api/bookings.py`,
+  `backend/app/agents/wizard_chat.py`,
+  `backend/app/db/seed.py`.
+- Tests: `backend/tests/test_action_catalog.py` (extended),
+  `backend/tests/test_seed_templates.py` (new).
+- Docs: `.claude/memory/project_afterglow_decisions.md`,
+  `.claude/memory/feedback_real_on_device_whitelist.md`,
+  `afterglow/README.md`.
 
 ### 9. Stato env in produzione (volatile, 2026-05-15)
 Sezione "what's live right now" — da rileggere prima di pushare grossi cambi al backend.

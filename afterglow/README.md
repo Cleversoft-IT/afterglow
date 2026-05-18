@@ -8,7 +8,7 @@ Built for the **AI Agent Olympics Hackathon @ Milan AI Week 2026** — targeting
 
 ## The problem
 
-Small appointment-driven businesses (restaurants, dental clinics, body shops) still take bookings on the phone. Every call carries data that is easily lost: a name, a date, an allergy, a callback request. Post-its and memory don't scale. AI receptionists that talk *instead of* the human kill the relationship.
+Small booking-driven businesses (restaurants, dental clinics, body shops) still take reservations on the phone. Every call carries data that is easily lost: a name, a date, an allergy, a callback request. Post-its and memory don't scale. AI receptionists that talk *instead of* the human kill the relationship.
 
 ## The approach
 
@@ -158,7 +158,7 @@ The app does NOT use a single 5-tab bar. It is shaped like the Google Phone (Pix
 - **Contacts screen:** chip filter `All / Clients / Personal` over an alphabetical list that mixes 20 client-side mock UK/US contacts with the server's `Customer` table — a "Client" chip marks customers; about half of the mock contacts carry a hand-picked `randomuser.me` portrait.
 - **Stack screens (out of drawer):** Incoming call (Pixel-inspired full-screen with scrollable caller context), Call detail (header card with avatar + caller name — both tap-through to Customer when `customer_id != null`; flag emoji + phone; locale-formatted date; inline `customer.tags` chip row; status chip via `failure_kind`; no more separate "Open contact" button), Customer detail (mirror header layout; no `preferred_language` chip duplicating the flag; the "Calls (N)" list is divider-separated rows with `date · status chip`, no per-row phone icon), Template detail (editable name for non-seed, 409 on collision), Template wizard (editable name in draft preview, integration-discovery clarification on turn 1).
 - **Home chip filters:** All / Missed / **Bookings** / **Clients** / Saved / Unsaved. **Bookings** shows a secondary chip row `By call date` (default) / `By booking date`; when sorting by booking date the upcoming slots come first (ASC) and past bookings sink. **Clients** keeps only rows linked to a `Customer`; **Saved** widens to include the local phonebook; **Unsaved** is the complement. The Bookings row uses the customer's tags (`repeat · gluten_free`) as the description; rows without a customer become inert (no tap target).
-- **Avatar legend:** customers wear a 2dp `primary`-colored border around their avatar; phonebook contacts keep a 1dp grey ring. The `Clients` filter chip carries the same subtle primary border at all times (selected or not) so the legend reads at a glance — no extra labels needed.
+- **Avatar legend:** customers wear a 2dp `primary`-colored tonal ring around their avatar (concentric outer wrapper + padding, no border — see `ContactAvatar.tsx`); phonebook contacts keep a 1dp grey ring with the same pattern. The `Clients` filter chip in Home AND Contacts carries the same subtle primary border at all times (selected or not) so the legend reads at a glance — no extra labels needed.
 - **Fresh-install welcome:** on a fresh visit (or post `Reset demo`) the first navigation to **Templates** shows a Paper Dialog with two CTAs — `Pick a preset` (contained, recommended for demo) and `Build from prompt` (outlined, opens the wizard). One-shot per session.
 - **Settings:** Appearance (theme) → Format (date/time locale, IT/EN — UI strings stay English) → [Demo controls if demo] → About. The Audit log is reached from the drawer; it's not duplicated in Settings.
 

@@ -311,25 +311,35 @@ DENTIST_TEMPLATE = {
             "extractor_hint": "enum",
         },
         {
-            "key": "preferred_date",
+            "key": "booking_date",
             "type": "date",
-            "label": "Preferred date",
+            "label": "Booking date",
             "extractor_hint": "regex",
         },
         {
-            "key": "preferred_time_window",
+            "key": "booking_time",
             "type": "string",
-            "label": "Preferred time window",
-            "depends_on": ["preferred_date"],
+            "label": "Booking time (HH:MM)",
+            "description": "Slot time in 24-hour HH:MM format, e.g. 10:00 or 14:30.",
+            "depends_on": ["booking_date"],
+            "extractor_hint": "regex",
+        },
+        {
+            "key": "booking_notes",
+            "type": "string",
+            "label": "Booking notes",
+            "description": "Free-form caller phrasing (e.g. 'morning slot', 'after lunch').",
             "extractor_hint": "freeform",
         },
     ],
     "action_types": [
         {
-            "key": "appointment.create",
-            "label": "Create appointment",
+            "key": "booking.create",
+            "label": "Create booking",
             "execution_mode": "auto",
-            "preconditions": ["patient_name", "urgency"],
+            "preconditions": [
+                "patient_name", "urgency", "booking_date", "booking_time",
+            ],
             "confidence_threshold": 0.75,
             "evidence_required": True,
             "payload_schema": {
@@ -340,11 +350,14 @@ DENTIST_TEMPLATE = {
                         "type": "string",
                         "enum": ["routine", "soon", "urgent", "emergency"],
                     },
-                    "preferred_date": {"type": "string", "format": "date"},
-                    "preferred_time_window": {"type": "string"},
+                    "booking_date": {"type": "string", "format": "date"},
+                    "booking_time": {"type": "string"},
+                    "booking_notes": {"type": "string"},
                     "is_new_patient": {"type": "boolean"},
                 },
-                "required": ["patient_name", "urgency"],
+                "required": [
+                    "patient_name", "urgency", "booking_date", "booking_time",
+                ],
                 "additionalProperties": False,
             },
         },
@@ -359,17 +372,17 @@ DENTIST_TEMPLATE = {
             "key": "sms.send_reminder",
             "label": "Send SMS reminder",
             "execution_mode": "auto",
-            "preconditions": ["patient_name", "preferred_date"],
+            "preconditions": ["patient_name", "booking_date"],
             "confidence_threshold": 0.70,
             "evidence_required": False,
             "payload_schema": {
                 "type": "object",
                 "properties": {
                     "patient_name": {"type": "string"},
-                    "preferred_date": {"type": "string", "format": "date"},
-                    "preferred_time_window": {"type": "string"},
+                    "booking_date": {"type": "string", "format": "date"},
+                    "booking_time": {"type": "string"},
                 },
-                "required": ["patient_name", "preferred_date"],
+                "required": ["patient_name", "booking_date"],
                 "additionalProperties": False,
             },
         },
@@ -377,7 +390,7 @@ DENTIST_TEMPLATE = {
             "key": "calendar.send_invite",
             "label": "Send calendar invite",
             "execution_mode": "auto",
-            "preconditions": ["patient_name", "preferred_date"],
+            "preconditions": ["patient_name", "booking_date"],
             "confidence_threshold": 0.70,
             "evidence_required": False,
         },
@@ -385,7 +398,7 @@ DENTIST_TEMPLATE = {
             "key": "calendar.block_slot",
             "label": "Block calendar slot",
             "execution_mode": "auto",
-            "preconditions": ["preferred_date", "urgency"],
+            "preconditions": ["booking_date", "urgency"],
             "confidence_threshold": 0.75,
             "evidence_required": True,
         },
@@ -405,7 +418,7 @@ DENTIST_TEMPLATE = {
         },
         {
             "when": "field.urgency == 'emergency'",
-            "then": "Set appointment.create payload with preferred_date=today; schedule sms.send_reminder immediately.",
+            "then": "Set booking.create payload with booking_date=today; schedule sms.send_reminder immediately.",
         },
     ],
 }
@@ -454,13 +467,30 @@ BODYSHOP_TEMPLATE = {
             "label": "Vehicle drivable?",
             "extractor_hint": "regex",
         },
+        {
+            "key": "booking_date",
+            "type": "date",
+            "label": "Booking date",
+            "extractor_hint": "regex",
+        },
+        {
+            "key": "booking_time",
+            "type": "string",
+            "label": "Booking time (HH:MM)",
+            "description": "Slot time in 24-hour HH:MM format (e.g. 10:00).",
+            "depends_on": ["booking_date"],
+            "extractor_hint": "regex",
+        },
     ],
     "action_types": [
         {
-            "key": "appointment.create_inspection",
-            "label": "Schedule inspection",
+            "key": "booking.create",
+            "label": "Create booking",
             "execution_mode": "auto",
-            "preconditions": ["customer_name", "vehicle_make_model"],
+            "preconditions": [
+                "customer_name", "vehicle_make_model",
+                "booking_date", "booking_time",
+            ],
             "confidence_threshold": 0.75,
             "evidence_required": True,
             "payload_schema": {
@@ -471,8 +501,13 @@ BODYSHOP_TEMPLATE = {
                     "license_plate": {"type": "string"},
                     "damage_type": {"type": "string"},
                     "drivable": {"type": "boolean"},
+                    "booking_date": {"type": "string", "format": "date"},
+                    "booking_time": {"type": "string"},
                 },
-                "required": ["customer_name", "vehicle_make_model"],
+                "required": [
+                    "customer_name", "vehicle_make_model",
+                    "booking_date", "booking_time",
+                ],
                 "additionalProperties": False,
             },
         },
@@ -604,7 +639,7 @@ def _bundled_simulation_configs() -> dict[str, dict]:
             operator_voice="jack",
             caller_voice_existing="megan",
             caller_voice_new="sarah",
-            # Surfaces: appointment.create + sms.send_reminder (now on the
+            # Surfaces: booking.create + sms.send_reminder (now on the
             # dedicated sms bucket, not whatsapp) + calendar.send_invite.
             # Laura is a known patient with a follow-up on her recent crown.
             existing_lines=[
@@ -614,12 +649,12 @@ def _bundled_simulation_configs() -> dict[str, dict]:
                 ("caller", "No pain. More like the surface shifted half a millimetre."),
                 ("operator", "Let's not wait. Dr. Patel has tomorrow at ten fifteen — does that work?"),
                 ("caller", "Tomorrow at ten fifteen is fine."),
-                ("operator", "I'll text the SMS reminder the morning of, and I'll drop the appointment on your Google calendar as an invite — same e-mail as last time?"),
+                ("operator", "I'll text the SMS reminder the morning of, and I'll drop the booking on your Google calendar as an invite — same e-mail as last time?"),
                 ("caller", "Same one, yes. Thanks for syncing it, I keep missing the wall calendar at home."),
                 ("operator", "See you tomorrow, Laura."),
                 ("caller", "Thanks Jack."),
             ],
-            # Surfaces: appointment.create (urgent) + calendar.block_slot
+            # Surfaces: booking.create (urgent) + calendar.block_slot
             # + email.send (welcome packet with intake form). Sophie has a
             # vivid, specific complaint — emergency tone done with restraint.
             new_lines=[
@@ -645,9 +680,9 @@ def _bundled_simulation_configs() -> dict[str, dict]:
             operator_voice="megan",
             caller_voice_existing="jack",
             caller_voice_new="theo",
-            # Surfaces: appointment.create_inspection (existing customer,
-            # known car) + payment.request_deposit (parts deposit for the
-            # bumper). Andrew is a repeat customer, pragmatic and frugal.
+            # Surfaces: booking.create (existing customer, known car) +
+            # payment.request_deposit (parts deposit for the bumper).
+            # Andrew is a repeat customer, pragmatic and frugal.
             existing_lines=[
                 ("operator", "Greenline Auto Body, good afternoon, this is Megan."),
                 ("caller", "Hey Megan, it's Andrew Green. The Fiat Panda, plate Bravo Romeo six six four Charlie Yankee — clipped a bollard outside Lidl this morning."),
@@ -662,7 +697,7 @@ def _bundled_simulation_configs() -> dict[str, dict]:
                 ("operator", "Will do. See you Thursday, Andrew."),
                 ("caller", "Thanks Megan."),
             ],
-            # Surfaces: appointment.create_inspection + case.open_insurance
+            # Surfaces: booking.create + case.open_insurance
             # (manual-only — operator promises follow-up) + payment.send_invoice
             # (formal quote by e-mail for the insurer file).
             new_lines=[
@@ -1148,26 +1183,29 @@ def _seed_call_specs(
             "is_new_patient": False,
             "reason": "crown fitting on lower-right molar",
             "urgency": "soon",
-            "preferred_date": "2026-04-08",
-            "preferred_time_window": "morning",
+            "booking_date": "2026-04-08",
+            "booking_time": "10:00",
+            "booking_notes": "morning slot",
         },
         "confidence": {
             "patient_name": 0.95,
             "is_new_patient": 0.92,
             "reason": 0.94,
             "urgency": 0.86,
-            "preferred_date": 0.96,
-            "preferred_time_window": 0.84,
+            "booking_date": 0.96,
+            "booking_time": 0.92,
+            "booking_notes": 0.84,
         },
         "evidence": {
             "patient_name": "it's Laura Bennett",
             "is_new_patient": "Yes, ten o'clock with Dr. Patel",
             "reason": "crown fitting today",
             "urgency": "in twenty minutes",
-            "preferred_date": "today",
-            "preferred_time_window": "ten o'clock",
+            "booking_date": "today",
+            "booking_time": "ten o'clock",
+            "booking_notes": "ten o'clock",
         },
-        "intent": "appointment_confirm",
+        "intent": "booking_confirm",
         "sentiment": "neutral",
         "urgency": "soon",
         "briefing": (
@@ -1176,16 +1214,17 @@ def _seed_call_specs(
         ),
         "actions": [
             {
-                "action_type": "appointment.create",
-                "title": "Confirm appointment",
+                "action_type": "booking.create",
+                "title": "Confirm booking",
                 "summary": "Crown fitting · 8 Apr · 10:00 with Dr. Patel",
                 "payload": {
                     "patient_name": "Laura Bennett",
                     "is_new_patient": False,
                     "reason": "crown fitting on lower-right molar",
                     "urgency": "soon",
-                    "preferred_date": "2026-04-08",
-                    "preferred_time_window": "morning",
+                    "booking_date": "2026-04-08",
+                    "booking_time": "10:00",
+                    "booking_notes": "morning slot",
                 },
                 "confidence": 0.93,
                 "evidence": ["ten o'clock with Dr. Patel"],
@@ -1220,6 +1259,8 @@ def _seed_call_specs(
             "damage_type": "rear bumper dent",
             "insurance_involved": False,
             "drivable": True,
+            "booking_date": "2026-05-07",
+            "booking_time": "14:00",
         },
         "confidence": {
             "customer_name": 0.94,
@@ -1228,6 +1269,8 @@ def _seed_call_specs(
             "damage_type": 0.88,
             "insurance_involved": 0.96,
             "drivable": 0.80,
+            "booking_date": 0.92,
+            "booking_time": 0.92,
         },
         "evidence": {
             "customer_name": "it's Andrew",
@@ -1236,6 +1279,8 @@ def _seed_call_specs(
             "damage_type": "rear bumper repair",
             "insurance_involved": "no insurance",
             "drivable": "When can I bring it in?",
+            "booking_date": "Thursday",
+            "booking_time": "Thursday at two",
         },
         "intent": "repair_quote",
         "sentiment": "neutral",
@@ -1246,8 +1291,8 @@ def _seed_call_specs(
         ),
         "actions": [
             {
-                "action_type": "appointment.create_inspection",
-                "title": "Schedule inspection",
+                "action_type": "booking.create",
+                "title": "Create booking",
                 "summary": "Rear bumper · Thursday 14:00",
                 "payload": {
                     "customer_name": "Andrew Green",
@@ -1255,6 +1300,8 @@ def _seed_call_specs(
                     "license_plate": "AB123CD",
                     "damage_type": "rear bumper dent",
                     "drivable": True,
+                    "booking_date": "2026-05-07",
+                    "booking_time": "14:00",
                 },
                 "confidence": 0.90,
                 "evidence": ["Thursday at two, same bay"],
@@ -1551,11 +1598,11 @@ def _busy_week_specs() -> list[dict]:
       - `completed` → human-handled personal call (Afterglow not engaged)
       - `missed`    → empty_or_noise_audio failure (Missed filter)
       - `pipeline_error` → simulated technical failure (Pipeline error badge)
-      - `ai_booking` → AI-handled work call that yields a booking.create or
-                       appointment.create — feeds the Bookings tab. Pool
-                       must be `customer:<name>`; the helper resolves the
-                       customer's vertical (restaurant / dentist / bodyshop)
-                       to pick the right template + action shape.
+      - `ai_booking` → AI-handled work call that yields a booking.create —
+                       feeds the Bookings tab. Pool must be `customer:<name>`;
+                       the helper resolves the customer's vertical (restaurant /
+                       dentist / bodyshop) to pick the right template, but the
+                       action namespace is the same across verticals.
     """
     rng = random.Random(20260518)  # date-of-write seed → stable output
     out: list[dict] = []
@@ -1795,19 +1842,19 @@ _AI_BOOKING_BLUEPRINTS: dict[str, dict] = {
         ),
         "fields": {
             "patient_name": "Laura Bennett",
-            "appointment_time": "15:00",
+            "booking_time": "15:00",
             "concern": "loose crown",
             "preferred_doctor": "Dr. Patel",
             "callback_channel": "phone",
         },
-        "intent": "appointment_new",
+        "intent": "booking_new",
         "action": {
-            "type": "appointment.create",
-            "title": "Create appointment",
+            "type": "booking.create",
+            "title": "Create booking",
             "summary_template": "Crown follow-up with Dr. Patel on {date} at 15:00",
             "payload_template": {
                 "patient_name": "Laura Bennett",
-                "appointment_time": "15:00",
+                "booking_time": "15:00",
                 "concern": "loose crown",
                 "preferred_doctor": "Dr. Patel",
             },
@@ -1831,20 +1878,20 @@ _AI_BOOKING_BLUEPRINTS: dict[str, dict] = {
             "customer_name": "Andrew Green",
             "vehicle_plate": "BR664CY",
             "damage_area": "rear bumper",
-            "appointment_time": "10:00",
+            "booking_time": "10:00",
             "payment_method": "out_of_pocket",
             "callback_channel": "sms",
         },
-        "intent": "appointment_new",
+        "intent": "booking_new",
         "action": {
-            "type": "appointment.create",
-            "title": "Create appointment",
+            "type": "booking.create",
+            "title": "Create booking",
             "summary_template": "Rear bumper inspection on {date} at 10:00, plate BR664CY",
             "payload_template": {
                 "customer_name": "Andrew Green",
                 "vehicle_plate": "BR664CY",
                 "damage_area": "rear bumper",
-                "appointment_time": "10:00",
+                "booking_time": "10:00",
             },
         },
         "briefing": (
@@ -1873,18 +1920,12 @@ def _make_ai_booking_spec(
     booking_date = (created_at + timedelta(days=2)).date().isoformat()
     summary = bp["action"]["summary_template"].format(date=booking_date)
     action_payload = dict(bp["action"]["payload_template"])
-    # The booking-date / appointment-date key name depends on the vertical.
-    # restaurant booking uses booking_date; appointments use appointment_date.
-    if bp["action"]["type"].startswith("booking"):
-        action_payload["booking_date"] = booking_date
-    else:
-        action_payload["appointment_date"] = booking_date
+    # Every blueprint produces `booking.create` since the round 8
+    # unification — the action namespace is the same across verticals.
+    action_payload["booking_date"] = booking_date
 
     extracted_fields = dict(bp["fields"])
-    if bp["action"]["type"].startswith("booking"):
-        extracted_fields["booking_date"] = booking_date
-    else:
-        extracted_fields["appointment_date"] = booking_date
+    extracted_fields["booking_date"] = booking_date
 
     confidence = {k: 0.92 for k in extracted_fields}
     evidence = {

@@ -183,24 +183,40 @@ export default function ContactsScreen() {
         style={styles.chipsScroll}
         contentContainerStyle={styles.chipsRow}
       >
-        {KIND_FILTERS.map((k) => (
-          <Chip
-            key={k}
-            mode="flat"
-            compact
-            selected={kindFilter === k}
-            showSelectedCheck={false}
-            onPress={() => setKindFilter(k)}
-            selectedColor={kindFilter === k ? theme.colors.onSecondaryContainer : undefined}
-            style={
-              kindFilter === k
-                ? { backgroundColor: theme.colors.secondaryContainer }
-                : { backgroundColor: theme.colors.surfaceVariant }
-            }
-          >
-            {KIND_FILTER_LABEL[k]}
-          </Chip>
-        ))}
+        {KIND_FILTERS.map((k) => {
+          const isSelected = kindFilter === k;
+          // "Clients" is the legend for the customer-ring treatment on
+          // ContactAvatar: it always carries a subtle primary border, even
+          // when unselected. Same pattern as the Home filter chip — kept
+          // identical so the visual language is consistent.
+          const isClients = k === 'clients';
+          const baseStyle = isSelected
+            ? { backgroundColor: theme.colors.primaryContainer }
+            : { backgroundColor: theme.colors.surfaceVariant };
+          const clientsBorder = isClients
+            ? {
+                borderWidth: 1,
+                borderColor: theme.colors.primary,
+                backgroundColor: isSelected
+                  ? theme.colors.primaryContainer
+                  : 'transparent',
+              }
+            : null;
+          return (
+            <Chip
+              key={k}
+              mode="flat"
+              compact
+              selected={isSelected}
+              showSelectedCheck={false}
+              onPress={() => setKindFilter(k)}
+              selectedColor={isSelected ? theme.colors.onPrimaryContainer : undefined}
+              style={[baseStyle, clientsBorder]}
+            >
+              {KIND_FILTER_LABEL[k]}
+            </Chip>
+          );
+        })}
       </ScrollView>
 
       {error ? (

@@ -1,17 +1,18 @@
 ---
 name: feedback-real-on-device-whitelist
-description: The "Simulated" badge in Call Detail hides for booking/appointment actions via a UI-only whitelist (`REAL_ON_DEVICE` in `app/app/call/[id].tsx`). The backend integration_kind is still `mock_external` for those keys — do not document the change as "real backend execution".
+description: The "Simulated" badge in Call Detail hides for booking actions via a UI-only whitelist (`REAL_ON_DEVICE` in `app/app/call/[id].tsx`). The backend integration_kind is still `mock_external` for those keys — do not document the change as "real backend execution".
 metadata:
   type: feedback
 ---
 
 **Why:** the operator's mental model is "the booking happens on this
-phone". Showing a "Simulated" badge on `booking.create` /
-`appointment.create` / `appointment.create_inspection` made the demo
+phone". Showing a "Simulated" badge on `booking.create` made the demo
 look weaker than it is — the booking is in fact a real-on-device
 artifact, just not against an external CRM. The badge stays useful for
 WhatsApp/SMS/email outputs that *are* mocked because we have no
-integration.
+integration. (Round 8 unified the action namespace: dentist + bodyshop
+calls also emit `booking.create`, so the whitelist now contains a single
+key.)
 
 **How to apply:**
 - The whitelist lives client-side in `app/app/call/[id].tsx` as the

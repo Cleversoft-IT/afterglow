@@ -150,7 +150,7 @@ def _system_instruction(
         "- Actions in the catalog fall into two families. **Operational** "
         "actions are always available regardless of which channels the "
         "user uses — they touch internal records or in-house systems: "
-        "booking.*, appointment.*, case.*, crm.*, customer.update_profile, "
+        "booking.*, case.*, crm.*, customer.update_profile, "
         "patient.update_profile. **Channel-dependent** actions require a "
         "third-party channel the operator must actually use: whatsapp.*, "
         "sms.*, email.*, calendar.* (calendar invites / shared agenda), "
