@@ -20,10 +20,18 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+import asyncio
+import uuid
+from datetime import datetime, timezone
+
+from pydantic import BaseModel
+from sqlalchemy.exc import IntegrityError
+
 from app.agents import memory_retrieval
+from app.agents.orchestrator import run_pipeline
 from app.config import get_settings
-from app.db.engine import get_session
-from app.db.models import CustomerMemoryChunk
+from app.db.engine import SessionLocal, get_session
+from app.db.models import Call, Customer, CustomerMemoryChunk, Template
 from app.integrations import vultr_inference
 
 router = APIRouter(prefix="/api/v1/admin", tags=["admin"])
@@ -132,4 +140,73 @@ async def rag_probe(
         "hit": bool(prior_facts.strip()),
         "raw_response_preview": raw_content[:1200],
         "raw_usage": raw_usage,
+    }
+
+
+class DryRunRequest(BaseModel):
+    phone_e164: str
+    transcript: str
+    language: str = "en"
+    template_id: Optional[str] = None  # default = active template
+
+
+async def _bg_run_pipeline(call_id: uuid.UUID) -> None:
+    async with SessionLocal() as session:
+        try:
+            await run_pipeline(session, call_id)
+        except Exception:  # noqa: BLE001
+            await session.rollback()
+            raise
+
+
+@router.post("/dry-run-pipeline")
+async def dry_run_pipeline(
+    body: DryRunRequest,
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    """Inject a custom transcript and run the full agent pipeline against it.
+
+    Probes the post-transcription stack (`call_agent` loop + RAG tool +
+    executor + memory writeback) with a hand-written utterance, so the
+    `lookup_customer_memory` tool can be exercised on a transcript that
+    actually requires prior history (e.g. "same order as last time").
+
+    Schedules `run_pipeline` as a background task — the response returns
+    the new call_id immediately and the caller polls `/api/v1/calls/{id}`.
+    """
+    # Pick the requested template, or fall back to the first seed template
+    # with the requested domain (default: restaurant).
+    if body.template_id:
+        template = await session.get(Template, uuid.UUID(body.template_id))
+    else:
+        template = (
+            await session.execute(
+                select(Template).where(Template.is_seed.is_(True)).limit(1)
+            )
+        ).scalar_one_or_none()
+    if template is None:
+        raise HTTPException(status_code=404, detail="No template available")
+
+    call_id = uuid.uuid4()
+    session.add(
+        Call(
+            id=call_id,
+            phone_e164=body.phone_e164,
+            template_id=template.id,
+            status="pending",
+            raw_transcript={"text": body.transcript},
+            detected_language=body.language,
+            created_at=datetime.now(tz=timezone.utc),
+        )
+    )
+    await session.commit()
+
+    asyncio.create_task(_bg_run_pipeline(call_id))
+
+    return {
+        "call_id": str(call_id),
+        "template_id": str(template.id),
+        "domain_hint": template.domain_hint,
+        "status": "pending",
+        "note": "poll /api/v1/calls/{id} for completion",
     }

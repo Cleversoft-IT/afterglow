@@ -83,24 +83,48 @@ async def run_pipeline(session: AsyncSession, call_id: uuid.UUID) -> None:
     ).scalar_one()
 
     # 1) Speechmatics — transcribe with diarization + language auto-detect.
-    async with audit_step(
-        call_id=call.id,
-        session_id=call.session_id,
-        agent_name="speechmatics",
-        step_type="tool_call",
-    ):
-        transcript = await speechmatics.transcribe_audio(
-            Path(call.audio_url) if call.audio_url else Path("/dev/null"),
-            domain_hint=template.domain_hint,
+    # Admin-injected calls (debug endpoint) pre-populate `raw_transcript.text`
+    # before kicking the pipeline; in that case we skip the transcription step
+    # and reuse the supplied transcript so judges can probe the agent loop
+    # with a custom utterance without recording audio.
+    pre_loaded_text = (call.raw_transcript or {}).get("text") if call.raw_transcript else None
+    if pre_loaded_text:
+        async with audit_step(
+            call_id=call.id,
+            session_id=call.session_id,
+            agent_name="speechmatics",
+            step_type="tool_call",
+            status="skipped",
+            payload={"reason": "transcript_preloaded", "human_label": "Transcript injected (admin probe)"},
+        ):
+            pass
+        transcript = speechmatics.TranscriptResult(
+            text=pre_loaded_text,
+            language=(call.raw_transcript or {}).get("language") or "en",
+            speakers=(call.raw_transcript or {}).get("speakers") or [],
+            raw=(call.raw_transcript or {}).get("raw") or {},
         )
-    call.raw_transcript = {
-        "text": transcript.text,
-        "speakers": transcript.speakers,
-        "language": transcript.language,
-        "raw": transcript.raw,
-    }
-    call.detected_language = transcript.language
-    await session.commit()
+        call.detected_language = transcript.language
+        await session.commit()
+    else:
+        async with audit_step(
+            call_id=call.id,
+            session_id=call.session_id,
+            agent_name="speechmatics",
+            step_type="tool_call",
+        ):
+            transcript = await speechmatics.transcribe_audio(
+                Path(call.audio_url) if call.audio_url else Path("/dev/null"),
+                domain_hint=template.domain_hint,
+            )
+        call.raw_transcript = {
+            "text": transcript.text,
+            "speakers": transcript.speakers,
+            "language": transcript.language,
+            "raw": transcript.raw,
+        }
+        call.detected_language = transcript.language
+        await session.commit()
 
     # 1b) Pre-classifier — short-circuit on empty / noise audio so we don't
     # spend tokens on a transcript that has no semantic content.
