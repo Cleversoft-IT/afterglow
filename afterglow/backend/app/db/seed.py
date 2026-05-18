@@ -1648,7 +1648,16 @@ def _busy_week_specs() -> list[dict]:
             else:
                 raise ValueError(f"unknown pool: {pool}")
 
-            namespace = uuid.UUID("22222222-2222-5222-8222-000000000000")
+            # Namespace varies per kind so re-seeding into a DB that
+            # already contains the personal-only flavor (e.g. our first
+            # round-7 deploy) doesn't silently skip the new AI bookings
+            # via UUID5 collision. The namespace is fixed per kind so
+            # the second run is still idempotent.
+            namespace = (
+                uuid.UUID("22222222-2222-5222-8222-aaaa00000000")
+                if kind == "ai_booking"
+                else uuid.UUID("22222222-2222-5222-8222-000000000000")
+            )
             fixture_uuid = uuid.uuid5(namespace, f"{phone}@{created.isoformat()}")
 
             if kind == "completed":
@@ -1990,6 +1999,24 @@ async def _ensure_personal_calls(session) -> None:
                 customer_id = phone_to_customer_id.get(phone_for_lookup)
 
         if fx.get("ai_booking"):
+            # An older deploy may have inserted a personal "completed
+            # customer:X" call at the exact same (phone, slot) — under
+            # the legacy namespace. The new AI booking uses a different
+            # namespace so no UUID collision blocks the insert, but the
+            # stale row is now a semantic duplicate (same slot, same
+            # customer, no extracted/actions). Drop it before we emit the
+            # AI version. Postgres cascades onto extracted_fields /
+            # executed_actions / audit_log via the existing FKs.
+            legacy_uuid = uuid.uuid5(
+                uuid.UUID("22222222-2222-5222-8222-000000000000"),
+                f"{fx['phone_e164']}@{fx['created_at'].isoformat()}",
+            )
+            if legacy_uuid != fx["id"]:
+                legacy = await session.get(Call, legacy_uuid)
+                if legacy is not None:
+                    await session.delete(legacy)
+                    await session.flush()
+
             # AI work call — vertical resolved from the blueprint's domain.
             blueprint = _AI_BOOKING_BLUEPRINTS.get(customer_name or "")
             if blueprint is None or customer_id is None:
