@@ -178,15 +178,22 @@ def test_seed_customers_constant_matches_blueprints():
 
 def _make_mock_session(existing_phones: list[str]):
     """Build a stand-in async session that:
-      - `execute(...)` returns a result whose `.scalars().all()` yields the
-        provided phone list (matching the shape `_ensure_seed_customers`
-        reads when querying Customer.phone_e164);
+      - `execute(...)` returns a result whose `.scalars().all()` yields one
+        fake-Customer per phone (matching the shape `_ensure_seed_customers`
+        reads after switching to `select(Customer)` so it can refresh the
+        `memory_summary` on existing rows);
       - `add(...)` is a MagicMock so we can count Customer inserts;
       - `flush()` is an AsyncMock no-op.
     """
+    def _fake(p: str):
+        m = MagicMock()
+        m.phone_e164 = p
+        m.memory_summary = "ignore"
+        return m
+    fake_customers = [_fake(p) for p in existing_phones]
     session = MagicMock()
     scalars = MagicMock()
-    scalars.all.return_value = list(existing_phones)
+    scalars.all.return_value = fake_customers
     result = MagicMock()
     result.scalars.return_value = scalars
     session.execute = AsyncMock(return_value=result)

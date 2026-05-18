@@ -2715,43 +2715,54 @@ def _make_ai_booking_spec(
 
 async def _ensure_seed_customers(session) -> None:
     """Idempotent upsert: insert any of SEED_CUSTOMERS that isn't already in
-    the DB (matched by phone_e164 + is_seed=True). Safe to call on every boot.
+    the DB (matched by phone_e164 + is_seed=True) AND refresh `memory_summary`
+    when the persisted text diverges from the current SEED_CUSTOMERS roster.
+    Safe to call on every boot.
 
-    Called from `_ensure_personal_calls` so the busy-week generator can
-    resolve customer_id for newly added seed customers (Sophie / Tom) even
-    on a round-8-clean DB where the main seed path's customer-creation block
-    no longer runs.
+    The memory_summary refresh exists because round-9 rewrote the seed text
+    to drop absolute dates ([[feedback-demo-scripts-quality]] §1.7.7) but the
+    seed gate skips re-insertion on already-populated DBs, so without an
+    explicit UPDATE here the stale text would survive redeploys.
     """
-    existing_phones = set(
-        (
+    existing_rows: dict[str, Customer] = {
+        row.phone_e164: row
+        for row in (
             await session.execute(
-                select(Customer.phone_e164).where(Customer.is_seed.is_(True))
+                select(Customer).where(Customer.is_seed.is_(True))
             )
         ).scalars().all()
-    )
+    }
     inserted = 0
+    refreshed = 0
     for (name, phone, tags, memory, lang) in SEED_CUSTOMERS:
-        if phone in existing_phones:
-            continue
-        session.add(
-            Customer(
-                id=uuid.uuid4(),
-                phone_e164=phone,
-                display_name=name,
-                preferred_language=lang,
-                tags=tags,
-                memory_summary=memory,
-                # total_calls / last_call_at recomputed below from the
-                # actual Call rows once all fixtures are inserted.
-                total_calls=0,
-                last_call_at=None,
-                is_seed=True,
+        existing = existing_rows.get(phone)
+        if existing is None:
+            session.add(
+                Customer(
+                    id=uuid.uuid4(),
+                    phone_e164=phone,
+                    display_name=name,
+                    preferred_language=lang,
+                    tags=tags,
+                    memory_summary=memory,
+                    # total_calls / last_call_at recomputed below from the
+                    # actual Call rows once all fixtures are inserted.
+                    total_calls=0,
+                    last_call_at=None,
+                    is_seed=True,
+                )
             )
-        )
-        inserted += 1
-    if inserted:
+            inserted += 1
+            continue
+        if existing.memory_summary != memory:
+            existing.memory_summary = memory
+            refreshed += 1
+    if inserted or refreshed:
         await session.flush()
-        print(f"[seed] upserted {inserted} missing seed customers.")
+        print(
+            f"[seed] seed customers: {inserted} inserted, "
+            f"{refreshed} memory_summary refreshed."
+        )
 
 
 async def _ensure_personal_calls(session, anchor: date) -> None:
