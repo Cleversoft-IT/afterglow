@@ -12,6 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api import (
     actions,
+    admin,
     audit,
     bookings,
     calls,
@@ -131,3 +132,4 @@ app.include_router(bookings.router)
 app.include_router(audit.router)
 app.include_router(demo.router)
 app.include_router(integrations.router)
+app.include_router(admin.router)
