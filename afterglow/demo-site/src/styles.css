@@ -250,9 +250,18 @@ html, body, #root {
   --demo-chrome: 48px;
   --phone-h: 845px;
   --phone-w: 390px;
+  /* Reserved horizontal width for everything that isn't the phone in the
+     demo section: the section's px-6 (×2 = 48px), the text column min
+     width (260px), and the grid gap (48px) → 356px total. The phone
+     must shrink so it fits in (100vw - 356) on medium viewports too,
+     otherwise it pushes the text column off-canvas and the page scrolls
+     horizontally. */
   --phone-scale: clamp(
     0.45,
-    calc((100dvh - var(--demo-chrome)) / var(--phone-h)),
+    min(
+      calc((100dvh - var(--demo-chrome)) / var(--phone-h)),
+      calc((100vw - 356px) / var(--phone-w))
+    ),
     1
   );
   position: relative;

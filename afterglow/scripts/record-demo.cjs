@@ -50,20 +50,25 @@ const DEMO_SESSION_HEADER = 'X-Demo-Session';
 // Per-frame display time in centiseconds (1/100s).
 // Long on "read" frames, short on motion micro-steps. Spend bytes where
 // the eye lands. See SKILL.md → "Per-frame timing strategy".
+//
+// Every click in the flow gets a single combined "tap" frame (cursor
+// pinned on the target + ripple captured mid-bloom). Showing a cursor
+// only on one tap and skipping the others felt incoherent.
 const FRAMES = [
-  { name: '01-home',          delay: 350 }, // 3.5s — read the call list
-  { name: '02-bookings',      delay: 280 }, // 2.8s — filtered subset
-  { name: '03-incoming',      delay: 380 }, // 3.8s — caller + briefing (key)
-  { name: '04-cursor-blue',   delay: 50  }, // 0.5s — cursor glides onto blue FAB
-  { name: '05-blue-ripple',   delay: 100 }, // 1.0s — tap ripple mid-bloom
+  { name: '01-home',          delay: 320 }, // 3.2s — read the call list
+  { name: '02-tap-bookings',  delay: 80  }, // 0.8s — tap on Bookings tab
+  { name: '03-bookings',      delay: 270 }, // 2.7s — filtered subset
+  { name: '04-incoming',      delay: 380 }, // 3.8s — caller + briefing (key)
+  { name: '05-tap-blue',      delay: 90  }, // 0.9s — tap on AI FAB
   { name: '06-answering',     delay: 200 }, // 2.0s — "Afterglow listening" badge
-  { name: '07-calls',         delay: 280 }, // 2.8s — back to call list
-  { name: '08-detail-top',    delay: 250 }, // 2.5s — call detail header
-  { name: '09-detail-mid',    delay: 30  }, // 0.3s — scroll motion
-  { name: '10-detail-mid2',   delay: 30  }, // 0.3s — scroll motion
-  { name: '11-detail-bottom', delay: 450 }, // 4.5s — final read (key)
+  { name: '07-calls',         delay: 240 }, // 2.4s — back to call list
+  { name: '08-tap-mark',      delay: 80  }, // 0.8s — tap on Mark Ross row
+  { name: '09-detail-top',    delay: 250 }, // 2.5s — call detail header
+  { name: '10-detail-mid',    delay: 30  }, // 0.3s — scroll motion
+  { name: '11-detail-mid2',   delay: 30  }, // 0.3s — scroll motion
+  { name: '12-detail-bottom', delay: 420 }, // 4.2s — final read (key)
 ];
-// Total ≈ 22.7s loop.
+// Total ≈ 23.9s loop.
 
 // ─── Init scripts injected into every page in the context ───────────────
 
@@ -166,6 +171,20 @@ async function fireTap(page, x, y) {
   }, [x, y]);
 }
 
+// One frame per tap: cursor pinned on the target + ripple captured
+// mid-bloom (~25 % into its 700 ms animation). Then the real interaction
+// is fired (either page.mouse.click on coordinates or .click() on a
+// Playwright locator).
+async function tapAndCapture(page, { x, y, name, fire }) {
+  await showCursor(page, x, y);
+  await page.waitForTimeout(220);   // let the cursor glide settle
+  await fireTap(page, x, y);
+  await page.waitForTimeout(180);   // catch ripple mid-bloom
+  await shot(page, name);
+  await hideCursor(page);
+  await fire();
+}
+
 // ─── Helpers ─────────────────────────────────────────────────────────────
 
 async function provisionSession() {
@@ -249,34 +268,34 @@ async function record() {
   await settle(page, 1200);
   await shot(page, '01-home');
 
-  // ── Frame 02: Bookings tab ────────────────────────────────────────────
-  await page.getByText('Bookings', { exact: true }).first().click();
-  await settle(page, 700);
-  await shot(page, '02-bookings');
+  // ── Frame 02: tap the Bookings tab ────────────────────────────────────
+  const bookingsTab = page.getByText('Bookings', { exact: true }).first();
+  const bb = await bookingsTab.boundingBox();
+  await tapAndCapture(page, {
+    x: bb.x + bb.width / 2,
+    y: bb.y + bb.height / 2,
+    name: '02-tap-bookings',
+    fire: () => bookingsTab.click(),
+  });
 
-  // ── Frame 03: Incoming call (Mark Ross + briefing) ────────────────────
+  // ── Frame 03: Bookings filtered subset ────────────────────────────────
+  await settle(page, 700);
+  await shot(page, '03-bookings');
+
+  // ── Frame 04: Incoming call (Mark Ross + briefing) ────────────────────
   await page.goto(`${APP_URL}/incoming-call?caller=existing`, {
     waitUntil: 'networkidle',
   });
   await settle(page, 1500);
-  await shot(page, '03-incoming');
+  await shot(page, '04-incoming');
 
-  // ── Frame 04: cursor lands on the blue (AI) FAB ───────────────────────
-  // Show the cursor, then snap. The CSS transition on #demo-cursor makes
-  // this read as a glide when sequenced with frame 03 (which had no cursor).
-  await showCursor(page, AI_FAB.x, AI_FAB.y);
-  await page.waitForTimeout(250);   // let the cursor glide animation finish
-  await shot(page, '04-cursor-blue');
-
-  // ── Frame 05: tap ripple mid-bloom on the blue FAB ────────────────────
-  await fireTap(page, AI_FAB.x, AI_FAB.y);
-  await page.waitForTimeout(180);   // catch the ripple mid-bloom (~25% into 700ms)
-  await shot(page, '05-blue-ripple');
-
-  // Fire the real click that drives the state change, then hide the cursor
-  // so the next frame is a clean "On call" screen.
-  await hideCursor(page);
-  await page.mouse.click(AI_FAB.x, AI_FAB.y);
+  // ── Frame 05: tap the blue (AI) FAB ───────────────────────────────────
+  await tapAndCapture(page, {
+    x: AI_FAB.x,
+    y: AI_FAB.y,
+    name: '05-tap-blue',
+    fire: () => page.mouse.click(AI_FAB.x, AI_FAB.y),
+  });
 
   // ── Frame 06: "Afterglow listening" — call in progress ────────────────
   await page.waitForTimeout(1300);  // ringing → in-call transition
@@ -285,29 +304,37 @@ async function record() {
   // ── Frame 07: back to Calls list ──────────────────────────────────────
   // Skip the live-call timer screen entirely — narratively the user has
   // answered, Afterglow is recording, and now we review the call list.
-  // The seeded Mark Ross row reads as "the call we just handled".
   await page.goto(`${APP_URL}/`, { waitUntil: 'networkidle' });
   await settle(page, 1200);
   await shot(page, '07-calls');
 
-  // ── Frame 08: Call detail header ──────────────────────────────────────
-  await page.getByText('Mark Ross').first().click();
+  // ── Frame 08: tap the Mark Ross row ───────────────────────────────────
+  const markRow = page.getByText('Mark Ross').first();
+  const mb = await markRow.boundingBox();
+  await tapAndCapture(page, {
+    x: mb.x + mb.width / 2,
+    y: mb.y + mb.height / 2,
+    name: '08-tap-mark',
+    fire: () => markRow.click(),
+  });
+
+  // ── Frame 09: Call detail header ──────────────────────────────────────
   await page.waitForLoadState('networkidle');
   await settle(page, 900);
-  await shot(page, '08-detail-top');
+  await shot(page, '09-detail-top');
 
-  // ── Frame 09-11: smooth-ish scroll through the detail ─────────────────
+  // ── Frame 10-12: smooth-ish scroll through the detail ─────────────────
   await page.mouse.wheel(0, 320);
   await page.waitForTimeout(280);
-  await shot(page, '09-detail-mid');
+  await shot(page, '10-detail-mid');
 
   await page.mouse.wheel(0, 320);
   await page.waitForTimeout(280);
-  await shot(page, '10-detail-mid2');
+  await shot(page, '11-detail-mid2');
 
   await page.mouse.wheel(0, 320);
   await page.waitForTimeout(700);
-  await shot(page, '11-detail-bottom');
+  await shot(page, '12-detail-bottom');
 
   await browser.close();
 }
