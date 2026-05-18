@@ -86,30 +86,37 @@ export function relativeDay(iso: string, loc: Locale, now: Date = new Date()): s
   return formatDayMonthShort(iso, loc);
 }
 
-// "just now / N min ago / N h ago / HH:MM" — i18n only on the unit suffix.
+// "just now / N min ago / yesterday / N days ago / ..." — calendar-day first.
+// Same calendar day → hour-based (min/h/adesso); different calendar day →
+// day/week/month/year buckets so the description always agrees with the
+// section header produced by `relativeDay` above. A 9-hour gap that crosses
+// midnight reports as "yesterday", not "9 h ago".
 export function formatRelativeTime(iso: string, loc: Locale, now: Date = new Date()): string {
   const d = parse(iso);
-  // Future timestamps (e.g. seed calls shifted to today but with a clock hour
-  // later than now) collapse to "just now" instead of leaking a negative sign
-  // into the "N min fa / ago" branch.
-  const diffMs = Math.max(0, now.getTime() - d.getTime());
-  const mins = Math.round(diffMs / 60_000);
-  if (mins < 1) return loc === 'it' ? 'adesso' : 'just now';
-  if (mins < 60) return loc === 'it' ? `${mins} min fa` : `${mins} min ago`;
-  const hours = Math.round(mins / 60);
-  if (hours < 24) return loc === 'it' ? `${hours} h fa` : `${hours}h ago`;
-  const days = Math.round(hours / 24);
-  if (days === 1) return loc === 'it' ? 'ieri' : 'yesterday';
-  if (days < 7) return loc === 'it' ? `${days} giorni fa` : `${days} days ago`;
-  const weeks = Math.round(days / 7);
+  const diffDays = Math.round((startOfDay(now) - startOfDay(d)) / 86_400_000);
+  if (diffDays <= 0) {
+    // Same calendar day (or future-clamped). Hour-based description.
+    // Future timestamps (e.g. seed calls shifted to today but with a clock
+    // hour later than now) collapse to "just now" instead of leaking a
+    // negative sign into the "N min fa / ago" branch.
+    const diffMs = Math.max(0, now.getTime() - d.getTime());
+    const mins = Math.round(diffMs / 60_000);
+    if (mins < 1) return loc === 'it' ? 'adesso' : 'just now';
+    if (mins < 60) return loc === 'it' ? `${mins} min fa` : `${mins} min ago`;
+    const hours = Math.round(mins / 60);
+    return loc === 'it' ? `${hours} h fa` : `${hours}h ago`;
+  }
+  if (diffDays === 1) return loc === 'it' ? 'ieri' : 'yesterday';
+  if (diffDays < 7) return loc === 'it' ? `${diffDays} giorni fa` : `${diffDays} days ago`;
+  const weeks = Math.floor(diffDays / 7);
   if (weeks < 4) {
     if (weeks === 1) return loc === 'it' ? 'una settimana fa' : 'a week ago';
     return loc === 'it' ? `${weeks} settimane fa` : `${weeks} weeks ago`;
   }
-  const months = Math.round(days / 30);
+  const months = Math.floor(diffDays / 30);
   if (months === 1) return loc === 'it' ? 'un mese fa' : 'a month ago';
   if (months < 12) return loc === 'it' ? `${months} mesi fa` : `${months} months ago`;
-  const years = Math.round(days / 365);
+  const years = Math.floor(diffDays / 365);
   if (years === 1) return loc === 'it' ? 'un anno fa' : 'a year ago';
   return loc === 'it' ? `${years} anni fa` : `${years} years ago`;
 }

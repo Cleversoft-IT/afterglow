@@ -20,6 +20,7 @@ from app.db.seed import (
     _AI_BOOKING_BLUEPRINTS,
     _CUSTOMER_PHONES_BY_NAME,
     _ensure_seed_customers,
+    _ensure_seed_templates_fresh,
     _make_ai_booking_spec,
 )
 
@@ -222,3 +223,111 @@ def test_ensure_seed_customers_idempotent():
     assert session2.add.call_count == 0, (
         f"expected 0 inserts (idempotent), got {session2.add.call_count}"
     )
+
+
+def _make_template_session(stub_rows: dict[str, "_FakeTemplate | None"]):
+    """Async-session stub for `_ensure_seed_templates_fresh`.
+
+    `stub_rows` maps `domain_hint → fake template (or None)`. Each
+    `session.execute` call returns the row matching the domain encoded in
+    the SQL (intercepted via a side_effect that inspects the where clause's
+    bind values).
+    """
+    domain_queue = list(stub_rows.keys())  # restaurant, dentist, bodyshop
+    call_index = [0]
+
+    def _execute_side_effect(_stmt):
+        idx = call_index[0]
+        call_index[0] += 1
+        dom = domain_queue[idx] if idx < len(domain_queue) else None
+        row = stub_rows.get(dom) if dom is not None else None
+        result = MagicMock()
+        result.scalar_one_or_none.return_value = row
+        return result
+
+    session = MagicMock()
+    session.execute = AsyncMock(side_effect=_execute_side_effect)
+    session.flush = AsyncMock()
+    session.add = MagicMock()
+    return session
+
+
+class _FakeTemplate:
+    """In-memory Template stand-in with the mutable fields the helper diffs."""
+    def __init__(self, **fields):
+        self.name = fields["name"]
+        self.description = fields["description"]
+        self.fields_schema = fields["fields_schema"]
+        self.action_types = fields["action_types"]
+        self.prompt_hints = fields["prompt_hints"]
+
+
+def test_ensure_seed_templates_fresh_idempotent():
+    """3 scenari mirati al fix round-10-polish:
+      1. drift → UPDATE in place (Appointment intake → Patient booking +
+         booking_time label rename).
+      2. no drift → no mutation (idempotent on second boot).
+      3. dentist absent → no error (fresh DB path: main seed will create it).
+    """
+    # --- Scenario 1: drift. Dentist template stuck on round-9 strings.
+    stale_dentist = _FakeTemplate(
+        name="Appointment intake",
+        description="OLD",
+        fields_schema=[{"key": "booking_time", "label": "Booking time (HH:MM)"}],
+        action_types=[],
+        prompt_hints=[],
+    )
+    # Restaurant + bodyshop already in sync — only dentist needs update.
+    fresh_restaurant = _FakeTemplate(
+        name=RESTAURANT_TEMPLATE["name"],
+        description=RESTAURANT_TEMPLATE["description"],
+        fields_schema=RESTAURANT_TEMPLATE["fields_schema"],
+        action_types=RESTAURANT_TEMPLATE["action_types"],
+        prompt_hints=RESTAURANT_TEMPLATE["prompt_hints"],
+    )
+    fresh_bodyshop = _FakeTemplate(
+        name=BODYSHOP_TEMPLATE["name"],
+        description=BODYSHOP_TEMPLATE["description"],
+        fields_schema=BODYSHOP_TEMPLATE["fields_schema"],
+        action_types=BODYSHOP_TEMPLATE["action_types"],
+        prompt_hints=BODYSHOP_TEMPLATE["prompt_hints"],
+    )
+    session = _make_template_session({
+        "restaurant": fresh_restaurant,
+        "dentist": stale_dentist,
+        "bodyshop": fresh_bodyshop,
+    })
+    asyncio.run(_ensure_seed_templates_fresh(session))
+    assert stale_dentist.name == "Patient booking", (
+        f"drift not applied: name={stale_dentist.name!r}"
+    )
+    assert stale_dentist.description == DENTIST_TEMPLATE["description"]
+    # restaurant + bodyshop untouched (no drift detected)
+    assert fresh_restaurant.name == RESTAURANT_TEMPLATE["name"]
+    assert fresh_bodyshop.name == BODYSHOP_TEMPLATE["name"]
+
+    # --- Scenario 2: no drift. Second boot is no-op.
+    aligned_dentist = _FakeTemplate(
+        name=DENTIST_TEMPLATE["name"],
+        description=DENTIST_TEMPLATE["description"],
+        fields_schema=DENTIST_TEMPLATE["fields_schema"],
+        action_types=DENTIST_TEMPLATE["action_types"],
+        prompt_hints=DENTIST_TEMPLATE["prompt_hints"],
+    )
+    session2 = _make_template_session({
+        "restaurant": fresh_restaurant,
+        "dentist": aligned_dentist,
+        "bodyshop": fresh_bodyshop,
+    })
+    asyncio.run(_ensure_seed_templates_fresh(session2))
+    assert aligned_dentist.name == DENTIST_TEMPLATE["name"]
+    assert aligned_dentist.description == DENTIST_TEMPLATE["description"]
+
+    # --- Scenario 3: dentist missing. Helper skips silently (fresh DB path).
+    session3 = _make_template_session({
+        "restaurant": fresh_restaurant,
+        "dentist": None,
+        "bodyshop": fresh_bodyshop,
+    })
+    # Should not raise.
+    asyncio.run(_ensure_seed_templates_fresh(session3))

@@ -9,6 +9,7 @@ import {
 } from 'react-native';
 import {
   ActivityIndicator,
+  Appbar,
   Banner,
   Button,
   Card,
@@ -114,7 +115,14 @@ export default function TemplateWizardScreen() {
       style={{ flex: 1, backgroundColor: theme.colors.background }}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
-      <Stack.Screen options={{ title: 'New template from prompt' }} />
+      <Stack.Screen
+        options={{
+          title: 'New template from prompt',
+          headerLeft: () => (
+            <Appbar.BackAction onPress={() => router.back()} />
+          ),
+        }}
+      />
 
       <ScrollView
         ref={scrollRef}

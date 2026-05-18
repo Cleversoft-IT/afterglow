@@ -1,16 +1,23 @@
-"""Operational diagnostics — read-only probes for the Vultr Vector Store
-side of the pipeline.
+"""Operational diagnostics + dry-run for the Vultr Vector Store side of the
+pipeline.
 
-Two endpoints:
-- `GET /api/v1/admin/rag-stats` reports how many preseed chunks landed in
-  Postgres for the active collection. The lifespan preseed task and the
-  runtime memory-updater both write `CustomerMemoryChunk` rows; the preseed
-  marker discriminates them.
-- `GET /api/v1/admin/rag-probe?phone=...` issues a real `chat_completion_rag`
-  call against Vultr and returns the raw retrieved text + token usage so a
-  judge can confirm the integration is live, not stubbed.
+Three endpoints:
+- `GET /api/v1/admin/rag-stats` (read-only) reports how many preseed chunks
+  landed in Postgres for the active collection. The lifespan preseed task
+  and the runtime memory-updater both write `CustomerMemoryChunk` rows; the
+  preseed marker discriminates them.
+- `GET /api/v1/admin/rag-probe?phone=...` (read-only) issues a real
+  `chat_completion_rag` call against Vultr and returns the raw retrieved
+  text + token usage so a judge can confirm the integration is live, not
+  stubbed.
+- `POST /api/v1/admin/dry-run-pipeline` (writes a `Call`) accepts a custom
+  transcript + phone, creates a Call row, and runs the agentic pipeline
+  end-to-end so a judge can exercise the AI loop without recording an MP3.
+  Honors `X-Demo-Session` so the resulting call is scoped to the same demo
+  UI the judge is viewing.
 
-Both endpoints are read-only and do not require demo-session scoping.
+The first two endpoints don't require demo-session scoping; the dry-run
+endpoint optionally honors the `X-Demo-Session` header when present.
 """
 from __future__ import annotations
 

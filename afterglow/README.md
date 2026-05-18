@@ -209,6 +209,61 @@ chunk → next call prefetches the chunk → briefing returns the memory.
   `afterglow/scripts/generate_demo_audio.py` to regenerate them
 - Multilingual demo: language detection auto on every call
 
+### What to look at in the live demo
+
+Concrete URLs and curl commands for a judge clicking through the deployed
+app. Each bullet maps a surface to the pattern it proves — no overlap with
+the architectural sub-sections above.
+
+1. **`/audit` — Audit log accordion overview-first.** Header metrics
+   `STEPS / CALLS / DURATION / TOKENS`. One row per call: `<name> · N
+   steps · Xs · Y tokens`, expandable into agent → leaf with timing,
+   status chip and JSON payload toggle. Token counts surface
+   per-call → "trustworthy AI / cost-per-call audit".
+2. **`/call/:id` — Agent reasoning trail.** The `<AgentReasoningTrail>`
+   pane reveals every tool the model picked (`lookup_customer_memory`,
+   `read_transcript_segment`, `booking.create`, `flag_for_review`,
+   `finalize_call`), its payload and its return value. Decisive in pitch:
+   the model decides the path turn by turn — none of it is hard-coded.
+3. **Home filter `Review` (3rd chip).** Calls landed on
+   `status="needs_review"` because the agent emitted `flag_for_review` or
+   hit max-turns. A banner on the detail page explains why. Fail-loud
+   escalation, no silent fallback.
+4. **`/call/:id` — Regenerate summary.** Top-right IconButton runs the
+   `briefing_regenerator` agent on the same call (Paper Dialog confirm →
+   Snackbar success). Closed-loop AI on-demand.
+5. **`/customer/:id` — Next-call briefing.** Italic Surface with the prose
+   the agent emitted (e.g. Andrew Green: "Andrew drives a 2019 Fiat Panda
+   (plate AB123CD). Pays out of pocket — no insurance claim. Last visit:
+   rear bumper repair on 3 May…"). One paragraph the operator reads
+   before picking up.
+6. **Three admin diagnostic endpoints** verify the integration end-to-end
+   without shelling into the container:
+   ```bash
+   # Vultr Vector Store stats — preseed vs runtime chunk counts
+   curl -s https://api.95-179-245-107.sslip.io/api/v1/admin/rag-stats | jq
+
+   # Live RAG round-trip for a seed phone — proves the integration is
+   # billed (input_tokens > 0)
+   curl -s "https://api.95-179-245-107.sslip.io/api/v1/admin/rag-probe?phone=%2B15551112233" | jq
+
+   # Dry-run the agentic pipeline with a custom transcript — returns a
+   # call_id; poll /api/v1/calls/<id> to watch it land
+   curl -s -X POST https://api.95-179-245-107.sslip.io/api/v1/admin/dry-run-pipeline \
+     -H 'Content-Type: application/json' \
+     -d '{"transcript":"Operator: Hi.\nCaller: Hi, this is Mark. Friday eight thirty, party of four please.","phone_e164":"+15551112233"}'
+   ```
+   `dry-run-pipeline` is the pitch-killer: zero MP3 setup, the judge writes
+   a transcript and watches the full agent loop in `/call/<id>` +
+   `/audit`.
+7. **Default Home — fresh demo every visit, 12-customer history.** The
+   lifespan `seed_date_refresh` BULK UPDATE rebases all seed call dates to
+   an offset relative to `now`, and `vector_preseed` populates the Vultr
+   collection at boot. Whatever day a judge opens the demo, the app looks
+   freshly seeded and the 12 seed customers (Mark Ross, Julia White,
+   Sophie Walker, Tom Hughes, Marco Bianchi, …) have retrospective history
+   visible across 8 weeks.
+
 ## Stack
 
 | Layer | Tech |

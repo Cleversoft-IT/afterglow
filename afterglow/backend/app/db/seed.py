@@ -291,9 +291,9 @@ RESTAURANT_TEMPLATE = {
 }
 
 DENTIST_TEMPLATE = {
-    "name": "Appointment intake",
+    "name": "Patient booking",
     "domain_hint": "dentist",
-    "description": "Phone intake for a dental clinic — handle existing patients, new requests and emergencies.",
+    "description": "Patient bookings for a dental clinic — existing patients, new requests and emergencies.",
     "fields_schema": [
         {
             "key": "patient_name",
@@ -333,7 +333,7 @@ DENTIST_TEMPLATE = {
         {
             "key": "booking_time",
             "type": "string",
-            "label": "Booking time (HH:MM)",
+            "label": "Booking time",
             "description": "Slot time in 24-hour HH:MM format, e.g. 10:00 or 14:30.",
             "depends_on": ["booking_date"],
             "extractor_hint": "regex",
@@ -490,7 +490,7 @@ BODYSHOP_TEMPLATE = {
         {
             "key": "booking_time",
             "type": "string",
-            "label": "Booking time (HH:MM)",
+            "label": "Booking time",
             "description": "Slot time in 24-hour HH:MM format (e.g. 10:00).",
             "depends_on": ["booking_date"],
             "extractor_hint": "regex",
@@ -2716,6 +2716,60 @@ def _make_ai_booking_spec(
     }
 
 
+async def _ensure_seed_templates_fresh(session) -> None:
+    """Idempotent refresh: align existing seed Template rows with the in-code
+    TEMPLATE constants (name, description, fields_schema, action_types,
+    prompt_hints) when they drift. Safe on every boot; user-built templates
+    (`is_seed=False`) are not touched. Matched by `(is_seed=True, domain_hint)`.
+
+    Round 10 polish: `seed()` short-circuits when seed templates already
+    exist, so renaming `DENTIST_TEMPLATE.name` from "Appointment intake" to
+    "Patient booking" wouldn't reach a production DB without this refresh.
+    Pattern mirrors `_ensure_seed_customers` (insert OR update in-place,
+    never wipe).
+
+    # Round 10: rare collision risk on rename — fail loud, demo DB is
+    # disposable. The `(name, version)` unique constraint has two partial
+    # indexes (session_id IS NULL / IS NOT NULL); if a user-built template
+    # already occupies "Patient booking, v1, session_id=NULL", the UPDATE
+    # raises IntegrityError and the boot fails. That's intentional — see
+    # `feedback_db_disposable`.
+    """
+    for tpl, dom in (
+        (RESTAURANT_TEMPLATE, "restaurant"),
+        (DENTIST_TEMPLATE, "dentist"),
+        (BODYSHOP_TEMPLATE, "bodyshop"),
+    ):
+        existing = (
+            await session.execute(
+                select(Template).where(
+                    Template.is_seed.is_(True),
+                    Template.domain_hint == dom,
+                )
+            )
+        ).scalar_one_or_none()
+        if existing is None:
+            continue  # fresh DB path — main seed creates it with new values
+        drift = (
+            existing.name != tpl["name"]
+            or existing.description != tpl["description"]
+            or existing.fields_schema != tpl["fields_schema"]
+            or existing.action_types != tpl["action_types"]
+            or existing.prompt_hints != tpl["prompt_hints"]
+        )
+        if drift:
+            existing.name = tpl["name"]
+            existing.description = tpl["description"]
+            existing.fields_schema = tpl["fields_schema"]
+            existing.action_types = tpl["action_types"]
+            existing.prompt_hints = tpl["prompt_hints"]
+            print(
+                f"[seed] refreshed seed template (domain={dom}, "
+                f"new_name={tpl['name']!r})"
+            )
+    await session.flush()
+
+
 async def _ensure_seed_customers(session) -> None:
     """Idempotent upsert: insert any of SEED_CUSTOMERS that isn't already in
     the DB (matched by phone_e164 + is_seed=True) AND refresh `memory_summary`
@@ -2794,6 +2848,12 @@ async def _ensure_personal_calls(session, anchor: date) -> None:
     if seed_template is None:
         print("[seed] no seed template found, skipping personal calls.")
         return
+
+    # Round 10 polish: align persisted seed Template rows with the in-code
+    # constants (e.g. DENTIST_TEMPLATE rename "Appointment intake" → "Patient
+    # booking", booking_time label cleanup). Called BEFORE `_ensure_seed_customers`
+    # so the chain template → customer → call seed mirrors the FK dependency.
+    await _ensure_seed_templates_fresh(session)
 
     # Backfill any seed customers added in later rounds (e.g. Sophie / Tom
     # in round 9). Idempotent: skips customers already present by phone.
