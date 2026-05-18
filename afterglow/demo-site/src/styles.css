@@ -238,13 +238,15 @@ html, body, #root {
 }
 
 .phone-frame iframe {
-  /* Render the iframe 30 px taller than the inner area and shift it up
-     by 30 px so the app's own status-bar padding falls outside the
-     visible (overflow: hidden) clip — mirrors the crop the recorder
-     does on the GIF. */
+  /* Render the iframe 15 px taller than the inner area and shift it up
+     by 15 px so the app's own ~15 px status-bar padding falls outside
+     the visible (overflow: hidden) clip — mirrors the 15 px crop the
+     recorder applies to the GIF (see `APP_TOP_PADDING` in
+     scripts/record-demo.cjs). The previous -30 px was double the actual
+     padding and clipped the top of the search bar. */
   width: 100%;
-  height: calc(100% + 30px);
-  margin-top: -30px;
+  height: calc(100% + 15px);
+  margin-top: -15px;
   border: 0;
   background: var(--background);
   display: block;
