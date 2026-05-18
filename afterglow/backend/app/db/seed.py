@@ -738,37 +738,41 @@ async def seed():
         if legacy_count:
             print(
                 f"[seed] round-8 migration: {legacy_count} legacy "
-                f"appointment.* rows found — wiping seed state for clean "
+                f"appointment.* rows found — wiping demo state for clean "
                 f"re-emit."
             )
-            # Order matters because of FK constraints. AuditLog FK is
-            # ON DELETE SET NULL so Call drop cascades safely. Anything
-            # not is_seed (live demo-session activity) is preserved.
-            await session.execute(
-                delete(ExecutedAction).where(ExecutedAction.is_seed.is_(True))
-            )
-            await session.execute(
-                delete(ExtractedFields).where(
-                    ExtractedFields.call_id.in_(
-                        select(Call.id).where(Call.is_seed.is_(True))
-                    )
-                )
-            )
-            await session.execute(delete(Call).where(Call.is_seed.is_(True)))
-            await session.execute(
-                delete(Customer).where(Customer.is_seed.is_(True))
-            )
+            # FK constraints:
+            #   - Call.template_id has ondelete=RESTRICT so we can't drop
+            #     Template seed rows while ANY Call (seed or demo-session)
+            #     still references them. Demo DB is disposable
+            #     (`feedback_db_disposable.md`), so wipe ALL Call rows
+            #     unconditionally — both seed and demo-session.
+            #   - ExtractedFields.call_id and ExecutedAction.call_id are
+            #     ondelete=CASCADE, so they're cleaned automatically.
+            #   - AuditLog.call_id is ondelete=SET NULL (logs survive but
+            #     lose the link, which is fine for the demo).
+            #   - Customer.id is referenced by ExecutedAction.customer_id
+            #     with ondelete=SET NULL, no blocking.
+            await session.execute(delete(Call))
+            await session.execute(delete(Customer))
             await session.execute(
                 delete(Template).where(Template.is_seed.is_(True))
             )
             await session.commit()
             # Fall through: `existing` query below will now return empty
-            # and the main seed path runs.
+            # for the seed templates and the main seed path runs.
 
-        existing = (await session.execute(select(Template))).scalars().all()
+        # Check seed templates only — user-custom templates from the
+        # wizard live alongside but don't satisfy the "demo data is
+        # already there" signal we use to short-circuit re-seeding.
+        existing = (
+            await session.execute(
+                select(Template).where(Template.is_seed.is_(True))
+            )
+        ).scalars().all()
         if existing:
             print(
-                f"[seed] {len(existing)} templates already present, "
+                f"[seed] {len(existing)} seed templates already present, "
                 f"ensuring personal calls."
             )
             await _ensure_personal_calls(session)
