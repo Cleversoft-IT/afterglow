@@ -187,32 +187,27 @@ html, body, #root {
 }
 
 /* ── Phone frame mockup ─────────────────────────────────
-   Three layers stack inside the phone-frame:
+   The screen content (GIF in hero, iframe in demo) is the Afterglow app
+   rendered at 390 × 845. React-native-web's mobile layout has a ~30 px
+   top padding (status-bar safe area) that we hide behind the bezel —
+   otherwise a light-grey strip is visible between the bezel and the
+   first painted element (search bar), reading as "wrong margin".
 
-     1. The phone-frame box itself, with bg = var(--background). At outer
-        size 440 × 880 it has an aspect ratio of 1 : 2.
-     2. The 10 px black bezel ring, painted on top as `::after` (border
-        10 px solid). Follows the outer 44 px border-radius.
-     3. The screen content (GIF <img> in hero, app <iframe> in demo),
-        absolutely positioned at `inset: 25 px`. That leaves 10 px for
-        the bezel + 15 px of inner "safe area" between bezel and content,
-        so avatars and the hamburger icon aren't glued to the bezel.
+   - The GIF is pre-cropped to 390 × 815 by record-demo.cjs (clipped 30 px
+     from the top during screenshot). So the img fills the inner area
+     edge-to-edge — no CSS gymnastics needed.
+   - The live <iframe> can't be cropped at capture time, so we render it
+     30 px taller than the container and translate it up by 30 px; the
+     overflow hidden on the parent clips the padding behind the bezel.
 
-   The asset itself is 390 × 830 (the recorder clips the app's own 15 px
-   top padding so the search bar doesn't sit on a strip of light-grey).
-   At inset 25 px on a 440 × 880 phone-frame, the visible area is exactly
-   390 × 830 — no scaling, no letterbox, no crop.
-
-   The <iframe> in the demo section can't be cropped at capture time, so
-   it's rendered 30 px taller than the visible area and shifted up by
-   30 px (top: -5 px instead of 25 px). The 30 px of overflow lives under
-   the bezel and hides the app's own status-bar padding. */
+   Outer aspect ratio: inner is 390 × 815 (= 78 / 163). The 10 px bezel
+   (painted as ::after) adds 20 px on each axis → outer 410 × 835. */
 .phone-frame {
   position: relative;
-  width: 440px;
+  width: 410px;
   max-width: 100%;
-  aspect-ratio: 1 / 2;
-  background: var(--background);
+  aspect-ratio: 410 / 850;
+  background: #0a0a0a;
   border-radius: 44px;
   box-shadow:
     0 50px 100px -32px rgba(0, 0, 0, 0.55),
@@ -221,6 +216,8 @@ html, body, #root {
   overflow: hidden;
 }
 
+/* Painted bezel — sits above the screen content, follows the same outer
+   border-radius. The inner edge is implicit (border-width 10px). */
 .phone-frame::after {
   content: '';
   position: absolute;
@@ -232,71 +229,31 @@ html, body, #root {
   z-index: 2;
 }
 
-.phone-frame img,
-.phone-frame iframe {
-  /* Pin to the top-left inside the 25 px safe area and size explicitly.
-     `width/height: auto` on an absolutely-positioned <iframe> would fall
-     back to its replaced intrinsic 300 × 150 instead of filling the
-     parent — and on the <img> the intrinsic 390 × 830 only happens to
-     match the inner area when the parent is exactly 440 × 880. */
-  position: absolute;
-  display: block;
-  top: 25px;
-  left: 25px;
-  width: calc(100% - 50px);
-  height: calc(100% - 50px);
+.phone-frame img {
+  width: 100%;
+  height: 100%;
   border: 0;
   background: var(--background);
+  display: block;
 }
 
 .phone-frame iframe {
-  /* The iframe has TWO geometry quirks the static GIF doesn't:
-
-       a) the live app paints its own status-bar padding at the top —
-          render it 30 px taller (`height: calc(100% - 20px)` instead of
-          `calc(100% - 50px)`) and shift it up by 30 px (`top: -5px`
-          instead of `25px`). The 30 px of overflow lives under the bezel
-          and hides the padding — mirroring the GIF crop.
-
-       b) react-native-web renders a real vertical scrollbar on the right
-          edge of the call list. With a symmetric 15 px safe area the
-          scrollbar lands INSIDE the visible area and is distractingly
-          obvious. Drop the safe area on the right ONLY (`width:
-          calc(100% - 15px)` instead of `calc(100% - 50px)`) so the
-          iframe runs all the way to the bezel — the scrollbar then sits
-          under the painted bezel and disappears. As a bonus the live
-          app gets ~35 px of extra horizontal space versus a centred
-          iframe, so the layout doesn't feel cramped. */
-  top: -5px;
-  left: 15px;
-  width: calc(100% - 15px);
-  height: calc(100% - 20px);
+  /* Render the iframe 30 px taller than the inner area and shift it up
+     by 30 px so the app's own status-bar padding falls outside the
+     visible (overflow: hidden) clip — mirrors the crop the recorder
+     does on the GIF. */
+  width: 100%;
+  height: calc(100% + 30px);
+  margin-top: -30px;
+  border: 0;
+  background: var(--background);
+  display: block;
 }
 
 .phone-frame.hero-phone {
-  /* Same trick as `.phone-stage`: keep the phone-frame at its LOGICAL
-     440 × 880 (so the 25 px inset + 10 px bezel land at the same physical
-     positions the GIF was recorded for, and the 390 × 830 asset fills
-     the screen pixel-for-pixel), then scale the whole element with
-     `transform: scale()` so it fits the viewport.
-
-     Without the scale trick the outer aspect-ratio:1/2 + height:clamp(…)
-     would shrink the frame while the absolutely-positioned <img> kept
-     its intrinsic 390 × 830 — so the GIF visibly overflowed bottom-right
-     and the bezel no longer hugged it. */
-  width: 440px;
-  height: 880px;
-  aspect-ratio: auto;
-  /* `length / length = number` — divide by `880px`, not `880`, otherwise
-     the middle of clamp() is a <length> and the whole expression is
-     dropped as invalid. */
-  --hero-scale: clamp(0.591, calc((100dvh - 200px) / 880px), 0.864);
-  transform: scale(var(--hero-scale));
-  transform-origin: center center;
-  /* Shrink the layout footprint to the scaled (not logical) box so the
-     surrounding flex/grid reserves only the visible size. */
-  margin: calc((var(--hero-scale) - 1) * 880px / 2)
-          calc((var(--hero-scale) - 1) * 440px / 2);
+  width: auto;
+  height: clamp(520px, calc(100dvh - 200px), 760px);
+  aspect-ratio: 410 / 850;
 }
 
 /* ── Phone stage (demo section) ───────────────────────────
@@ -311,10 +268,12 @@ html, body, #root {
 */
 .phone-stage {
   --demo-chrome: 48px;
-  /* Outer dimensions = visible app content (390 × 830) + 15 px inner
-     safe area on each side + 10 px bezel ring on each side. */
-  --phone-h: 880px;
-  --phone-w: 440px;
+  /* Outer dimensions including the 10 px painted bezel. Inner content
+     area is (--phone-w − 20) × (--phone-h − 20) = 390 × 815, matching
+     the GIF the recorder produces and the visible iframe area after
+     the −30 px shift. */
+  --phone-h: 835px;
+  --phone-w: 410px;
   /* Reserved horizontal width for everything that isn't the phone in the
      demo section: the section's px-6 (×2 = 48px), the text column min
      width (260px), and the grid gap (48px) → 356px total. The phone
