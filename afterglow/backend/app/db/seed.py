@@ -20,7 +20,7 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 
 from app.db.engine import SessionLocal
 from app.db.models import (
@@ -722,6 +722,49 @@ def _bundled_simulation_configs() -> dict[str, dict]:
 
 async def seed():
     async with SessionLocal() as session:
+        # Round 8 migration: if the DB still contains any ExecutedAction
+        # with the legacy `appointment.*` namespace, the schema layout has
+        # changed under it (booking.create now requires booking_date /
+        # booking_time and Laura/Andrew payloads are reshaped). Demo DB is
+        # disposable (`feedback_db_disposable.md`) — wipe the whole seed
+        # state so the fresh seed below repopulates it on the same boot.
+        # Customer-owned non-seed rows (anything is_seed=False) is left
+        # untouched.
+        legacy_count = await session.scalar(
+            select(func.count(ExecutedAction.id)).where(
+                ExecutedAction.action_type.like("appointment.%")
+            )
+        )
+        if legacy_count:
+            print(
+                f"[seed] round-8 migration: {legacy_count} legacy "
+                f"appointment.* rows found — wiping seed state for clean "
+                f"re-emit."
+            )
+            # Order matters because of FK constraints. AuditLog FK is
+            # ON DELETE SET NULL so Call drop cascades safely. Anything
+            # not is_seed (live demo-session activity) is preserved.
+            await session.execute(
+                delete(ExecutedAction).where(ExecutedAction.is_seed.is_(True))
+            )
+            await session.execute(
+                delete(ExtractedFields).where(
+                    ExtractedFields.call_id.in_(
+                        select(Call.id).where(Call.is_seed.is_(True))
+                    )
+                )
+            )
+            await session.execute(delete(Call).where(Call.is_seed.is_(True)))
+            await session.execute(
+                delete(Customer).where(Customer.is_seed.is_(True))
+            )
+            await session.execute(
+                delete(Template).where(Template.is_seed.is_(True))
+            )
+            await session.commit()
+            # Fall through: `existing` query below will now return empty
+            # and the main seed path runs.
+
         existing = (await session.execute(select(Template))).scalars().all()
         if existing:
             print(
