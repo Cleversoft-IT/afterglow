@@ -2,10 +2,25 @@ import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
-  Bot, Zap, Brain, Layers, Play, ArrowRight, ExternalLink,
-  Sun, Moon, Monitor, Maximize2,
+  Bot, Zap, Brain, Layers, ArrowRight, ExternalLink,
+  Sun, Moon, Monitor, Maximize2, Sparkles, ChevronDown,
   type LucideIcon,
 } from 'lucide-react';
+
+const REPO_URL = 'https://github.com/Cleversoft-IT/hackaton-lablab';
+
+function GithubIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="currentColor"
+      aria-hidden="true"
+      className={className}
+    >
+      <path d="M12 .5C5.73.5.5 5.73.5 12c0 5.08 3.29 9.39 7.86 10.91.58.11.79-.25.79-.56v-2c-3.2.7-3.87-1.37-3.87-1.37-.52-1.33-1.27-1.69-1.27-1.69-1.04-.71.08-.7.08-.7 1.15.08 1.76 1.18 1.76 1.18 1.02 1.76 2.69 1.25 3.34.96.1-.75.4-1.25.73-1.54-2.55-.29-5.23-1.28-5.23-5.69 0-1.26.45-2.29 1.18-3.1-.12-.29-.51-1.46.11-3.04 0 0 .97-.31 3.18 1.18a11.05 11.05 0 0 1 5.8 0c2.2-1.49 3.17-1.18 3.17-1.18.63 1.58.23 2.75.12 3.04.74.81 1.18 1.84 1.18 3.1 0 4.42-2.69 5.39-5.25 5.68.41.36.78 1.05.78 2.12v3.14c0 .31.21.67.79.56C20.21 21.39 23.5 17.08 23.5 12c0-6.27-5.23-11.5-11.5-11.5z" />
+    </svg>
+  );
+}
 import { useTheme, type ThemeMode } from '@/lib/theme';
 
 const APP_URL = import.meta.env.VITE_APP_URL ?? 'https://app.95-179-245-107.sslip.io';
@@ -28,8 +43,8 @@ const steps = [
   },
   {
     n: '04',
-    title: 'Memory of returning callers',
-    body: 'Every call enriches a Vultr Vector Store. The next ring pre-fetches caller history via RAG so the operator opens the call already briefed.',
+    title: 'Vultr is the system of record',
+    body: 'Calls, customers, audit log on Managed Postgres; caller memory on Vultr Vector Store. At the next ring, RAG pre-fetches the history so the operator opens the call already briefed.',
   },
 ];
 
@@ -37,7 +52,7 @@ const features: { icon: LucideIcon; title: string; body: string }[] = [
   {
     icon: Bot,
     title: 'Autonomous, not a copilot',
-    body: 'Actions execute themselves — bookings confirmed, WhatsApp messages sent, customer profiles updated. Every action is logged and can be individually reverted.',
+    body: 'Bookings confirmed, WhatsApp messages sent, profiles updated — without a human in the loop. Every action is audit-logged with the evidence that triggered it, and any single one can be reverted from the call detail. Autonomy with a rollback.',
   },
   {
     icon: Zap,
@@ -72,9 +87,9 @@ const partners = [
   },
   {
     name: 'Google Gemini + ADK',
-    pills: ['Gemini 2.0 Flash', 'Structured output', 'ADK agentic loop'],
+    pills: ['Gemini 2.0 Flash', 'Structured output', 'ADK agentic loop', 'Typed tool calls'],
     description:
-      'A single Gemini structured-output call extracts every field, classifies intent, and plans actions. Google ADK drives the autonomous action planner.',
+      'A single Gemini structured-output call extracts fields, classifies intent and drafts the plan. Google ADK then drives the agentic loop: re-reads the analysis and emits typed tool calls that the executor validates and runs autonomously.',
   },
   {
     name: 'Speechmatics',
@@ -139,6 +154,15 @@ function Navbar() {
         </div>
         <div className="flex items-center gap-3">
           <ThemeToggle />
+          <a
+            href={REPO_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label="GitHub repository"
+            className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-border/60 bg-card/60 text-muted-foreground hover:text-foreground hover:border-border transition-colors"
+          >
+            <GithubIcon className="w-4 h-4" />
+          </a>
           <Button asChild size="sm" className="rounded-full hidden md:flex">
             <a href="#demo">Try it live</a>
           </Button>
@@ -225,6 +249,79 @@ function DemoSection() {
               </p>
             </div>
           </div>
+
+          <details className="demo-disclosure group">
+            <summary className="demo-disclosure-summary">
+              <span className="demo-disclosure-icon" aria-hidden="true">
+                <Sparkles className="w-3.5 h-3.5" />
+              </span>
+              <span className="flex-1">
+                <span className="demo-disclosure-eyebrow">Behind the scenes</span>
+                <span className="demo-disclosure-title">
+                  How a single-tenant product runs a public, multi-visitor demo
+                </span>
+              </span>
+              <ChevronDown
+                className="demo-disclosure-chevron w-4 h-4 flex-shrink-0"
+                aria-hidden="true"
+              />
+            </summary>
+
+            <div className="demo-disclosure-body">
+              <p>
+                Afterglow is{' '}
+                <span className="text-foreground font-medium">
+                  single-tenant by design
+                </span>{' '}
+                — one installation, one customer. The right shape for a small
+                business buying the product, the wrong one for a public live
+                demo. So we wrapped the same backend in a thin per-visitor
+                sandbox:{' '}
+                <span className="text-foreground font-medium">
+                  the app inside the iframe is the real Afterglow build
+                </span>
+                , scoped to your private slice of the database.
+              </p>
+
+              <ol className="demo-disclosure-list">
+                <li>
+                  <span className="demo-disclosure-step">1</span>
+                  <div>
+                    <strong>Per-visitor sandbox.</strong> Your first visit mints
+                    an opaque session id, persisted client-side and stamped on
+                    every write. A single dependency in the API injects it into
+                    every query, so two visitors share the schema but never the
+                    rows — same Postgres, separate worlds.
+                  </div>
+                </li>
+                <li>
+                  <span className="demo-disclosure-step">2</span>
+                  <div>
+                    <strong>Shared seeds, private writes.</strong> The preset
+                    templates and demo callers are read-only and visible to
+                    everyone. Anything you create through the wizard, the call
+                    simulator, or the autonomous action layer stays inside your
+                    sandbox.
+                  </div>
+                </li>
+                <li>
+                  <span className="demo-disclosure-step">3</span>
+                  <div>
+                    <strong>Self-cleaning, with a pitch escape hatch.</strong>{' '}
+                    Idle sandboxes are wiped after 24h; a reset endpoint clears
+                    yours on demand. For our live presentation, a signed
+                    bypass flips the same client into the production tenant —
+                    same UX, single shared dataset.
+                  </div>
+                </li>
+              </ol>
+
+              <p className="demo-disclosure-footer">
+                Same code path as production. The demo isn't a fork — it's the
+                product with one extra column carrying the boundary.
+              </p>
+            </div>
+          </details>
 
           <div className="hidden md:flex flex-wrap items-center gap-3">
             <Button asChild className="rounded-full gap-2">
@@ -313,17 +410,20 @@ export default function App() {
                 <a href="#built-on">Tech stack</a>
               </Button>
             </div>
+
+            <p className="inline-flex items-center gap-2 text-xs text-muted-foreground -mt-1">
+              <span className="inline-block w-1.5 h-1.5 rounded-full bg-primary flex-shrink-0" />
+              For service businesses where every call is a booking
+            </p>
           </div>
 
           <div className="relative flex justify-center items-center">
             <div className="phone-glow" aria-hidden="true" />
             <div className="relative phone-frame hero-phone">
-              <div className="video-placeholder">
-                <div className="play-icon">
-                  <Play className="w-5 h-5" fill="currentColor" />
-                </div>
-                <p>Demo video coming soon</p>
-              </div>
+              <img
+                src="/afterglow-demo.gif"
+                alt="Afterglow live demo: incoming call with the caller's history pre-fetched from memory, before the operator even picks up"
+              />
             </div>
           </div>
         </div>
@@ -467,9 +567,12 @@ export default function App() {
         {/* ── Team ──────────────────────────────────────── */}
         <section className="py-20 md:py-24 border-t border-border/40">
           <SectionLabel>05 — The team</SectionLabel>
-          <h2 className="text-3xl md:text-4xl font-extrabold tracking-tight mb-12">
+          <h2 className="text-3xl md:text-4xl font-extrabold tracking-tight mb-3">
             Team Claudio Opuscoli
           </h2>
+          <p className="text-muted-foreground text-sm mb-12">
+            Based in Italy · On-site at Milan AI Week 2026
+          </p>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-6">
             {team.map((member) => (
               <div key={member.name} className="flex flex-col items-center gap-3 group">
@@ -493,7 +596,18 @@ export default function App() {
           <span className="font-bold text-sm text-foreground/70 tracking-tight">
             after<span className="text-primary">glow</span>
           </span>
-          <p>MIT licensed · AI Hackathon by lablab.ai · Milano AI Week 2026</p>
+          <div className="flex flex-col sm:flex-row items-center gap-3 sm:gap-5">
+            <p>MIT licensed · AI Hackathon by lablab.ai · Milano AI Week 2026</p>
+            <a
+              href={REPO_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 hover:text-foreground transition-colors"
+            >
+              <GithubIcon className="w-3.5 h-3.5" />
+              GitHub
+            </a>
+          </div>
         </footer>
       </div>
     </div>
