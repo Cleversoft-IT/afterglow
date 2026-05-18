@@ -29,6 +29,7 @@ from sqlalchemy.exc import IntegrityError
 
 from app.agents import memory_retrieval
 from app.agents.orchestrator import run_pipeline
+from app.api.session_context import SessionContext, get_session_context
 from app.config import get_settings
 from app.db.engine import SessionLocal, get_session
 from app.db.models import Call, Customer, CustomerMemoryChunk, Template
@@ -162,6 +163,7 @@ async def _bg_run_pipeline(call_id: uuid.UUID) -> None:
 @router.post("/dry-run-pipeline")
 async def dry_run_pipeline(
     body: DryRunRequest,
+    ctx: SessionContext = Depends(get_session_context),
     session: AsyncSession = Depends(get_session),
 ) -> dict:
     """Inject a custom transcript and run the full agent pipeline against it.
@@ -173,6 +175,10 @@ async def dry_run_pipeline(
 
     Schedules `run_pipeline` as a background task — the response returns
     the new call_id immediately and the caller polls `/api/v1/calls/{id}`.
+
+    Honors `X-Demo-Session`: when the caller is in demo mode the call is
+    scoped to that session so it shows up in the same UI as a regular
+    simulator-triggered call.
     """
     # Pick the requested template, or fall back to the first seed template
     # with the requested domain (default: restaurant).
@@ -196,6 +202,7 @@ async def dry_run_pipeline(
             status="pending",
             raw_transcript={"text": body.transcript},
             detected_language=body.language,
+            session_id=ctx.session_id,
             created_at=datetime.now(tz=timezone.utc),
         )
     )
