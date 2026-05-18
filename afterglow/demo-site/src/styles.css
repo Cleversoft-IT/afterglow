@@ -310,9 +310,12 @@ html, body, #root {
    when the phone is downscaled to fit the viewport; hidden at
    full size. Amber palette, subtle backdrop blur, never loud. */
 .phone-scale-badge {
+  /* Float ABOVE the phone-frame (top: -32px) rather than over the
+     screen — sitting on top of the screen used to cover the live
+     app's search bar at small scales. */
   position: absolute;
-  top: 10px;
-  right: 10px;
+  top: -32px;
+  right: 0;
   z-index: 5;
   display: inline-flex;
   align-items: center;
