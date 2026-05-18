@@ -20,6 +20,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm.attributes import flag_modified
 
 from app.agents import (
     simulation_script,
@@ -329,7 +330,7 @@ async def generate_simulation_audio(
             raise HTTPException(status_code=409, detail=str(exc)) from exc
         out_path = speechmatics_tts.template_audio_path(str(template_id))
         try:
-            await speechmatics_tts.render_script_to_wav(turns, out_path)
+            await speechmatics_tts.render_script_to_mp3(turns, out_path)
         except TtsError as exc:
             config["audio_status"] = "failed"
             config["audio_generated_at"] = datetime.now(tz=timezone.utc).isoformat()
@@ -364,7 +365,7 @@ async def generate_simulation_audio(
             continue
         out_path = speechmatics_tts.template_audio_path(str(template_id), mode=mode)
         try:
-            await speechmatics_tts.render_script_to_wav(turns, out_path)
+            await speechmatics_tts.render_script_to_mp3(turns, out_path)
         except TtsError as exc:
             scenario["audio_status"] = "failed"
             scenario["audio_generated_at"] = now_iso
@@ -377,6 +378,11 @@ async def generate_simulation_audio(
 
     config["scenarios"] = scenarios
     row.simulation_config = config
+    # SQLAlchemy compares old/new JSONB by value; the inner `scenario` dicts
+    # we just mutated are shared with the previously-committed state, so the
+    # ORM would see no diff and skip the UPDATE. flag_modified forces the
+    # column to be marked dirty so audio_status/audio_url actually persist.
+    flag_modified(row, "simulation_config")
     await session.commit()
     await session.refresh(row)
 

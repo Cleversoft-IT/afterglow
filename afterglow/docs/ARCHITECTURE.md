@@ -88,14 +88,13 @@ color so the active highlight stays and dark mode never loses legibility.
 **Simulator / incoming-call audio** reads the active template's
 `simulation_config`. Seed templates ship bundled recordings under
 `app/assets/audio/` (two MP3s per domain, one per `scenarios.existing` /
-`scenarios.new`); wizard-generated templates can generate a single call
-script + WAV through the backend's simulation endpoints
-(`simulation_script.py` + Speechmatics TTS) or accept an uploaded recording.
-Because wizard-built templates only produce a flat script (one
-`caller_name`/`caller_phone_e164`, no per-mode scenarios) and that phone
-doesn't match any seeded customer, the Simulator hides the "Call from
-existing customer" button for them and exposes only "Call from new
-customer". The selected recording is then submitted to `POST /api/v1/calls`
+`scenarios.new`). Wizard-generated templates produce both scenarios via
+the backend's simulation endpoints (`simulation_script.py` writes two
+script_turns lists; Speechmatics TTS preview returns 16kHz mono PCM WAV
+per turn, we concat with Python's `wave` stdlib and transcode the final
+file to mono 48kbps MP3 via ffmpeg → `<template_id>_{existing,new}.mp3`
+under `AUDIO_STORAGE_DIR/templates/`). They can also accept an uploaded
+recording. The selected recording is submitted to `POST /api/v1/calls`
 with the current `X-Demo-Session` header.
 
 **Home (Recents) layout** mirrors the Pixel call log: an `Appbar` pill
@@ -254,7 +253,7 @@ on different sslip.io subdomains. Pointing the audio element at the bare
 backend URL therefore 404s for wizard-built templates (session-owned,
 not visible to a header-less request) and the browser reports the
 generic "Failed to load because no supported source was found". The fix
-is in `api.fetchSimulationAudio(id, mode)`: it pulls the WAV as a
+is in `api.fetchSimulationAudio(id, mode)`: it pulls the MP3 as a
 `Blob` through the session-aware fetch wrapper, and
 `usePhoneAudio.prefetchBlob(key, blob)` wraps it in
 `URL.createObjectURL(blob)` before handing the URL to `<audio>` —

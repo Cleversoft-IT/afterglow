@@ -1,7 +1,7 @@
-"""Tests for the no-ffmpeg WAV concatenation path of speechmatics_tts.
+"""Tests for the WAV-concat helpers used inside speechmatics_tts.
 
-We do NOT exercise the live Speechmatics endpoint — those are integration
-concerns. We do verify:
+We do NOT exercise the live Speechmatics endpoint or the ffmpeg
+transcode step — those are integration concerns. We do verify:
 - `_read_wav_frames` returns the raw PCM block.
 - `_silence_bytes` produces the right number of zero bytes.
 - `script_turns_from_dicts` filters empty turns and defaults voice/speaker.

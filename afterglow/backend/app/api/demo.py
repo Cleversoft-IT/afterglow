@@ -20,7 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.session_context import SessionContext, get_session_context
 from app.db.engine import get_session
 from app.db.models import DemoSession
-from app.tasks.session_cleanup import purge_session_data
+from app.tasks.session_cleanup import unlink_audio_files, purge_session_data
 
 router = APIRouter(prefix="/api/v1/demo", tags=["demo"])
 
@@ -35,7 +35,9 @@ async def reset_demo(
             status_code=403, detail="Reset is only available in demo mode"
         )
 
-    await purge_session_data(session, ctx.session_id, drop_session_row=False)
+    audio_paths = await purge_session_data(
+        session, ctx.session_id, drop_session_row=False
+    )
     await session.execute(
         update(DemoSession)
         .where(DemoSession.id == ctx.session_id)
@@ -45,4 +47,5 @@ async def reset_demo(
         )
     )
     await session.commit()
+    unlink_audio_files(audio_paths)
     return {"ok": True, "session_id": str(ctx.session_id)}

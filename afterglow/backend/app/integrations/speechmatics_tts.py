@@ -2,20 +2,25 @@
 
 Used by the Simulator screen when a custom template has no bundled audio.
 The script is rendered turn-by-turn against the `preview.tts.speechmatics.com`
-endpoint (16kHz mono PCM WAV), then concatenated with a short silence using
-Python's `wave` stdlib — no ffmpeg dependency on the backend container.
+endpoint (16kHz mono PCM WAV), concatenated with a short silence using
+Python's `wave` stdlib, then transcoded to MP3 (mono, 48 kbps, libmp3lame
+`-compression_level 9` = fastest) via ffmpeg so the volume stays sane when
+many demo visitors generate audio in parallel.
 
 Voice picks: `sarah` and `theo` for restaurant-style EN US/UK conversations.
 The Wizard / API caller can override per-turn.
 
 Fail-fast: missing `SPEECHMATICS_API_KEY`, an HTTP error from the TTS
-service, or a WAV with a non-16kHz mono header → raises `TtsError`. The
-caller persists the failure on `simulation_config.audio_status="failed"`.
+service, a WAV with a non-16kHz mono header, or a failed ffmpeg transcode
+→ raises `TtsError`. The caller persists the failure on
+`simulation_config.audio_status="failed"`.
 """
 from __future__ import annotations
 
+import asyncio
 import io
 import logging
+import tempfile
 import wave
 from dataclasses import dataclass
 from pathlib import Path
@@ -80,13 +85,49 @@ def _write_wav(out_path: Path, pcm_frames: bytes) -> None:
         w.writeframes(pcm_frames)
 
 
-async def render_script_to_wav(
+async def _transcode_wav_to_mp3(wav_path: Path, mp3_path: Path) -> None:
+    """Invoke ffmpeg to encode the WAV into a small mono MP3.
+
+    `-compression_level 9` picks the fastest libmp3lame quality preset; at
+    48 kbps mono on 16 kHz speech the result is ~10x smaller than the WAV
+    while still intelligible. `-y` lets us overwrite a previous render.
+    """
+    mp3_path.parent.mkdir(parents=True, exist_ok=True)
+    cmd = [
+        "ffmpeg",
+        "-hide_banner",
+        "-loglevel", "error",
+        "-y",
+        "-i", str(wav_path),
+        "-codec:a", "libmp3lame",
+        "-ac", "1",
+        "-ar", str(SAMPLE_RATE_HZ),
+        "-b:a", "48k",
+        "-compression_level", "9",
+        str(mp3_path),
+    ]
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        _, stderr = await proc.communicate()
+    except FileNotFoundError as exc:
+        raise TtsError("ffmpeg is not installed on the backend image") from exc
+    if proc.returncode != 0:
+        snippet = (stderr or b"").decode("utf-8", "replace")[:200].replace("\n", " ")
+        raise TtsError(f"ffmpeg transcode failed (rc={proc.returncode}): {snippet}")
+
+
+async def render_script_to_mp3(
     script_turns: list[ScriptTurn], out_path: Path
 ) -> Path:
-    """Render every turn via Speechmatics TTS preview and write a single WAV.
+    """Render every turn via Speechmatics TTS preview, concat to PCM, then
+    transcode to MP3 at `out_path`.
 
     Returns the path of the written file (same as `out_path`). Raises
-    `TtsError` on missing key / API error / malformed audio.
+    `TtsError` on missing key / API error / malformed audio / ffmpeg failure.
     """
     if not script_turns:
         raise TtsError("script_turns is empty")
@@ -124,7 +165,15 @@ async def render_script_to_wav(
                 chunks.append(silence_pcm)
 
     combined = b"".join(chunks)
-    _write_wav(out_path, combined)
+    # Write the concatenated PCM to a temp WAV so ffmpeg can read it, then
+    # transcode to the caller-requested MP3 path and drop the temp file.
+    with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
+        tmp_path = Path(tmp.name)
+    try:
+        _write_wav(tmp_path, combined)
+        await _transcode_wav_to_mp3(tmp_path, out_path)
+    finally:
+        tmp_path.unlink(missing_ok=True)
     return out_path
 
 
@@ -165,7 +214,7 @@ def template_audio_path(
     """
     base = base_dir or Path(get_settings().audio_storage_dir)
     if mode is None:
-        filename = f"{template_id}.wav"
+        filename = f"{template_id}.mp3"
     else:
-        filename = f"{template_id}_{mode}.wav"
+        filename = f"{template_id}_{mode}.mp3"
     return base / "templates" / filename
