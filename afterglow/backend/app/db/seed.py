@@ -1660,89 +1660,172 @@ def _emit_seeded_call_audit(session, spec) -> None:
     """Insert the audit_log rows for a seed scenario. The Call has already
     been flushed by `_emit_seeded_call_core`, so the FK resolves now.
 
-    Numbers are picked from realistic ranges for a Gemini 3.1 Flash-Lite call
-    on a ~60-word transcript (latency in the low-seconds for LLM steps, tens
-    of ms for deterministic ones) so the Audit log surfaces meaningful
-    duration + token figures even when no live pipeline has run yet. Values
-    are deterministic per seed call (Random seeded with the call UUID).
+    Numbers are picked from realistic ranges for a Gemini 3.1 Flash-Lite agent
+    loop on a ~60-word transcript (latency in the low-seconds for LLM turns,
+    tens of ms for tool dispatches) so the Audit log + the Agent reasoning
+    trail surface meaningful duration + token figures even when no live
+    pipeline has run yet. Values are deterministic per seed call (Random
+    seeded with the call UUID).
+
+    Trail shape (round-10):
+        speechmatics.tool_call
+        call_agent.agent_loop_start
+        call_agent.agent_turn          turn=1  tool=lookup_customer_memory
+        call_agent.agent_turn          turn=2..N  tool=<action_key>
+            action_executor.action_exec  payload.agent_turn=<same>
+        call_agent.agent_turn          turn=N+1  tool=finalize_call
+        call_agent.agent_loop_end
+        memory_updater.tool_call
+
+    Action sub-step rows carry `payload.agent_turn` + `payload.action_type` so
+    the UI's `<AgentReasoningTrail>` nests them under their source turn
+    deterministically — never by timestamp join.
     """
     rng = random.Random(spec["id"].int)
-    action_count = len(spec.get("actions", []) or [])
+    actions = list(spec.get("actions") or [])
 
-    audit_steps = [
-        {
-            "agent": "speechmatics",
-            "step_type": "tool_call",
-            "model": None,
-            "duration_ms": rng.randint(1600, 2800),
-            "input_tokens": None,
-            "output_tokens": None,
-            "payload": None,
-        },
-        {
-            "agent": "call_agent",
-            "step_type": "agent_loop_start",
-            "model": "gemini-3.1-flash-lite",
-            "duration_ms": rng.randint(40, 100),
-            "input_tokens": None,
-            "output_tokens": None,
-            "payload": {"max_iterations": 12},
-        },
-        {
-            "agent": "call_agent",
-            "step_type": "agent_loop_end",
-            "model": "gemini-3.1-flash-lite",
-            "duration_ms": rng.randint(2800, 4200),
-            "input_tokens": rng.randint(2800, 4200),
-            "output_tokens": rng.randint(520, 880),
-            "payload": {
-                "turn_count": max(2, action_count + 1),
-                "completion_reason": "finalize",
-            },
-        },
-        {
-            "agent": "action_executor",
-            "step_type": "action_exec",
-            "model": None,
-            "duration_ms": rng.randint(40, 160),
-            "input_tokens": None,
-            "output_tokens": None,
-            "payload": None,
-        },
-        {
-            "agent": "memory_updater",
-            "step_type": "tool_call",
-            "model": None,
-            "duration_ms": rng.randint(90, 240),
-            "input_tokens": None,
-            "output_tokens": None,
-            "payload": None,
-        },
-    ]
+    # Plan the turn sequence: a single memory lookup (turn 1), one turn per
+    # executed action, and a final finalize_call turn at the end. Always at
+    # least 2 turns (memory + finalize) even when actions is empty.
+    memory_turn = 1
+    action_turns = []  # list[(turn_idx, action_type)]
+    for i, raw_action in enumerate(actions):
+        action_turns.append((memory_turn + 1 + i, raw_action["action_type"]))
+    finalize_turn = (action_turns[-1][0] + 1) if action_turns else memory_turn + 1
+    total_turns = finalize_turn
+
     cursor_offset = 10
-    for step in audit_steps:
+    base_created = spec["created_at"]
+
+    def _emit(agent: str, step_type: str, *, model=None, duration_ms: int,
+              input_tokens=None, output_tokens=None, payload=None) -> None:
+        nonlocal cursor_offset
         session.add(
             AuditLog(
                 id=uuid.uuid4(),
                 call_id=spec["id"],
-                agent_name=step["agent"],
-                step_type=step["step_type"],
-                model=step["model"],
-                duration_ms=step["duration_ms"],
-                input_tokens=step["input_tokens"],
-                output_tokens=step["output_tokens"],
-                payload=step["payload"],
+                agent_name=agent,
+                step_type=step_type,
+                model=model,
+                duration_ms=duration_ms,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                payload=payload,
                 status="success",
-                created_at=spec["created_at"] + timedelta(
-                    seconds=cursor_offset,
-                    milliseconds=step["duration_ms"],
+                created_at=base_created + timedelta(
+                    seconds=cursor_offset, milliseconds=duration_ms,
                 ),
             )
         )
-        # Each subsequent step starts roughly when the previous one ended,
-        # so the chronological view in the UI tells the same story as a live
-        # pipeline run.
-        cursor_offset += int(step["duration_ms"] / 1000) + 1
+        cursor_offset += max(1, int(duration_ms / 1000) + 1)
+
+    # 1) Speechmatics
+    _emit("speechmatics", "tool_call", duration_ms=rng.randint(1600, 2800))
+
+    # 2) Agent loop start
+    _emit(
+        "call_agent",
+        "agent_loop_start",
+        model="gemini-3.1-flash-lite",
+        duration_ms=rng.randint(40, 100),
+        payload={
+            "max_iterations": 12,
+            "available_tools": ["lookup_customer_memory", "search_transcript",
+                                 "read_transcript_segment", "flag_for_review",
+                                 "finalize_call"]
+                                + [a["action_type"].replace(".", "_") for a in actions],
+        },
+    )
+
+    # 3) Turn 1: lookup_customer_memory
+    mem_in = rng.randint(800, 1400)
+    mem_out = rng.randint(80, 160)
+    _emit(
+        "call_agent",
+        "agent_turn",
+        model="gemini-3.1-flash-lite",
+        duration_ms=rng.randint(900, 1600),
+        input_tokens=mem_in,
+        output_tokens=mem_out,
+        payload={
+            "turn": memory_turn,
+            "tool": "lookup_customer_memory",
+            "args_summary": '{"query": "What does this caller usually order?"}',
+            "result_summary": '{"facts": "Prior history retrieved", "source": "rag"}',
+        },
+    )
+
+    total_input = mem_in
+    total_output = mem_out
+
+    # 4) One turn per action, with a paired action_exec sub-step
+    for (turn_idx, action_type) in action_turns:
+        t_in = rng.randint(700, 1100)
+        t_out = rng.randint(60, 140)
+        total_input += t_in
+        total_output += t_out
+        _emit(
+            "call_agent",
+            "agent_turn",
+            model="gemini-3.1-flash-lite",
+            duration_ms=rng.randint(700, 1300),
+            input_tokens=t_in,
+            output_tokens=t_out,
+            payload={
+                "turn": turn_idx,
+                "tool": action_type.replace(".", "_"),
+                "args_summary": f'{{"action_type": "{action_type}"}}',
+                "result_summary": '{"status": "executed", "attempt": 1}',
+            },
+        )
+        _emit(
+            "action_executor",
+            "action_exec",
+            duration_ms=rng.randint(40, 160),
+            payload={
+                "action_type": action_type,
+                "agent_turn": turn_idx,
+                "integration_kind": "mock_external",
+                "mutates": True,
+            },
+        )
+
+    # 5) Finalize turn
+    fin_in = rng.randint(900, 1400)
+    fin_out = rng.randint(120, 220)
+    total_input += fin_in
+    total_output += fin_out
+    _emit(
+        "call_agent",
+        "agent_turn",
+        model="gemini-3.1-flash-lite",
+        duration_ms=rng.randint(900, 1700),
+        input_tokens=fin_in,
+        output_tokens=fin_out,
+        payload={
+            "turn": finalize_turn,
+            "tool": "finalize_call",
+            "args_summary": '{"payload": "<FinalizeCallPayload>"}',
+            "result_summary": '{"final": true}',
+        },
+    )
+
+    # 6) Agent loop end — totals aggregated from turns above
+    _emit(
+        "call_agent",
+        "agent_loop_end",
+        model="gemini-3.1-flash-lite",
+        duration_ms=rng.randint(40, 120),
+        input_tokens=total_input,
+        output_tokens=total_output,
+        payload={
+            "turn_count": total_turns,
+            "completion_reason": "finalize",
+        },
+    )
+
+    # 7) Memory write-back
+    _emit("memory_updater", "tool_call", duration_ms=rng.randint(90, 240))
 
 
 # ---------------------------------------------------------------------------
