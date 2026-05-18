@@ -59,14 +59,24 @@ with sticky azure date headers (locale-aware: `Oggi / Ieri / 15 mag` in IT,
 `Today / Yesterday / May 15` in EN), and a `CallRow` per call with a
 hash-colored `Avatar.Text` fallback (11-color Amadz palette, hash on phone) —
 or, when the row resolves to a mock contact carrying `avatar_url`, a real
-photo from `randomuser.me`. A compact inline `BookingBadge` (see below)
-appears to the right of the row when the call has a booking action. There is
-no trailing phone icon — the operator triggers the AI from the Simulator
-drawer entry, not from a row tap.
+photo from `randomuser.me`. The row description is a **directional arrow
+icon** (↙ for incoming/missed, `progress-clock` while analyzing,
+`alert-circle-outline` for pipeline errors) + relative time — no text
+labels like "Incoming" / "Missed" (Pixel system-dialer pattern, round 9).
+Trailing area: a phone-outline **"ridial"** `IconButton` on every row pops a
+`Calling {phone}… (demo)` `Snackbar`; rows whose call has a booking get a
+compact icon-only `BookingMarker` pill (View + Paper Icon
+`calendar-blank-outline`) next to the ridial button in all filters except
+`bookings`, where the full `BookingBadge` (slot + party size) replaces the
+marker. The IconButton is wrapped in a `Pressable` with `stopPropagation` as
+a safety net so the row's onPress (open call detail) doesn't fire.
 
 **Booking chip filter** sorts the calls by the booking slot, not by call
 timestamp: upcoming slots come first (ascending), then past slots
-(descending). The `BookingBadge` shown on each row renders
+(descending). The secondary sort chip row (`By call date` / `By booking
+date`) shows a `swap-vertical` icon when inactive (Material standard "tap
+to sort"), and flips between `arrow-up` (asc) / `arrow-down` (desc) when
+active. The `BookingBadge` shown on each row renders
 `${formatDayMonth} ${time} · party N` — no year — from `payload.booking_date`
 and `payload.booking_time`. The Home screen fetches `listCalls` and
 `listBookings` in parallel and joins them on `call_id` client-side; the
@@ -225,10 +235,10 @@ caller labels in `success`; the body of each turn is `bodyMedium`.
 **Call detail polish.** `app/app/call/[id].tsx` hides the
 `integration_kind="mock_external"` "Simulated" badge for actions whose
 side effect lives on the operator's own device — the whitelist is
-`REAL_ON_DEVICE = {booking.create, appointment.create,
-appointment.create_inspection}`. This is a **UI-only** choice; the
-backend catalog and audit log still classify those actions as
-`mock_external`. Status chips are now Capitalize'd with an icon
+`REAL_ON_DEVICE = {"booking.create"}` (round 8 unified the action
+namespace to `booking.*` across all verticals — the `appointment.*` keys
+are gone). This is a **UI-only** choice; the backend catalog and audit
+log still classify those actions as `mock_external`. Status chips are now Capitalize'd with an icon
 (`check-circle-outline` / `alert-circle-outline` / `progress-clock`),
 and the phone subtitle prefixes a country flag emoji from
 `app/lib/flagFromE164.ts` (small table, no external library). The
@@ -373,27 +383,32 @@ exports `KNOWN_DOMAINS` — 11 verticals the wizard can assign as
 realestate, gym, events, generic).
 
 The Call detail screen further refines the user-facing "Simulated" badge with
-a UI-only whitelist: actions in
-`REAL_ON_DEVICE = {booking.create, appointment.create, appointment.create_inspection}`
-never show the badge even though the catalog classifies them as
-`mock_external`. The rationale is that those actions are conceptually
-"the operator wrote the appointment on their own device", not "a remote
-CRM call". The backend, audit log, and `result.mock` are unchanged.
+a UI-only whitelist: actions in `REAL_ON_DEVICE = {"booking.create"}` never
+show the badge even though the catalog classifies them as `mock_external`.
+The rationale is that those actions are conceptually "the operator wrote
+the booking on their own device", not "a remote CRM call". Round 8 unified
+the action namespace (`appointment.*` removed everywhere — dentist and
+bodyshop now also emit `booking.create`), so the whitelist has a single
+entry. The backend, audit log, and `result.mock` are unchanged.
 
 **Personal phonebook calls in the seed.** `backend/app/db/seed.py` exposes
 `_ensure_personal_calls(session)` that runs every seed pass (it lives
 *outside* the "templates already present, skipping" early-return). It
-idempotently inserts seven `Call` rows with `is_seed=True,
-session_id=None` and fixed UUIDs:
-
-- 3 missed calls (`status="failed"`) against numbers in `MOCK_CONTACTS`
-  (Amelia/Daniel/Isla) — they populate the **Missed** chip filter on the
-  Home feed and demonstrate the phone-app "you got a call" surface;
-- 2 unsaved calls (`status="completed"`) against numbers that exist in
-  neither `customers` nor `MOCK_CONTACTS` — they populate **Unsaved**;
-- 2 human-handled calls (`status="completed"`, `raw_transcript=None`,
-  no `extracted_fields`, no `executed_actions`) against mock contacts —
-  these prove that not every call has to go through the AI pipeline.
+calls `_ensure_seed_customers(session)` at the top — an idempotent upsert
+that inserts any of the **six** `SEED_CUSTOMERS` (Mark Ross, Julia White,
+Laura Bennett, Andrew Green, Sophie Walker, Tom Hughes) missing from the
+DB by phone, so a round-8-clean DB picks up the round-9 additions (Sophie,
+Tom) without a wipe. Then it idempotently inserts the base personal
+fixtures (3 missed + 2 unsaved + 2 human-handled mock-contact calls)
+plus a "busy week" 9–17 May densification that yields ~43 entries; combined
+with the 7 base fixtures the Home `limit=50` page lands fully populated.
+The busy-week plan emits **9 `ai_booking` calls** distributed across all
+6 customers (Mark×2, Julia×1, Laura×1, Andrew×2, Sophie×2, Tom×1, never
+more than one same-customer ai_booking per day) so the Bookings sort
+doesn't show monotonous customer streaks. AI booking blueprints live in
+`_AI_BOOKING_BLUEPRINTS` (one entry per `SEED_CUSTOMERS` name); the three
+dicts `SEED_CUSTOMERS` / `_AI_BOOKING_BLUEPRINTS` / `_CUSTOMER_PHONES_BY_NAME`
+must stay isomorphic — `backend/tests/test_seed_templates.py` enforces it.
 
 The fixtures duplicate phone/name literals from `MOCK_CONTACTS` because
 the backend cannot import client-side code; the list has a comment

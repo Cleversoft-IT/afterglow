@@ -1,5 +1,13 @@
-import { View } from 'react-native';
-import { Chip, List, Text, useTheme, type MD3Theme } from 'react-native-paper';
+import { Pressable, View } from 'react-native';
+import {
+  Chip,
+  Icon,
+  IconButton,
+  List,
+  Text,
+  useTheme,
+  type MD3Theme,
+} from 'react-native-paper';
 import { ContactAvatar } from './ContactAvatar';
 import { resolveFromCallItem } from '../lib/callerResolver';
 import { formatBookingSlot, formatRelativeTime } from '../lib/dateFormat';
@@ -13,27 +21,28 @@ type Props = {
   booking?: BookingListItem;
   mode: CallFilterKey;
   onPress?: () => void;
+  onRidial?: (phone: string) => void;
 };
 
-type StatusLabel = { text: string; color: string };
+type StatusIconInfo = { icon: string; color: string };
 
-// Inbound-only demo: every non-failed call is an "incoming" one. We surface a
-// semantic word rather than the phone icon (which previously misrendered on
-// completed rows) so missed/processing states are unambiguous at a glance.
-function statusLabel(call: CallListItem, theme: MD3Theme): StatusLabel {
+// Pixel-dialer style: every row reports its status as a directional arrow,
+// not a text label. The companion "ridial" phone-outline icon lives in the
+// trailing area for every row, regardless of status.
+function statusIconInfo(call: CallListItem, theme: MD3Theme): StatusIconInfo {
   if (call.status === 'failed') {
     if (call.failure_kind === 'pipeline_error') {
-      return { text: 'Pipeline error', color: theme.colors.error };
+      return { icon: 'alert-circle-outline', color: theme.colors.error };
     }
-    return { text: 'Missed', color: theme.colors.error };
+    return { icon: 'arrow-bottom-left', color: theme.colors.error };
   }
   if (call.status === 'transcribing' || call.status === 'analyzing') {
-    return { text: 'Analyzing…', color: theme.colors.primary };
+    return { icon: 'progress-clock', color: theme.colors.primary };
   }
   if (call.status === 'pending') {
-    return { text: 'Pending', color: theme.colors.onSurfaceVariant };
+    return { icon: 'clock-outline', color: theme.colors.onSurfaceVariant };
   }
-  return { text: 'Incoming', color: theme.colors.onSurfaceVariant };
+  return { icon: 'arrow-bottom-left', color: theme.colors.onSurfaceVariant };
 }
 
 function BookingBadge({ booking }: { booking: BookingListItem }) {
@@ -61,11 +70,69 @@ function BookingBadge({ booking }: { booking: BookingListItem }) {
   );
 }
 
-export function CallRow({ call, booking, mode, onPress }: Props) {
+// Compact icon-only marker used in non-bookings filters to signal that the
+// row has a booking attached, without the full slot text. Tap is decorative
+// — propagates to the List.Item onPress (open detail).
+function BookingMarker() {
+  const theme = useTheme();
+  return (
+    <View
+      style={{
+        width: 28,
+        height: 28,
+        borderRadius: 14,
+        backgroundColor: theme.colors.secondaryContainer,
+        alignItems: 'center',
+        justifyContent: 'center',
+      }}
+    >
+      <Icon
+        source="calendar-blank-outline"
+        size={16}
+        color={theme.colors.onSecondaryContainer}
+      />
+    </View>
+  );
+}
+
+// Trailing phone-outline button (Pixel system-dialer pattern). Pressing it
+// must NOT trigger the row's onPress (call detail navigation). Paper's
+// IconButton already stops native propagation; the surrounding Pressable
+// is a safety net on react-native-web where event bubbling differs.
+function RidialButton({
+  phone,
+  onRidial,
+}: {
+  phone: string;
+  onRidial?: (phone: string) => void;
+}) {
+  const theme = useTheme();
+  if (!onRidial) return null;
+  return (
+    <Pressable
+      onPress={(e) => {
+        e.stopPropagation?.();
+        onRidial(phone);
+      }}
+      accessibilityRole="button"
+      accessibilityLabel={`Call ${phone}`}
+    >
+      <IconButton
+        icon="phone-outline"
+        size={22}
+        iconColor={theme.colors.onSurfaceVariant}
+        onPress={() => onRidial(phone)}
+        accessibilityLabel={`Call ${phone}`}
+      />
+    </Pressable>
+  );
+}
+
+export function CallRow({ call, booking, mode, onPress, onRidial }: Props) {
   const theme = useTheme();
   const { locale } = useLocale();
   const caller = resolveFromCallItem(call);
-  const status = statusLabel(call, theme);
+  const status = statusIconInfo(call, theme);
   const isBookingsMode = mode === 'bookings';
 
   return (
@@ -111,20 +178,31 @@ export function CallRow({ call, booking, mode, onPress }: Props) {
           );
         }
         return () => (
-          <Text variant="bodySmall" style={{ color: status.color }}>
-            {status.text} · {formatRelativeTime(call.created_at, locale)}
-          </Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            <Icon source={status.icon} size={14} color={status.color} />
+            <Text variant="bodySmall" style={{ color: status.color }}>
+              {formatRelativeTime(call.created_at, locale)}
+            </Text>
+          </View>
         );
       })()}
-      right={
-        booking
-          ? () => (
-              <View style={{ justifyContent: 'center', paddingRight: 12 }}>
-                <BookingBadge booking={booking} />
-              </View>
-            )
-          : undefined
-      }
+      right={() => (
+        <View
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 4,
+            paddingRight: 4,
+          }}
+        >
+          {isBookingsMode && booking ? (
+            <BookingBadge booking={booking} />
+          ) : booking ? (
+            <BookingMarker />
+          ) : null}
+          <RidialButton phone={call.phone_e164} onRidial={onRidial} />
+        </View>
+      )}
       style={{ paddingRight: 0 }}
     />
   );

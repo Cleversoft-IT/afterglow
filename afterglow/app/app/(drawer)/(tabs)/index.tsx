@@ -14,6 +14,7 @@ import {
   Chip,
   IconButton,
   Searchbar,
+  Snackbar,
   Surface,
   Text,
   useTheme,
@@ -69,6 +70,7 @@ export default function HomeScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [toast, setToast] = useState<PipelineToast | null>(null);
+  const [ridialSnackbar, setRidialSnackbar] = useState<string | null>(null);
   const focusedRef = useRef(false);
 
   const load = useCallback(async () => {
@@ -362,7 +364,7 @@ export default function HomeScreen() {
                     ? bookingsSort.dir === 'asc'
                       ? 'arrow-up'
                       : 'arrow-down'
-                    : undefined
+                    : 'swap-vertical'
                 }
                 selectedColor={
                   isActive ? theme.colors.onSecondaryContainer : undefined
@@ -433,6 +435,7 @@ export default function HomeScreen() {
               booking={bookingByCallId.get(item.id)}
               mode={filter}
               onPress={onPress}
+              onRidial={(phone) => setRidialSnackbar(phone)}
             />
           );
         }}
@@ -445,6 +448,14 @@ export default function HomeScreen() {
           </Surface>
         }
       />
+
+      <Snackbar
+        visible={ridialSnackbar !== null}
+        onDismiss={() => setRidialSnackbar(null)}
+        duration={1800}
+      >
+        {ridialSnackbar ? `Calling ${ridialSnackbar}… (demo)` : ''}
+      </Snackbar>
     </View>
   );
 }
