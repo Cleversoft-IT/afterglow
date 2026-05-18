@@ -36,6 +36,9 @@ if (Platform.OS === 'web' && typeof document !== 'undefined') {
   // <ScrollView> / <FlatList> in a desktop browser render them, and
   // they show up cropped on the right edge of the demo-site phone
   // mockup. The lists still scroll normally with wheel / touch.
+  // See `.claude/memory/reference_demo_phone_geometry.md` — this is the
+  // canonical place to hide web scrollbars, NOT a workaround in the
+  // demo-site CSS (cross-origin iframe styling can't reach inside).
   const hideScrollbars = document.createElement('style');
   hideScrollbars.textContent =
     '*::-webkit-scrollbar{display:none}*{scrollbar-width:none;-ms-overflow-style:none}';

@@ -187,21 +187,32 @@ html, body, #root {
 }
 
 /* ── Phone frame mockup ─────────────────────────────────
-   The screen content (GIF in hero, iframe in demo) is the Afterglow app
-   rendered at 390 × 845. React-native-web's mobile layout has a ~30 px
-   top padding (status-bar safe area) that we hide behind the bezel —
-   otherwise a light-grey strip is visible between the bezel and the
-   first painted element (search bar), reading as "wrong margin".
+   Reference geometry — see `.claude/memory/reference_demo_phone_geometry.md`
+   for the full doc. DO NOT touch the iframe / phone-stage rules to fix
+   GIF alignment; see `.claude/memory/feedback_demo_over_gif.md` for the
+   list of trick attempts that broke the live demo.
 
-   - The GIF is pre-cropped to 390 × 815 by record-demo.cjs (clipped 30 px
-     from the top during screenshot). So the img fills the inner area
-     edge-to-edge — no CSS gymnastics needed.
-   - The live <iframe> can't be cropped at capture time, so we render it
-     30 px taller than the container and translate it up by 30 px; the
-     overflow hidden on the parent clips the padding behind the bezel.
+   Layers, outer → inner:
+     1. `.phone-frame` box — logical 410 × 835 (set on `.phone-stage` via
+        --phone-w / --phone-h; visually scaled via `transform: scale()`).
+        `aspect-ratio: 410 / 850` is the hero-phone variant; the demo
+        stage overrides with explicit width / height.
+     2. `.phone-frame::after` — painted 10 px black bezel ring.
+     3. Screen content:
+        - hero `<img>` (GIF, 390 × 830 intrinsic): width/height 100%, the
+          rendering covers the full 410 × 835 box; the bezel `::after`
+          paints over the outer 10 px on each side so the visible
+          portion of the GIF is 390 × 815.
+        - demo `<iframe>` (live app): absolute, inset by exactly 10 px so
+          it renders inside the bezel at 390 × 815 — the live app sees
+          itself as a mobile viewport of that size. NO margin-top trick,
+          NO calc(100% + Npx) — every variant we tried clipped the search
+          bar or left a visible gap above it (see feedback memory).
 
-   Outer aspect ratio: inner is 390 × 815 (= 78 / 163). The 10 px bezel
-   (painted as ::after) adds 20 px on each axis → outer 410 × 835. */
+   Web scrollbars are hidden globally inside the app at
+   `afterglow/app/app/_layout.tsx` (module-level, Platform.OS === 'web'
+   only). The iframe inherits that behaviour, so no scrollbar workaround
+   is needed here. */
 .phone-frame {
   position: relative;
   width: 410px;
@@ -238,9 +249,8 @@ html, body, #root {
 }
 
 .phone-frame iframe {
-  /* Fit inside the 10 px painted bezel — the iframe occupies the
-     390 × 815 screen area, so the live app renders at a smaller
-     mobile viewport that fits the frame without crowding the bezel. */
+  /* Inset by exactly 10 px (= bezel thickness) — the live app renders
+     in the visible 390 × 815 screen area. See header comment above. */
   position: absolute;
   top: 10px;
   left: 10px;
