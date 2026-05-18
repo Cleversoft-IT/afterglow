@@ -123,10 +123,11 @@ async def run_pipeline(session: AsyncSession, call_id: uuid.UUID) -> None:
     )
     call.customer_id = customer.id
 
-    # 3) Memory lookup — structured-first, RAG only when the customer has
-    # enough history for semantic retrieval to beat a straight serialization.
-    # In demo we never read from the shared Vultr collection (cross-visitor
-    # leakage); the SQL fallback is already session-isolated upstream.
+    # 3) Memory lookup — structured-first for thin history, RAG semantic
+    # when there's enough material. In demo we now read from the shared
+    # collection IF the caller is a seed customer (the lifespan preseed
+    # task populated chunks for those phones); writes still stay skipped
+    # so visitors don't pollute each other.
     #
     # We pull TWO things from prior calls:
     #   (a) `prior_facts` — Markdown-formatted text, spliced into the analyzer
@@ -136,7 +137,13 @@ async def run_pipeline(session: AsyncSession, call_id: uuid.UUID) -> None:
     #       null`) deterministically BEFORE the LLM call.
     collection_id = settings.vultr_vector_default_collection or None
     total_calls = customer.total_calls or 0
-    use_structured = is_demo or total_calls <= 10
+    preseed_available = False
+    if is_demo and collection_id:
+        preseed_available = customer.is_seed or await _seed_exists_for_phone(
+            session, call.phone_e164
+        )
+    demo_can_rag = is_demo and bool(collection_id) and preseed_available
+    use_structured = not (demo_can_rag or (not is_demo and total_calls > 10))
     prior_facts = ""
     prior_structured: dict[str, Any] = await memory_retrieval.retrieve_structured_facts(
         session, customer
@@ -151,7 +158,12 @@ async def run_pipeline(session: AsyncSession, call_id: uuid.UUID) -> None:
             session_id=call.session_id,
             agent_name="memory_lookup",
             step_type="structured_history",
-            payload={"count": total_calls, "source": source, "demo": is_demo},
+            payload={
+                "count": total_calls,
+                "source": source,
+                "demo": is_demo,
+                "prior_facts_preview": history_text[:1000] if history_text else "",
+            },
         ):
             prior_facts = history_text
     else:
@@ -161,18 +173,27 @@ async def run_pipeline(session: AsyncSession, call_id: uuid.UUID) -> None:
             agent_name="memory_lookup",
             step_type="rag_semantic",
             model="vultr-rag",
-            payload={"count": total_calls},
+            payload={
+                "count": total_calls,
+                "demo": is_demo,
+                "preseeded": preseed_available,
+            },
         ) as rag_audit:
             prior_facts, rag_input_tokens, rag_output_tokens = (
                 await memory_retrieval.retrieve_customer_context(
                     collection_id=collection_id,
                     phone_e164=call.phone_e164,
                     domain_hint=template.domain_hint,
-                    is_demo=False,
+                    is_demo=is_demo,
+                    preseed_available=preseed_available,
                 )
             )
             rag_audit.input_tokens = rag_input_tokens
             rag_audit.output_tokens = rag_output_tokens
+            rag_audit.payload = {
+                **(rag_audit.payload or {}),
+                "prior_facts_preview": prior_facts[:1000] if prior_facts else "",
+            }
 
     # 4) Single Gemini structured-output call. Fail-fast: a missing key or a
     # Gemini error bubbles up as CallAnalysisError; the orchestrator catches
@@ -252,7 +273,21 @@ async def run_pipeline(session: AsyncSession, call_id: uuid.UUID) -> None:
                 customer=customer,
                 transcript_text=transcript.text,
             )
-            planner_audit.payload = {"mode": planner_mode, "count": len(plan)}
+            planner_audit.payload = {
+                "mode": planner_mode,
+                "count": len(plan),
+                "actions": [
+                    {
+                        "action_type": a.get("action_type"),
+                        "title": a.get("title"),
+                        "summary": a.get("summary"),
+                        "payload": a.get("payload"),
+                        "evidence": a.get("evidence"),
+                        "confidence": a.get("confidence"),
+                    }
+                    for a in plan
+                ],
+            }
     except action_planner.ActionPlannerError as exc:
         logger.warning("action_planner failed for call %s: %s", call.id, exc)
         async with audit_step(
@@ -278,10 +313,22 @@ async def run_pipeline(session: AsyncSession, call_id: uuid.UUID) -> None:
         session_id=call.session_id,
         agent_name="action_executor",
         step_type="action_exec",
-    ):
-        await execute_planned_actions(
+    ) as executor_audit:
+        executed = await execute_planned_actions(
             session, call=call, customer=customer, template=template, plan=plan
         )
+        executor_audit.payload = {
+            "count": len(executed),
+            "actions_executed": [
+                {
+                    "action_type": a.action_type,
+                    "status": a.status,
+                    "mock": bool((a.result or {}).get("mock")) if a.result else False,
+                    "evidence_count": len(a.evidence or []),
+                }
+                for a in executed
+            ],
+        }
 
     # 6c) display_name backfill — if we just learned the caller's name and
     # the Customer row has none yet, persist it so the next ring of the
@@ -352,6 +399,61 @@ def _backfill_display_name(
             continue
         customer.display_name = value[:200]
         return
+
+
+async def _seed_exists_for_phone(
+    session: AsyncSession, phone_e164: str
+) -> bool:
+    """Return True iff a seed Customer row exists for this phone.
+
+    Used by the orchestrator to decide whether a demo caller can read from
+    the shared Vultr collection. A demo visitor calling Mark's phone gets
+    a clone-on-write Customer (is_seed=False, session_id=<theirs>); the
+    seed row itself is unchanged and answers True here.
+    """
+    return bool(
+        await session.scalar(
+            select(Customer.id).where(
+                Customer.phone_e164 == phone_e164,
+                Customer.is_seed.is_(True),
+            )
+        )
+    )
+
+
+def _format_briefing_chunk(
+    *,
+    call: Call,
+    customer: Customer,
+    template: Template,
+    briefing: str,
+    briefing_en: Optional[str],
+    classification: dict[str, Any],
+) -> str:
+    """Render the indexed content of a Vultr Vector Store chunk.
+
+    Phone-queryable: the embedded `customer.phone_e164` is what the RAG
+    retrieval looks for when answering `"facts about phone {e164}"`. The
+    chunk also carries domain, intent/sentiment/urgency and the bilingual
+    EN tail when the call wasn't already in English.
+
+    Reused by:
+      - `_persist_memory` (orchestrator runtime path)
+      - `tasks.vector_preseed` (lifespan preseed of seed-call chunks)
+    """
+    call_date = (
+        call.completed_at or call.started_at or datetime.now(tz=timezone.utc)
+    ).date()
+    display_label = customer.display_name or customer.phone_e164
+    bilingual_tail = f"\n\n[EN] {briefing_en}" if briefing_en else ""
+    return (
+        f"Customer {display_label} ({customer.phone_e164}) called "
+        f"the {template.domain_hint} on {call_date.isoformat()}. "
+        f"Intent: {classification.get('intent', 'unknown')}. "
+        f"Sentiment: {classification.get('sentiment', 'unknown')}. "
+        f"Urgency: {classification.get('urgency', 'unknown')}. "
+        f"Briefing: {briefing}{bilingual_tail}"
+    )
 
 
 def _pre_classify(transcript_text: str) -> bool:
@@ -582,8 +684,6 @@ async def _persist_memory(
     # Make the chunk content phone-queryable. The RAG retrieval asks
     # "facts about phone {e164}", so the phone number MUST appear inside the
     # indexed content (Vultr embeds `content`; `description` is metadata).
-    call_date = (call.completed_at or call.started_at or datetime.now(tz=timezone.utc)).date()
-    display_label = customer.display_name or customer.phone_e164
     detected_language = (classification.get("language") or "en").lower()
 
     # Bilingual chunk: if the call was not already in English, ask Gemini for
@@ -611,14 +711,13 @@ async def _persist_memory(
                 bilingual_audit.status = "degraded"
                 bilingual_audit.payload = {"reason": str(exc)}
 
-    bilingual_tail = f"\n\n[EN] {briefing_en}" if briefing_en else ""
-    chunk_content = (
-        f"Customer {display_label} ({customer.phone_e164}) called "
-        f"the {template.domain_hint} on {call_date.isoformat()}. "
-        f"Intent: {classification.get('intent', 'unknown')}. "
-        f"Sentiment: {classification.get('sentiment', 'unknown')}. "
-        f"Urgency: {classification.get('urgency', 'unknown')}. "
-        f"Briefing: {briefing}{bilingual_tail}"
+    chunk_content = _format_briefing_chunk(
+        call=call,
+        customer=customer,
+        template=template,
+        briefing=briefing,
+        briefing_en=briefing_en,
+        classification=classification,
     )
 
     item_id: Optional[str] = None
@@ -629,12 +728,17 @@ async def _persist_memory(
             agent_name="memory_updater",
             step_type="tool_call",
             model="vultr-vector-store",
-        ):
+        ) as updater_audit:
             item_id = await vultr_inference.add_vector_item(
                 collection_id,
                 content=chunk_content,
                 description=f"call_{call.id} phone_{customer.phone_e164}",
             )
+            updater_audit.payload = {
+                "collection": collection_id,
+                "vultr_item_id": item_id,
+                "chars": len(chunk_content),
+            }
     except httpx.HTTPError as exc:
         logger.warning(
             "memory_updater: Vultr Vector Store push failed (%s) — "

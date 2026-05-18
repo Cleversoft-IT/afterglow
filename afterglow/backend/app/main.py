@@ -4,6 +4,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from contextlib import asynccontextmanager
+from datetime import datetime, timezone
 
 from dotenv import load_dotenv
 from fastapi import FastAPI
@@ -21,8 +22,11 @@ from app.api import (
 )
 from app.api.session_context import DEMO_SESSION_HEADER
 from app.config import get_settings
+from app.db.engine import SessionLocal
 from app.tasks.orphan_recovery import recover_orphans
+from app.tasks.seed_date_refresh import refresh_seed_dates_if_needed
 from app.tasks.session_cleanup import run_cleanup_loop
+from app.tasks.vector_preseed import preseed_demo_collection
 
 load_dotenv()
 
@@ -47,6 +51,36 @@ async def lifespan(app: FastAPI):
             logger.info("orphan_recovery: marked %d stuck calls as failed", recovered)
     except Exception as exc:  # noqa: BLE001
         logger.warning("orphan_recovery failed at startup: %s", exc)
+
+    today = datetime.now(timezone.utc).date()
+    async with SessionLocal() as session:
+        refresh_ok = False
+        try:
+            shifted = await refresh_seed_dates_if_needed(session, today)
+            await session.commit()
+            refresh_ok = True
+            if shifted:
+                logger.info("seed_date_refresh: shifted %d row(s)", shifted)
+        except Exception as exc:  # noqa: BLE001
+            # Refresh failure is a serious bug (broken SQL / missing settings
+            # table) — log ERROR and skip preseed so we don't push stale-dated
+            # chunks into the Vector Store.
+            logger.error(
+                "seed_date_refresh failed: %s — skipping vector preseed", exc
+            )
+            await session.rollback()
+
+        if refresh_ok:
+            try:
+                await preseed_demo_collection(session)
+                await session.commit()
+            except Exception as exc:  # noqa: BLE001
+                # Vultr being down is tolerated: the runtime RAG path
+                # degrades gracefully. Backend must start regardless.
+                logger.warning(
+                    "vector_preseed failed: %s — startup continues", exc
+                )
+                await session.rollback()
 
     cleanup_task = asyncio.create_task(run_cleanup_loop())
     try:

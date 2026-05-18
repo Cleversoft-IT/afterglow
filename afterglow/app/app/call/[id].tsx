@@ -7,7 +7,12 @@ import {
   Button,
   Card,
   Chip,
+  Dialog,
   Divider,
+  IconButton,
+  Portal,
+  Snackbar,
+  Surface,
   Text,
   useTheme,
 } from 'react-native-paper';
@@ -115,6 +120,9 @@ export default function CallDetailScreen() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busyAction, setBusyAction] = useState<string | null>(null);
+  const [regenDialogVisible, setRegenDialogVisible] = useState(false);
+  const [regenerating, setRegenerating] = useState(false);
+  const [regenSuccess, setRegenSuccess] = useState(false);
 
   const load = useCallback(async () => {
     if (!id) return;
@@ -148,6 +156,21 @@ export default function CallDetailScreen() {
       setError(e instanceof ApiError ? e.message : String(e));
     } finally {
       setBusyAction(null);
+    }
+  };
+
+  const regenerateBriefing = async () => {
+    if (!id) return;
+    setRegenDialogVisible(false);
+    setRegenerating(true);
+    try {
+      const updated = await api.regenerateSummary(id);
+      setCall(updated);
+      setRegenSuccess(true);
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : String(e));
+    } finally {
+      setRegenerating(false);
     }
   };
 
@@ -254,7 +277,23 @@ export default function CallDetailScreen() {
 
       {extracted ? (
         <Card mode="elevated">
-          <Card.Title title="Extracted" />
+          <Card.Title
+            title="Extracted"
+            right={(props) => (
+              <IconButton
+                {...props}
+                icon="refresh"
+                mode="contained-tonal"
+                size={20}
+                accessibilityLabel="Regenerate briefing"
+                disabled={
+                  call.status !== 'completed' || !extracted || regenerating
+                }
+                loading={regenerating}
+                onPress={() => setRegenDialogVisible(true)}
+              />
+            )}
+          />
           <Card.Content>
             <View style={styles.chipRow}>
               {extracted.intent ? (
@@ -267,6 +306,24 @@ export default function CallDetailScreen() {
                 <Chip mode="flat" compact icon="clock-alert-outline">{`urgency · ${extracted.urgency}`}</Chip>
               ) : null}
             </View>
+            {extracted.briefing ? (
+              <Surface mode="flat" style={styles.briefingSurface}>
+                <Text
+                  variant="labelSmall"
+                  style={{
+                    color: theme.colors.onSurfaceVariant,
+                    textTransform: 'uppercase',
+                    letterSpacing: 0.8,
+                    marginBottom: 4,
+                  }}
+                >
+                  Next-call briefing
+                </Text>
+                <Text variant="bodyMedium" style={{ fontStyle: 'italic' }}>
+                  {extracted.briefing}
+                </Text>
+              </Surface>
+            ) : null}
             {Object.entries(extracted.fields).map(([k, v], i) => {
               const def = labelByKey[k];
               return (
@@ -352,6 +409,32 @@ export default function CallDetailScreen() {
       ) : null}
 
       {call.raw_transcript?.text ? <TranscriptList text={call.raw_transcript.text} /> : null}
+
+      <Portal>
+        <Dialog
+          visible={regenDialogVisible}
+          onDismiss={() => setRegenDialogVisible(false)}
+        >
+          <Dialog.Title>Regenerate briefing?</Dialog.Title>
+          <Dialog.Content>
+            <Text variant="bodyMedium">
+              Re-runs the briefing prompt with the current transcript and prior facts.
+              Extracted fields and executed actions are unchanged.
+            </Text>
+          </Dialog.Content>
+          <Dialog.Actions>
+            <Button onPress={() => setRegenDialogVisible(false)}>Cancel</Button>
+            <Button onPress={regenerateBriefing}>Regenerate</Button>
+          </Dialog.Actions>
+        </Dialog>
+        <Snackbar
+          visible={regenSuccess}
+          onDismiss={() => setRegenSuccess(false)}
+          duration={3000}
+        >
+          Briefing updated
+        </Snackbar>
+      </Portal>
     </ScrollView>
   );
 }
@@ -359,6 +442,12 @@ export default function CallDetailScreen() {
 const styles = StyleSheet.create({
   scroll: { padding: 16, gap: 20, paddingBottom: 48 },
   chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 12 },
+  briefingSurface: {
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    marginBottom: 12,
+  },
   fieldRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',

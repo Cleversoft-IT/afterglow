@@ -261,12 +261,17 @@ export const api = {
     return request<BookingListItem[]>(`/api/v1/bookings${suffix}`);
   },
 
-  listAudit: (params?: { call_id?: string }) => {
+  listAudit: (params?: { call_id?: string; limit?: number }) => {
     const qs = new URLSearchParams();
     if (params?.call_id) qs.set('call_id', params.call_id);
-    const suffix = qs.toString() ? `?${qs}` : '';
-    return request<AuditLogEntry[]>(`/api/v1/audit${suffix}`);
+    qs.set('limit', String(params?.limit ?? 500));
+    return request<AuditLogEntry[]>(`/api/v1/audit?${qs.toString()}`);
   },
+
+  regenerateSummary: (call_id: string) =>
+    request<CallDetailView>(`/api/v1/calls/${call_id}/regenerate-summary`, {
+      method: 'POST',
+    }),
 
   // Back-compat alias for the historical endpoint name; new code should
   // call undoAction / redoAction instead.

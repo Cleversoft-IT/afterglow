@@ -31,13 +31,21 @@ SEED_TEMPLATES = {
 }
 
 
-SIX_CUSTOMERS = {
+SEED_ROSTER = {
+    # Round 8 base.
     "Mark Ross",
     "Julia White",
     "Laura Bennett",
     "Andrew Green",
     "Sophie Walker",
     "Tom Hughes",
+    # Round 9 expansion — 2 per domain.
+    "Marco Bianchi",
+    "Olivia Hayes",
+    "Emma Thompson",
+    "James O'Connor",
+    "Rachel Kim",
+    "Luca Romano",
 }
 
 
@@ -102,13 +110,13 @@ def test_no_legacy_appointment_field_keys():
         )
 
 
-def test_ai_booking_blueprints_cover_six_customers():
-    """Round 9 — the busy-week generator emits `ai_booking` rows for six
-    customers (Mark / Julia / Laura / Andrew / Sophie / Tom). The blueprint
-    dict must carry exactly that roster, otherwise `_make_ai_booking_spec`
-    KeyErrors and the seed boot fails."""
-    assert set(_AI_BOOKING_BLUEPRINTS.keys()) == SIX_CUSTOMERS, (
-        f"blueprint roster {set(_AI_BOOKING_BLUEPRINTS.keys())} != {SIX_CUSTOMERS}"
+def test_ai_booking_blueprints_cover_seed_roster():
+    """Round 9 — the busy-week + historical generators emit `ai_booking` rows
+    for the full 12-customer seed roster. The blueprint dict must carry
+    exactly that roster, otherwise `_make_ai_booking_spec` KeyErrors and the
+    seed boot fails."""
+    assert set(_AI_BOOKING_BLUEPRINTS.keys()) == SEED_ROSTER, (
+        f"blueprint roster {set(_AI_BOOKING_BLUEPRINTS.keys())} != {SEED_ROSTER}"
     )
 
 
@@ -119,7 +127,7 @@ def test_each_blueprint_emits_booking_create_with_slots():
     if either is missing the chip stays blank."""
     fake_uuid = uuid.UUID("00000000-0000-4000-8000-000000000000")
     created = datetime(2026, 5, 15, 19, 0, tzinfo=timezone.utc)
-    for name in SIX_CUSTOMERS:
+    for name in SEED_ROSTER:
         spec = _make_ai_booking_spec(
             fixture_uuid=fake_uuid,
             customer_id=fake_uuid,
@@ -189,19 +197,20 @@ def _make_mock_session(existing_phones: list[str]):
 
 def test_ensure_seed_customers_idempotent():
     """`_ensure_seed_customers` must upsert only missing rows. With 4
-    existing phones (Mark/Julia/Laura/Andrew) → 2 inserts (Sophie/Tom);
-    with all 6 phones present → zero inserts."""
+    round-8 phones (Mark/Julia/Laura/Andrew) → 8 inserts (Sophie/Tom +
+    the 6 round-9 newcomers); with all 12 phones present → zero inserts."""
     existing4 = [c[1] for c in SEED_CUSTOMERS if c[0] in {
         "Mark Ross", "Julia White", "Laura Bennett", "Andrew Green",
     }]
+    expected_missing = len(SEED_CUSTOMERS) - len(existing4)
     session = _make_mock_session(existing4)
     asyncio.run(_ensure_seed_customers(session))
-    assert session.add.call_count == 2, (
-        f"expected 2 inserts (Sophie/Tom), got {session.add.call_count}"
+    assert session.add.call_count == expected_missing, (
+        f"expected {expected_missing} inserts, got {session.add.call_count}"
     )
 
-    existing6 = [c[1] for c in SEED_CUSTOMERS]
-    session2 = _make_mock_session(existing6)
+    existing_all = [c[1] for c in SEED_CUSTOMERS]
+    session2 = _make_mock_session(existing_all)
     asyncio.run(_ensure_seed_customers(session2))
     assert session2.add.call_count == 0, (
         f"expected 0 inserts (idempotent), got {session2.add.call_count}"

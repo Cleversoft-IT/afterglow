@@ -1,13 +1,14 @@
 import { DrawerActions } from '@react-navigation/native';
 import { router, useFocusEffect, useNavigation } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
-import { FlatList, RefreshControl, StyleSheet, View } from 'react-native';
+import { Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 import {
   ActivityIndicator,
   Appbar,
   Avatar,
   Banner,
   Chip,
+  IconButton,
   List,
   Surface,
   Text,
@@ -24,7 +25,33 @@ import { useLocale } from '../../lib/LocaleContext';
 import type { AppTheme } from '../../lib/paperTheme';
 import type { AuditLogEntry } from '../../lib/types';
 
-function statusVisuals(status: string, theme: AppTheme): { icon: string; bg: string; fg: string } {
+// Status priority: error > degraded > skipped > success > other. The call
+// card header uses this to surface the worst step's color even when the
+// other steps under it were fine.
+const STATUS_RANK: Record<string, number> = {
+  error: 4,
+  degraded: 3,
+  skipped: 2,
+  success: 1,
+};
+
+function worstStatus(entries: AuditLogEntry[]): string {
+  let best = 'success';
+  let bestRank = -1;
+  for (const e of entries) {
+    const rank = STATUS_RANK[e.status] ?? 0;
+    if (rank > bestRank) {
+      bestRank = rank;
+      best = e.status;
+    }
+  }
+  return best;
+}
+
+function statusVisuals(
+  status: string,
+  theme: AppTheme,
+): { icon: string; bg: string; fg: string } {
   if (status === 'success') {
     return { icon: 'check', bg: theme.colors.successContainer, fg: theme.colors.onSuccessContainer };
   }
@@ -32,7 +59,11 @@ function statusVisuals(status: string, theme: AppTheme): { icon: string; bg: str
     return { icon: 'alert-circle', bg: theme.colors.errorContainer, fg: theme.colors.onErrorContainer };
   }
   if (status === 'skipped' || status === 'degraded') {
-    return { icon: 'skip-next-circle-outline', bg: theme.colors.secondaryContainer, fg: theme.colors.onSecondaryContainer };
+    return {
+      icon: 'skip-next-circle-outline',
+      bg: theme.colors.secondaryContainer,
+      fg: theme.colors.onSecondaryContainer,
+    };
   }
   return { icon: 'circle-outline', bg: theme.colors.surfaceVariant, fg: theme.colors.onSurfaceVariant };
 }
@@ -77,10 +108,7 @@ function formatDuration(ms: number): string {
 function SummaryBanner({ totals, theme }: { totals: Totals; theme: AppTheme }) {
   const totalTokens = totals.inputTokens + totals.outputTokens;
   return (
-    <Surface
-      mode="flat"
-      style={[styles.summary, { backgroundColor: theme.colors.surfaceVariant }]}
-    >
+    <Surface mode="flat" style={[styles.summary, { backgroundColor: theme.colors.surfaceVariant }]}>
       <View style={styles.summaryRow}>
         <SummaryCell label="Steps" value={String(totals.rows)} theme={theme} />
         <SummaryCell label="Calls" value={String(totals.callCount)} theme={theme} />
@@ -103,15 +131,7 @@ function SummaryBanner({ totals, theme }: { totals: Totals; theme: AppTheme }) {
   );
 }
 
-function SummaryCell({
-  label,
-  value,
-  theme,
-}: {
-  label: string;
-  value: string;
-  theme: AppTheme;
-}) {
+function SummaryCell({ label, value, theme }: { label: string; value: string; theme: AppTheme }) {
   return (
     <View style={styles.summaryCell}>
       <Text
@@ -127,6 +147,181 @@ function SummaryCell({
   );
 }
 
+type CallGroup = {
+  callId: string;
+  displayName: string;
+  phoneE164: string | null;
+  callStatus: string | null;
+  worstStatus: string;
+  totalDurationMs: number;
+  totalTokens: number;
+  stepCount: number;
+  // entries grouped by agent_name, then sorted chronologically (asc) within agent.
+  byAgent: { agentName: string; entries: AuditLogEntry[] }[];
+  createdAt: string; // earliest createdAt in the group; used for the header timestamp.
+};
+
+function groupByCall(rows: AuditLogEntry[]): {
+  groups: CallGroup[];
+  orphans: AuditLogEntry[];
+} {
+  const map = new Map<string, AuditLogEntry[]>();
+  const orphans: AuditLogEntry[] = [];
+
+  for (const r of rows) {
+    if (!r.call_id) {
+      orphans.push(r);
+      continue;
+    }
+    const list = map.get(r.call_id) ?? [];
+    list.push(r);
+    map.set(r.call_id, list);
+  }
+
+  const groups: CallGroup[] = [];
+  for (const [callId, entries] of map.entries()) {
+    // Group by agent_name (preserving the first-seen order, which mirrors
+    // the pipeline order because the orchestrator emits chronologically).
+    const agentOrder: string[] = [];
+    const byAgent: Record<string, AuditLogEntry[]> = {};
+    for (const e of entries) {
+      if (!byAgent[e.agent_name]) {
+        byAgent[e.agent_name] = [];
+        agentOrder.push(e.agent_name);
+      }
+      byAgent[e.agent_name].push(e);
+    }
+    // Sort each agent's steps by created_at asc so the leaf list reads
+    // top-to-bottom in pipeline order.
+    for (const k of agentOrder) {
+      byAgent[k].sort((a, b) =>
+        a.created_at < b.created_at ? -1 : a.created_at > b.created_at ? 1 : 0,
+      );
+    }
+
+    let totalDurationMs = 0;
+    let totalTokens = 0;
+    for (const e of entries) {
+      if (typeof e.duration_ms === 'number') totalDurationMs += e.duration_ms;
+      if (typeof e.input_tokens === 'number') totalTokens += e.input_tokens;
+      if (typeof e.output_tokens === 'number') totalTokens += e.output_tokens;
+    }
+
+    const first = entries.reduce((a, b) => (a.created_at < b.created_at ? a : b));
+
+    groups.push({
+      callId,
+      displayName: first.call_display_name ?? first.call_phone_e164 ?? callId.slice(0, 8),
+      phoneE164: first.call_phone_e164 ?? null,
+      callStatus: first.call_status ?? null,
+      worstStatus: worstStatus(entries),
+      totalDurationMs,
+      totalTokens,
+      stepCount: entries.length,
+      byAgent: agentOrder.map((name) => ({ agentName: name, entries: byAgent[name] })),
+      createdAt: first.created_at,
+    });
+  }
+
+  // Newest call group first — matches the DESC ordering of the raw list.
+  groups.sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
+  return { groups, orphans };
+}
+
+function StepLeaf({
+  entry,
+  theme,
+  locale,
+  expanded,
+  onTogglePayload,
+}: {
+  entry: AuditLogEntry;
+  theme: AppTheme;
+  locale: 'it' | 'en';
+  expanded: boolean;
+  onTogglePayload: () => void;
+}) {
+  const v = statusVisuals(entry.status, theme);
+  const humanLabel = humanLabelFromPayload(entry.payload ?? undefined);
+  const time = formatTimeWithSeconds(entry.created_at, locale);
+  const hasPayload = entry.payload && Object.keys(entry.payload).length > 0;
+
+  return (
+    <View style={styles.leafContainer}>
+      <View style={styles.leafHeader}>
+        <Avatar.Icon
+          icon={v.icon}
+          size={28}
+          color={v.fg}
+          style={{ backgroundColor: v.bg }}
+        />
+        <View style={{ flex: 1, gap: 4 }}>
+          <View style={styles.leafChips}>
+            <Chip compact mode="flat" style={{ backgroundColor: v.bg }} textStyle={{ color: v.fg, fontSize: 11 }}>
+              {entry.status}
+            </Chip>
+            <Chip compact mode="outlined" textStyle={{ fontSize: 11 }}>
+              {friendlyStepLabel(entry.step_type)}
+            </Chip>
+            {entry.model ? (
+              <Chip compact mode="outlined" textStyle={{ fontSize: 11 }}>
+                {entry.model}
+              </Chip>
+            ) : null}
+            <Text
+              variant="labelSmall"
+              style={{ color: theme.colors.onSurfaceVariant, fontFamily: 'monospace' }}
+            >
+              {time}
+            </Text>
+            {entry.duration_ms != null ? (
+              <Text
+                variant="labelSmall"
+                style={{ color: theme.colors.onSurfaceVariant, fontFamily: 'monospace' }}
+              >
+                · {entry.duration_ms}ms
+              </Text>
+            ) : null}
+          </View>
+          {humanLabel ? <Text variant="bodySmall">{humanLabel}</Text> : null}
+          {entry.input_tokens != null || entry.output_tokens != null ? (
+            <Text
+              variant="labelSmall"
+              style={{ color: theme.colors.onSurfaceVariant, fontFamily: 'monospace' }}
+            >
+              {entry.input_tokens ?? 0} in · {entry.output_tokens ?? 0} out tokens
+            </Text>
+          ) : null}
+          {entry.error ? (
+            <Text variant="bodySmall" style={{ color: theme.colors.error }}>
+              {entry.error}
+            </Text>
+          ) : null}
+        </View>
+      </View>
+      <Pressable
+        onPress={hasPayload ? onTogglePayload : undefined}
+        disabled={!hasPayload}
+        style={{ opacity: hasPayload ? 1 : 0.4, alignSelf: 'flex-start' }}
+      >
+        <Text
+          variant="labelSmall"
+          style={{ color: theme.colors.primary, marginLeft: 36, marginTop: 4 }}
+        >
+          {!hasPayload ? '(no payload)' : expanded ? '▾ Hide payload' : '▸ Show payload'}
+        </Text>
+      </Pressable>
+      {hasPayload && expanded ? (
+        <Surface mode="flat" style={[styles.payloadSurface, { backgroundColor: theme.colors.surfaceVariant }]}>
+          <Text variant="bodySmall" style={styles.payloadText} selectable>
+            {JSON.stringify(entry.payload, null, 2)}
+          </Text>
+        </Surface>
+      ) : null}
+    </View>
+  );
+}
+
 export default function AuditScreen() {
   const theme = useTheme<AppTheme>();
   const navigation = useNavigation();
@@ -135,11 +330,12 @@ export default function AuditScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [expandedPayloads, setExpandedPayloads] = useState<Set<string>>(() => new Set());
 
   const load = useCallback(async () => {
     try {
       setError(null);
-      const data = await api.listAudit();
+      const data = await api.listAudit({ limit: 500 });
       setRows(data);
     } catch (e) {
       setError(e instanceof ApiError ? e.message : String(e));
@@ -156,6 +352,19 @@ export default function AuditScreen() {
   );
 
   const totals = useMemo(() => aggregate(rows), [rows]);
+  const { groups, orphans } = useMemo(() => groupByCall(rows), [rows]);
+
+  const togglePayload = useCallback((id: string) => {
+    setExpandedPayloads((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  }, []);
 
   if (loading) {
     return (
@@ -178,10 +387,7 @@ export default function AuditScreen() {
         </Banner>
       ) : null}
 
-      <FlatList
-        data={rows}
-        keyExtractor={(r) => r.id}
-        ListHeaderComponent={rows.length > 0 ? <SummaryBanner totals={totals} theme={theme} /> : null}
+      <ScrollView
         refreshControl={
           <RefreshControl
             tintColor={theme.colors.primary}
@@ -193,97 +399,98 @@ export default function AuditScreen() {
             }}
           />
         }
-        renderItem={({ item }) => {
-          const v = statusVisuals(item.status, theme);
-          const humanLabel = humanLabelFromPayload(item.payload);
-          const time = formatTimeWithSeconds(item.created_at, locale);
-          const callShort = item.call_id ? item.call_id.slice(0, 8) : null;
-          return (
-            <List.Item
-              title={friendlyAgentLabel(item.agent_name)}
-              description={() => (
-                <View style={{ gap: 4, marginTop: 2 }}>
-                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4, alignItems: 'center' }}>
-                    <Chip
-                      compact
-                      mode="flat"
-                      style={{ backgroundColor: v.bg }}
-                      textStyle={{ color: v.fg, fontSize: 11 }}
-                    >
-                      {item.status}
-                    </Chip>
-                    <Chip compact mode="outlined" textStyle={{ fontSize: 11 }}>
-                      {friendlyStepLabel(item.step_type)}
-                    </Chip>
-                    {item.model ? (
-                      <Chip compact mode="outlined" textStyle={{ fontSize: 11 }}>
-                        {item.model}
-                      </Chip>
-                    ) : null}
-                    {callShort ? (
-                      <Chip
-                        compact
-                        mode="outlined"
-                        icon="phone"
-                        textStyle={{ fontSize: 11, fontFamily: 'monospace' }}
-                        onPress={() => router.push(`/call/${item.call_id}`)}
-                      >
-                        {callShort}
-                      </Chip>
-                    ) : null}
-                    <Text
-                      variant="labelSmall"
-                      style={{ color: theme.colors.onSurfaceVariant, fontFamily: 'monospace' }}
-                    >
-                      {time}
-                    </Text>
-                    {item.duration_ms != null ? (
-                      <Text
-                        variant="labelSmall"
-                        style={{ color: theme.colors.onSurfaceVariant, fontFamily: 'monospace' }}
-                      >
-                        · {item.duration_ms}ms
-                      </Text>
-                    ) : null}
-                  </View>
-                  {humanLabel ? (
-                    <Text variant="bodySmall">{humanLabel}</Text>
-                  ) : null}
-                  {item.input_tokens != null || item.output_tokens != null ? (
-                    <Text
-                      variant="labelSmall"
-                      style={{ color: theme.colors.onSurfaceVariant, fontFamily: 'monospace' }}
-                    >
-                      {item.input_tokens ?? 0} in · {item.output_tokens ?? 0} out tokens
-                    </Text>
-                  ) : null}
-                  {item.error ? (
-                    <Text variant="bodySmall" style={{ color: theme.colors.error }}>
-                      {item.error}
-                    </Text>
-                  ) : null}
-                </View>
-              )}
-              left={(p) => (
-                <Avatar.Icon
-                  {...p}
-                  icon={v.icon}
-                  size={40}
-                  color={v.fg}
-                  style={[{ backgroundColor: v.bg }, p.style]}
-                />
-              )}
-            />
-          );
-        }}
-        ListEmptyComponent={
+      >
+        {rows.length > 0 ? <SummaryBanner totals={totals} theme={theme} /> : null}
+
+        {groups.length === 0 && orphans.length === 0 ? (
           <View style={{ paddingTop: 64, alignItems: 'center' }}>
             <Text variant="bodyMedium" style={{ color: theme.colors.onSurfaceVariant }}>
               No audit entries yet.
             </Text>
           </View>
-        }
-      />
+        ) : null}
+
+        {groups.map((group) => {
+          const v = statusVisuals(group.worstStatus, theme);
+          const tokensLabel =
+            group.totalTokens > 0 ? `· ${group.totalTokens.toLocaleString()} tokens` : '';
+          const durationLabel =
+            group.totalDurationMs > 0 ? `· ${formatDuration(group.totalDurationMs)}` : '';
+          const description = `${group.stepCount} step${group.stepCount === 1 ? '' : 's'} ${durationLabel} ${tokensLabel}`.trim();
+          return (
+            <List.Accordion
+              key={group.callId}
+              title={group.displayName}
+              description={description}
+              left={() => (
+                <Avatar.Icon
+                  icon={v.icon}
+                  size={40}
+                  color={v.fg}
+                  style={{ backgroundColor: v.bg, marginLeft: 8 }}
+                />
+              )}
+              right={(props) => (
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                  {group.callStatus ? (
+                    <Chip compact mode="outlined" textStyle={{ fontSize: 11 }}>
+                      {group.callStatus}
+                    </Chip>
+                  ) : null}
+                  <IconButton
+                    {...props}
+                    icon="open-in-new"
+                    size={18}
+                    onPress={() => router.push(`/call/${group.callId}`)}
+                  />
+                </View>
+              )}
+              style={styles.callAccordion}
+            >
+              {group.byAgent.map((agentGroup) => (
+                <List.Accordion
+                  key={`${group.callId}:${agentGroup.agentName}`}
+                  title={friendlyAgentLabel(agentGroup.agentName)}
+                  description={agentGroup.entries.map((e) => friendlyStepLabel(e.step_type)).join(' · ')}
+                  style={styles.agentAccordion}
+                >
+                  {agentGroup.entries.map((entry) => (
+                    <StepLeaf
+                      key={entry.id}
+                      entry={entry}
+                      theme={theme}
+                      locale={locale}
+                      expanded={expandedPayloads.has(entry.id)}
+                      onTogglePayload={() => togglePayload(entry.id)}
+                    />
+                  ))}
+                </List.Accordion>
+              ))}
+            </List.Accordion>
+          );
+        })}
+
+        {orphans.length > 0 ? (
+          <List.Accordion
+            title={`System events (${orphans.length})`}
+            left={(props) => <List.Icon {...props} icon="cog-outline" />}
+            style={styles.callAccordion}
+          >
+            {orphans.map((entry) => (
+              <StepLeaf
+                key={entry.id}
+                entry={entry}
+                theme={theme}
+                locale={locale}
+                expanded={expandedPayloads.has(entry.id)}
+                onTogglePayload={() => togglePayload(entry.id)}
+              />
+            ))}
+          </List.Accordion>
+        ) : null}
+
+        <View style={{ height: 32 }} />
+      </ScrollView>
     </View>
   );
 }
@@ -306,5 +513,37 @@ const styles = StyleSheet.create({
   summaryCell: {
     minWidth: 80,
     gap: 2,
+  },
+  callAccordion: {
+    marginHorizontal: 8,
+  },
+  agentAccordion: {
+    marginLeft: 24,
+  },
+  leafContainer: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    marginLeft: 24,
+    gap: 4,
+  },
+  leafHeader: {
+    flexDirection: 'row',
+    gap: 8,
+    alignItems: 'flex-start',
+  },
+  leafChips: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 4,
+    alignItems: 'center',
+  },
+  payloadSurface: {
+    marginLeft: 36,
+    marginTop: 4,
+    borderRadius: 8,
+    padding: 10,
+  },
+  payloadText: {
+    fontFamily: 'monospace',
   },
 });

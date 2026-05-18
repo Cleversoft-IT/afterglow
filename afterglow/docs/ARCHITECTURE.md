@@ -303,10 +303,17 @@ FastAPI                ─► eager Customer lookup by phone (clone-first/seed-f
 FastAPI background task ─► Speechmatics batch (diarization + lang detect)
        │
        ├─► Memory lookup
-       │   ├─► structured SQL history (demo, or customers with <=10 prior calls)
+       │   ├─► structured SQL history (production customers with <=10 prior
+       │   │   calls, AND every demo caller whose phone does NOT match a
+       │   │   seed customer — _seed_exists_for_phone returns false → empty
+       │   │   structured payload, no Vultr call)
        │   └─► Vultr Vector Store /v1/chat/completions/RAG
-       │       (production customers with >10 prior calls, single collection
-       │        configured via VULTR_VECTOR_DEFAULT_COLLECTION)
+       │       (production customers with >10 prior calls, OR demo callers
+       │        whose phone matches a seed customer — the pre-seeded
+       │        collection serves a real prior_facts hit at the first ring.
+       │        Single collection configured via VULTR_VECTOR_DEFAULT_COLLECTION;
+       │        preseed pushed at boot by app/tasks/vector_preseed.py with
+       │        per-call idempotency via chunk_metadata.preseed=true.)
        │
        ├─► Gemini structured-output call  (call_analyzer.py — single Gemini pass)
        │       prompt: transcript + template fields_schema (confidence_threshold /
@@ -447,7 +454,14 @@ demo.95...                 app.95...                   api.95...
                                                           demo_sessions(id, last_seen_at,
                                                                         active_template_id)
                                                           Vultr Vector Store
-                                                          └─ skipped when session_id is not None
+                                                          ├─ read: shared pre-seeded chunks
+                                                          │  (chunk_metadata.preseed=true,
+                                                          │   session_id IS NULL) — served to
+                                                          │   demo callers that match a seed
+                                                          │   customer; production reads its
+                                                          │   own write-back chunks here too
+                                                          └─ write: skipped when session_id is
+                                                             not None (demo write-back disabled)
 ```
 
 **Identity.** The first request from a new browser carries
@@ -475,23 +489,43 @@ each get their own divergent timeline.
 single-tenant keeps the original `is_active` flag (rescoped to seed rows by a
 partial unique index).
 
-**Vultr Vector Store skip.** The wrapper to `/vector_store/{id}/items` and
-`/chat/completions/RAG` does not expose per-item metadata filters, so we
-cannot safely partition a shared collection by `session_id`. Rather than
-provision one Vultr collection per visitor (cleanup is not guaranteed across
-a 6-day judging window), demo mode skips both the chunk push and the RAG
-prefetch. Postgres remains the source of truth: the briefing is still saved
-on the visitor's clone customer and shown post-call. Demo memory lookup uses
-the session-isolated SQL structured-history path and writes a
-`memory_lookup.structured_history` audit row with `demo=true`; the vector
-write-back path writes a `memory_updater` audit row with `status=skipped`
-and reason `demo_sandbox_vector_store_disabled`.
+**Vultr Vector Store — read-only on pre-seeded collection in demo.** The
+wrapper to `/vector_store/{id}/items` and `/chat/completions/RAG` does not
+expose per-item metadata filters, so we cannot safely partition a shared
+collection by `session_id`. Provisioning one Vultr collection per visitor
+is unmanageable across a 6-day judging window (no SDK list endpoint, no
+cleanup guarantee). Two trade-offs:
+
+- **Read path: active in demo, scoped to seed customers.** At backend boot,
+  `app/tasks/vector_preseed.py.preseed_demo_collection(session)` pushes one
+  chunk per seed call into the shared Vultr collection with marker
+  `chunk_metadata.preseed=true`. Idempotency is enforced **per-call**:
+  the task computes `expected_call_ids` (seed calls with a transcript) and
+  `already_preseeded_call_ids` (chunks with the `preseed` marker), then
+  inserts only the diff. This survives partial Vultr failures (a 500 at
+  chunk 15/37 is recovered on the next boot) and dataset evolution
+  (adding a seed call inserts the missing chunk automatically; removing
+  one leaves an orphan that requires a manual cleanup). Demo calls then
+  route to RAG only when `customer.is_seed` or `_seed_exists_for_phone`
+  matches the caller; unknown demo callers stay on the structured-history
+  path with an empty payload. The single source of truth for this gate
+  is `agents/memory_retrieval.retrieve_customer_context(preseed_available)`.
+- **Write-back path: still skipped in demo.** `_persist_memory` keeps
+  emitting `memory_updater status=skipped reason=demo_sandbox_vector_store_disabled`
+  so the audit log makes it explicit that the judge's call is not
+  polluting the shared collection. Postgres remains the source of truth:
+  the briefing is saved on the visitor's clone customer and shown
+  post-call. The preseed chunks have `session_id IS NULL` (shared
+  read-only, same posture as seed templates and seed customers).
 
 The production single-tenant path (no `X-Demo-Session` header, or
-`?bypass=<token>` for pitch-day) keeps Vultr enabled: memory write-back pushes
-chunks to the configured collection, and semantic RAG is used once the
-customer has enough history (`total_calls > 10`). For shorter histories,
-production also uses the exact SQL structured-history path.
+`?bypass=<token>` for pitch-day) keeps Vultr enabled end-to-end: memory
+write-back pushes chunks to the configured collection, and semantic RAG
+is used once the customer has enough history (`total_calls > 10`). For
+shorter histories, production also uses the exact SQL structured-history
+path. The preseed marker (`chunk_metadata.preseed=true`) is what
+discriminates preseed chunks from production write-back chunks living in
+the same collection.
 
 **Cleanup.** A background asyncio task running in the FastAPI lifespan event
 sweeps `demo_sessions` every 30 minutes and deletes everything that has been
@@ -528,8 +562,9 @@ ships with a working default until the admin chooses.
 | `calls`                  | yes                   | Filtered on read and on cleanup                        |
 | `audit_log`              | yes                   | Same; lets judges read their own audit trail           |
 | `executed_actions`       | yes                   | Same                                                   |
-| `customer_memory_chunks` | yes (NULL in production rows; demo writes are skipped today) | Vector-store write index for production memory chunks |
-| `extracted_fields`       | no                    | Cascades via `calls`. Carries `briefing_snapshot` (mig `0005`): a frozen copy of the operator-visible briefing emitted for this specific call, kept even after `customer.memory_summary` is later overwritten by a newer call. |
+| `customer_memory_chunks` | yes (NULL on production rows AND on the demo preseed rows; demo write-back is still skipped) | Vector-store write index. Preseed chunks (one per seed call) carry `chunk_metadata.preseed=true` and `session_id=NULL`; production write-back rows carry no `preseed` marker. Both live in the same collection — the marker is what the demo read gate uses to recognize "this is a shared pre-seeded chunk". |
+| `extracted_fields`       | no                    | Cascades via `calls`. Carries `briefing_snapshot` (mig `0005`): a frozen copy of the operator-visible briefing emitted for this specific call, kept even after `customer.memory_summary` is later overwritten by a newer call. The `briefing_snapshot` is also exposed end-to-end on `CallExtractedView.briefing` (round-9 part 2) and rendered on the Call detail screen. |
+| `settings`               | no                    | Generic key/value (mig `0015_settings_table.py`). Currently stores `seed_anchor_date` (ISO date) — the anchor used by `app/tasks/seed_date_refresh.py` to BULK-shift every seed timestamp at backend boot. Re-usable for future runtime flags. |
 
 ## PII handling
 
@@ -567,3 +602,164 @@ into `audit_log.input_tokens` / `audit_log.output_tokens`:
 
 The wizard surface (`wizard_chat`, `template_validator`) is not in the
 post-call path and is not audited per token today.
+
+## Regenerate briefing endpoint
+
+`POST /api/v1/calls/{id}/regenerate-summary` (`backend/app/api/calls.py`)
+lets the operator (or a judge) re-run only the briefing prompt against a
+completed call without spending tokens on the full analyzer pipeline.
+
+Preconditions (409 otherwise):
+
+- `call.status == "completed"`
+- `extracted_fields` exists for the call
+- `call.customer_id IS NOT NULL`
+
+The flow re-fetches `prior_facts` through the same gate the orchestrator
+uses (`orchestrator._load_prior_facts` — extracted helper so the demo
+seed → RAG, demo unknown → empty, prod >10 → RAG, otherwise structured
+SQL semantics stay consistent between the live pipeline and the
+regenerate path). It then calls `backend/app/agents/briefing_regenerator.py`
+(a dedicated module — NOT a re-run of `call_analyzer.analyze_call`, to
+avoid re-extracting fields and re-spending tokens on planned actions).
+The Gemini call has a tight system instruction: rewrite the next-call
+briefing in `{language}`, 1–2 sentences, operator-actionable, no
+greeting. Output ~120 tokens.
+
+On success both `extracted_fields.briefing_snapshot` and
+`customer.memory_summary` are overwritten in the same transaction, an
+audit row `briefing_regenerator status=success` is written (with the
+Gemini `input_tokens` / `output_tokens` populated), and a refreshed
+`CallDetailView` is returned. On Gemini error the row carries
+`status=error` and the endpoint returns 502 — same fail-fast posture as
+the rest of the pipeline.
+
+UI: the Call detail screen (`app/app/call/[id].tsx`) shows an
+`IconButton refresh` next to the status chip when the preconditions are
+met. Confirmation lives in a Paper `<Portal><Dialog>` (never
+`window.confirm`, cf. `feedback_drawer_window_confirm.md`); success
+surfaces a Snackbar "Briefing updated" and the Surface italic block
+under the Extracted card refreshes inline.
+
+The endpoint is NOT idempotent: each run re-spends tokens. There is no
+client-side rate-limit today (the affordance is intentionally narrow —
+one IconButton on one screen).
+
+## Audit overview UI
+
+`app/app/(drawer)/audit.tsx` is rewritten as an **overview-first**
+ScrollView built around three nested layers, all default-collapsed:
+
+```
+ScrollView
+├─ SummaryBanner (steps · calls · duration · tokens — unchanged)
+└─ for each call_id:
+   List.Accordion (call card)
+     title  = call_display_name ?? call_phone_e164 (LEFT JOIN Customer)
+     desc   = statusChip + "N steps · Xs · Yk tokens · created at HH:MM"
+     left   = Avatar.Icon coloured by worst step status (error > degraded
+              > skipped > success)
+     right  = IconButton open-in-new → router.push(/call/{id})
+     children:
+       for each agent (in pipeline order):
+         List.Accordion (agent card)
+           title = friendlyAgentLabel(agent_name) + chip "N steps"
+           desc  = pipe-separated step_types
+           children:
+             for each step:
+               List.Item — chips (status / step_type) + tokens + duration
+               + Pressable "Show payload" → Surface monospace JSON
+└─ "System events (N)" — final section for audit rows whose call_id IS
+   NULL (lifespan events, orphan recovery, etc.)
+```
+
+Backend support: `AuditLogEntry` (`backend/app/schemas/audit.py`) now
+exposes `call_phone_e164`, `call_display_name`, `call_status` (all
+optional, all populated via a LEFT JOIN on `calls` plus a LEFT JOIN on
+`customers` — the display name lives on `Customer`, NOT on `Call`).
+`app/lib/api.ts.listAudit` defaults to `limit=500` because a 100-cap was
+hiding ~30 % of seed call entries from the overview. Pagination via
+`cursor` is future work.
+
+Performance: with ~70 seed calls × ~5 steps the page can render 350+
+entries. `List.Accordion` children render-on-expand, so the cold tree
+stays cheap; a flat outer `FlatList` is unnecessary until the call count
+goes past ~100.
+
+Pattern documented in [`feedback_audit_collapse_pattern.md`](../../.claude/memory/feedback_audit_collapse_pattern.md):
+list-heavy screens that can grow past ~100 entries should be
+overview-first (Accordion lazy-render, leaf with "Show payload" toggle —
+NOT a third Accordion for the payload, which trades depth for noise).
+
+## Always-fresh seed dates
+
+All seed timestamps in `backend/app/db/seed.py` are materialized as
+`day_offset: int` relative to a `seed_anchor_date` row in the `settings`
+table (mig `0015_settings_table.py`). At backend boot,
+`app/tasks/seed_date_refresh.py.refresh_seed_dates_if_needed(session, today)`
+reads the anchor, computes `delta = today - anchor`, and — if non-zero —
+BULK-shifts every seed timestamp by `delta`:
+
+- `Call.created_at` / `started_at` / `completed_at` (`is_seed=true`)
+- `ExtractedFields.created_at` (FK to seed calls)
+- `ExecutedAction.created_at` (FK to seed calls)
+- `AuditLog.created_at` (`session_id IS NULL AND call_id IN seed call ids`)
+- `Customer.last_call_at` (seed customers)
+- `ExecutedAction.payload['booking_date']` and
+  `ExtractedFields.fields['booking_date']` — JSONB `jsonb_set` + date
+  arithmetic so the booking date in the executed payload follows the
+  shift (the booking *time* does not move, only the day).
+
+Visitor clone-on-write rows (`session_id IS NOT NULL`) are untouched.
+UUID5 keys for seed calls are composed as
+`f"{phone}@day_{day_offset}@slot_{slot_idx}"` (not from the
+materialized `created_at`), so the shift never touches PKs and never
+invalidates the FK fan-out.
+
+Bootstrap-aware: if the `seed_anchor_date` row is missing but seed
+calls exist (e.g. a deployment against a DB seeded by a round before
+this lived), the task infers the anchor from
+`SELECT max(created_at)::date FROM calls WHERE is_seed=true` and shifts
+from there.
+
+Lifespan wiring in `backend/app/main.py`:
+
+```
+async with SessionLocal() as session:
+    try:
+        await refresh_seed_dates_if_needed(session, today)
+        await session.commit()
+    except Exception as exc:
+        logger.error("seed_date_refresh failed: %s — skipping vector preseed", exc)
+        # refresh failure → skip preseed, don't push stale-date chunks
+    else:
+        try:
+            await preseed_demo_collection(session)
+            await session.commit()
+        except Exception as exc:
+            logger.warning("vector_preseed failed: %s — startup continues", exc)
+            # Vultr down → tolerated; runtime degrades gracefully
+```
+
+Ordering is critical: the preseed must see already-shifted dates,
+otherwise the chunk content (`"called the {domain} on {date}"`) would
+ship stale. Refresh failure is `ERROR` because a broken SQL bulk update
+or a missing `settings` table is a real bug we don't want to mask;
+Vultr being down is `WARNING` because the runtime retrieval already
+degrades gracefully when the key is missing.
+
+Trade-offs accepted:
+
+- Anchor is stored as ISO date (no time component) and compared against
+  `datetime.now(timezone.utc).date()`. At midnight CEST (22:00 UTC) a
+  boot can still see `today=yesterday` for ~2 hours. Not material for
+  the hackathon demo.
+- Preseed chunks carry the historical date string at materialization
+  time; after a shift, the chunk text mentions a slightly older date
+  than the corresponding `Call.created_at`. Acceptable for the pitch —
+  the briefing returns the salient facts, not the timestamp.
+- `memory_summary` and `briefing_snapshot` text is intentionally
+  rephrased without absolute dates ("Last time he booked for 4 quiet"
+  rather than "on 9 May"), so the operator-visible card stays
+  date-stable across shifts. Transcripts are left as-is (they are the
+  historical truth of the dialogue).

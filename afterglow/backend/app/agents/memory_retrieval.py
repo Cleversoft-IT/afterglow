@@ -1,14 +1,17 @@
 """Memory Retrieval Agent — Vultr /v1/chat/completions/RAG endpoint
 plus a structured fallback that serializes recent SQL rows directly.
 
-Strategy:
-- Few calls (``customer.total_calls <= 10``) OR demo mode →
-  ``retrieve_structured_history`` reads ``Call ⨝ ExtractedFields`` for that
-  customer and formats them as Markdown. Cheap, exact, and never reads from
-  the shared Vultr collection. For demo it also avoids cross-visitor leakage.
-- Many calls (``> 10``) in production → semantic RAG via Vultr. This is the
-  killer Vultr feature: chat + retrieval in a single call against the
-  per-tenant Vector Store collection.
+Strategy (post round-9):
+- Few calls (``customer.total_calls <= 10``) → ``retrieve_structured_history``
+  reads ``Call ⨝ ExtractedFields`` for that customer and formats them as
+  Markdown. Cheap, exact, and never reads from the shared Vultr collection.
+- Many calls (``> 10``) → semantic RAG via Vultr. The killer Vultr feature:
+  chat + retrieval in a single call against the collection.
+- Demo mode: RAG is **enabled for seed customers** because the lifespan
+  task `vector_preseed` populates the collection with one chunk per seed
+  call. The orchestrator passes ``preseed_available=True`` for those
+  callers so the read path runs even in demo. Write-back stays skipped
+  to avoid cross-visitor pollution of the shared collection.
 
 The output of either path becomes the ``prior_facts`` blob the Orchestrator
 splices into the Gemini Call Analyzer prompt.
@@ -17,7 +20,7 @@ from __future__ import annotations
 
 import logging
 import re
-from typing import Optional
+from typing import Any, Optional
 
 import httpx
 from sqlalchemy import select
@@ -178,6 +181,7 @@ async def retrieve_customer_context(
     phone_e164: str,
     domain_hint: str,
     is_demo: bool = False,
+    preseed_available: bool = False,
 ) -> tuple[str, Optional[int], Optional[int]]:
     """Ask Vultr RAG for any prior facts about this phone number.
 
@@ -185,15 +189,25 @@ async def retrieve_customer_context(
     come from Vultr's ``usage`` block (prompt_tokens / completion_tokens) and
     feed `audit_log.input_tokens` / `output_tokens` so the cost-per-call view
     covers Vultr too, not just Gemini. They are ``None`` when the call was
-    skipped (demo / no collection) or when the SDK omitted the usage block.
+    skipped or when the SDK omitted the usage block.
+
+    Demo semantics (round-9):
+    - ``is_demo=True`` + ``preseed_available=False`` → skip the RAG call
+      (unknown caller in demo, the shared collection has no chunk for this
+      phone; reading would just burn tokens for a NO_MEMORY reply).
+    - ``is_demo=True`` + ``preseed_available=True`` → seed customer in demo.
+      The lifespan preseed task has populated the collection with this
+      customer's prior facts; reading is safe (no cross-visitor leakage,
+      the chunks belong to the shared seed dataset) and is what makes
+      Vultr visible in the audit log on the very first demo call.
+    - ``is_demo=False`` → production single-tenant, always read.
 
     Failures degrade gracefully to ``("", None, None)`` so the rest of the
-    pipeline keeps running. ``is_demo=True`` skips the RAG call entirely —
-    demo visitors are isolated per session (see SessionContext); we never
-    read from the shared Vultr collection in demo mode so one visitor's
-    calls cannot leak into another's briefing.
+    pipeline keeps running.
     """
-    if is_demo or not collection_id:
+    if not collection_id:
+        return "", None, None
+    if is_demo and not preseed_available:
         return "", None, None
 
     messages = [

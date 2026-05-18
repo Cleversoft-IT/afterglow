@@ -223,6 +223,7 @@ export type CallExtractedView = {
   sentiment?: string | null;
   urgency?: string | null;
   field_definitions?: FieldDefinitionLite[];
+  briefing?: string | null;
 };
 
 // Server-computed discriminator for `status === 'failed'`. Distinguishes
@@ -279,4 +280,7 @@ export type AuditLogEntry = {
   status: string;
   error?: string | null;
   created_at: string;
+  call_phone_e164?: string | null;
+  call_display_name?: string | null;
+  call_status?: string | null;
 };

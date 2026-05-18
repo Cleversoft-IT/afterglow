@@ -315,3 +315,18 @@ class DemoSession(Base):
         server_default=func.now(),
         nullable=False,
     )
+
+
+class Setting(Base):
+    """Runtime key-value flags backing operations that need to outlive the process.
+
+    Currently used for `seed_anchor_date` so the seed dataset can be re-anchored
+    to "today" without re-emitting rows. Designed as a generic key/value pair
+    so future runtime flags can reuse the same table.
+    """
+
+    __tablename__ = "settings"
+
+    key: Mapped[str] = mapped_column(String(80), primary_key=True)
+    value: Mapped[str] = mapped_column(Text, nullable=False)
+    updated_at: Mapped[datetime] = _ts_updated()

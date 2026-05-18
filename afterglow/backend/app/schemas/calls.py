@@ -56,6 +56,11 @@ class CallExtractedView(BaseModel):
     # Per-key metadata so the UI can show a human label next to the machine
     # key. Only fields actually present in `fields` get an entry here.
     field_definitions: list[FieldDefinitionLite] = Field(default_factory=list)
+    # The next-call briefing the analyzer (or the regenerate endpoint)
+    # produced for this call. Frozen on the row; the Customer card's
+    # `memory_summary` may have moved on by the time the operator opens
+    # this view.
+    briefing: Optional[str] = None
 
 
 class CallDetailView(BaseModel):

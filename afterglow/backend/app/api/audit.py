@@ -15,7 +15,7 @@ from app.api.session_context import (
     visibility_filter,
 )
 from app.db.engine import get_session
-from app.db.models import AuditLog, Call
+from app.db.models import AuditLog, Call, Customer
 from app.schemas import AuditLogEntry
 
 router = APIRouter(prefix="/api/v1/audit", tags=["audit"])
@@ -47,7 +47,14 @@ async def list_audit(
     session: AsyncSession = Depends(get_session),
 ) -> list[AuditLogEntry]:
     stmt = (
-        select(AuditLog)
+        select(
+            AuditLog,
+            Call.phone_e164,
+            Call.status,
+            Customer.display_name,
+        )
+        .join(Call, Call.id == AuditLog.call_id, isouter=True)
+        .join(Customer, Customer.id == Call.customer_id, isouter=True)
         .where(_audit_visibility(ctx))
         .order_by(AuditLog.created_at.desc())
         .limit(limit)
@@ -56,5 +63,13 @@ async def list_audit(
         stmt = stmt.where(AuditLog.call_id == call_id)
     if agent_name:
         stmt = stmt.where(AuditLog.agent_name == agent_name)
-    rows = (await session.execute(stmt)).scalars().all()
-    return [AuditLogEntry.model_validate(r, from_attributes=True) for r in rows]
+    rows = (await session.execute(stmt)).all()
+
+    out: list[AuditLogEntry] = []
+    for row, phone, call_status, display_name in rows:
+        entry = AuditLogEntry.model_validate(row, from_attributes=True)
+        entry.call_phone_e164 = phone
+        entry.call_status = call_status
+        entry.call_display_name = display_name
+        out.append(entry)
+    return out

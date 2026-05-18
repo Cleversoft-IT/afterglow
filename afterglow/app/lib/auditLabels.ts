@@ -12,6 +12,7 @@ const AGENT_LABELS: Record<string, string> = {
   action_executor: 'Action executor',
   memory_updater: 'Memory write-back',
   memory_summarizer_bilingual: 'Bilingual summary',
+  briefing_regenerator: 'Briefing regenerator',
 };
 
 const STEP_LABELS: Record<string, string> = {

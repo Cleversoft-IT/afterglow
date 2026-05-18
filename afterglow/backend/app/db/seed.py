@@ -17,7 +17,7 @@ Template shape (simplified 2026-05-17, see `project_template_simplified_2026_05_
 import asyncio
 import random
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, time, timedelta, timezone
 from pathlib import Path
 
 from sqlalchemy import delete, func, select
@@ -31,6 +31,20 @@ from app.db.models import (
     ExtractedFields,
     Template,
 )
+from app.services.settings import resolve_seed_anchor_for_materialization
+
+
+def _anchor_dt(anchor: date, day_offset: int, hh: int, mm: int) -> datetime:
+    """Build a tz-aware UTC datetime from anchor + offset.
+
+    `day_offset` is typically negative (-7 = "7 days before anchor"). The
+    seed dataset expresses every historical timestamp as offsets relative
+    to `anchor`, so that on a stale-anchor boot, `refresh_seed_dates_if_needed`
+    can bulk-shift the whole set by a single delta without recomputing UUIDs.
+    """
+    return datetime.combine(anchor, time(hh, mm), tzinfo=timezone.utc) + timedelta(
+        days=day_offset
+    )
 
 
 # Bundled demo MP3s shipped inside the backend container at /app/sample_audio/.
@@ -720,36 +734,66 @@ def _bundled_simulation_configs() -> dict[str, dict]:
     }
 
 
-# Module-level constant — single source of truth for the 6 seed customers.
-# Both the main seed path (fresh DB) and `_ensure_seed_customers` (already-
-# seeded DB) iterate this list. Memory summaries are full prose strings, not
-# placeholders.
+# Module-level constant — single source of truth for the 12 seed customers
+# (6 originals + 6 added in round 9). Both the main seed path (fresh DB) and
+# `_ensure_seed_customers` (already-seeded DB) iterate this list. Memory
+# summaries are prose strings WITHOUT absolute calendar dates (see
+# `feedback_locale_dates_only.md` + plan §1.7.7): the operator caller-card
+# stays accurate even after `refresh_seed_dates_if_needed` shifts the
+# underlying call rows forward in time. `total_calls` and `last_call_at`
+# are computed by `_ensure_personal_calls` (`recompute` loop), not stored.
 SEED_CUSTOMERS: list[tuple] = [
-    # (display_name, phone, tags, memory_summary, language, total_calls, last_call_at)
+    # (display_name, phone, tags, memory_summary, language)
     ("Mark Ross", "+15551112233", ["repeat", "gluten_free"],
      "Mark prefers a quiet table and is gluten-intolerant. "
-     "Last booked party of 4 on 9 May — confirm the same setup if he calls again.",
-     "en", 2, datetime(2026, 5, 7, 20, 30, tzinfo=timezone.utc)),
+     "Last time booked party of 4 quiet — confirm the same setup if he calls again.",
+     "en"),
     ("Julia White", "+15554445566", ["vip", "anniversary"],
-     "Julia is a VIP, prefers the window table. Celebrating her anniversary "
-     "on 20 May — surprise dessert was offered last time.",
-     "en", 1, datetime(2026, 4, 15, 21, 0, tzinfo=timezone.utc)),
+     "Julia is a VIP, prefers the window table. Anniversary booking recently — "
+     "surprise dessert was offered last time.",
+     "en"),
     ("Laura Bennett", "+15559991122", ["returning_patient", "crown"],
-     "Laura had a porcelain crown fitted on her lower-right molar on 8 April "
+     "Laura had a porcelain crown fitted on her lower-right molar recently "
      "by Dr. Patel. Sensitivity has settled; flag any looseness on the next visit.",
-     "en", 1, datetime(2026, 4, 8, 9, 30, tzinfo=timezone.utc)),
+     "en"),
     ("Andrew Green", "+15558883344", ["returning_customer", "out_of_pocket"],
      "Andrew drives a 2019 Fiat Panda (plate AB123CD). Pays out of pocket — "
-     "no insurance claim. Last visit: rear bumper repair on 3 May, paid invoice INV-DEMO0012.",
-     "en", 1, datetime(2026, 5, 3, 14, 0, tzinfo=timezone.utc)),
+     "no insurance claim. Last visit was a rear bumper repair, paid invoice INV-DEMO0012.",
+     "en"),
     ("Sophie Walker", "+15552223344", ["business", "regular"],
      "Sophie books business dinners, prefers a corner table, parties of 4-6. "
-     "Last booked 13 May for a quarterly review.",
-     "en", 1, datetime(2026, 5, 13, 19, 30, tzinfo=timezone.utc)),
+     "Recently booked for a quarterly review.",
+     "en"),
     ("Tom Hughes", "+15557778899", ["new_patient"],
      "First-time patient, wisdom-tooth check requested. "
      "Anxious about extraction — handle gently.",
-     "en", 1, datetime(2026, 5, 12, 11, 0, tzinfo=timezone.utc)),
+     "en"),
+    # Round 9: six additional seed customers spreading historical traffic
+    # over an 8-week window. Phones chosen NOT to collide with the existing
+    # six nor with `app/lib/mockContacts.ts` pool (+447911100xxx).
+    ("Marco Bianchi", "+15556667701", ["repeat", "anniversary"],
+     "Marco books quarterly anniversaries; partner is vegetarian — flag in the booking note.",
+     "en"),  # restaurant
+    ("Olivia Hayes", "+447911111201", ["family", "vegetarian"],
+     "Olivia books family of 4 dinners; 2 kids under 10, two vegetarian mains required. "
+     "Allergic to peanuts — kitchen notified.",
+     "en"),  # restaurant
+    ("Emma Thompson", "+447911111202", ["returning_patient", "hygienist"],
+     "Emma comes in for hygienist follow-ups every 4 months. "
+     "Mentioned mild gum sensitivity on the lower-left at her last visit.",
+     "en"),  # dentist
+    ("James O'Connor", "+15556667702", ["returning_patient", "root_canal"],
+     "James had a root canal on the upper-right second molar. "
+     "Recovery was uneventful; flag any throbbing pain on the next visit.",
+     "en"),  # dentist
+    ("Rachel Kim", "+15556667703", ["fleet", "insurance"],
+     "Rachel manages a small fleet of 3 delivery vans — all repairs go through "
+     "FleetCo insurance pre-approval. Use the FleetCo claim number, not personal payment.",
+     "en"),  # bodyshop
+    ("Luca Romano", "+447911111203", ["classic_car", "cash_payer"],
+     "Luca owns a 1972 Alfa Romeo Spider — only original parts accepted. "
+     "Pays cash, declines invoices that mention insurance.",
+     "en"),  # bodyshop
 ]
 
 
@@ -795,6 +839,16 @@ async def seed():
             # Fall through: `existing` query below will now return empty
             # for the seed templates and the main seed path runs.
 
+        # Resolve the seed anchor ONCE per run. New fixtures are materialized
+        # relative to this anchor (so `refresh_seed_dates_if_needed` can later
+        # bulk-shift them with a single delta), and the same value is reused
+        # by every downstream helper that needs to compute `created_at` from
+        # a `day_offset`. On a fresh DB this returns `today`; on a legacy DB
+        # with round-8 hardcoded dates this infers `2026-05-17` from the
+        # latest seed call. See `services/settings.py`.
+        today = datetime.now(timezone.utc).date()
+        anchor = await resolve_seed_anchor_for_materialization(session, today)
+
         # Check seed templates only — user-custom templates from the
         # wizard live alongside but don't satisfy the "demo data is
         # already there" signal we use to short-circuit re-seeding.
@@ -808,7 +862,7 @@ async def seed():
                 f"[seed] {len(existing)} seed templates already present, "
                 f"ensuring personal calls."
             )
-            await _ensure_personal_calls(session)
+            await _ensure_personal_calls(session, anchor)
             await session.commit()
             return
 
@@ -839,14 +893,16 @@ async def seed():
                 )
             )
 
-        # Six known customers — one per (template, returning caller) so the
-        # "Call from existing customer" button produces a coherent memory
-        # card on every preset (restaurant ×2, dentist ×2, bodyshop ×1) and
-        # the busy-week generator has enough variety to avoid same-customer
-        # streaks in the Bookings sort. Source of truth lives in
-        # `SEED_CUSTOMERS` at module level.
+        # Twelve known customers — six originals (restaurant ×3, dentist ×2,
+        # bodyshop ×1) plus six round-9 additions (restaurant ×2, dentist ×2,
+        # bodyshop ×2) so the busy-week generator + historical-window have
+        # enough variety to avoid same-customer streaks and the RAG retrieval
+        # has plenty of distinct phone-keyed memory to query. Source of truth
+        # for the roster lives in `SEED_CUSTOMERS` at module level.
+        # `total_calls` / `last_call_at` start at 0 / None and are recomputed
+        # by `_ensure_personal_calls` once all calls are wired.
         created_by_name: dict[str, Customer] = {}
-        for (name, phone, tags, memory, lang, total, last) in SEED_CUSTOMERS:
+        for (name, phone, tags, memory, lang) in SEED_CUSTOMERS:
             created_by_name[name] = Customer(
                 id=uuid.uuid4(),
                 phone_e164=phone,
@@ -854,8 +910,8 @@ async def seed():
                 preferred_language=lang,
                 tags=tags,
                 memory_summary=memory,
-                total_calls=total,
-                last_call_at=last,
+                total_calls=0,
+                last_call_at=None,
                 is_seed=True,
             )
         session.add_all(list(created_by_name.values()))
@@ -865,6 +921,16 @@ async def seed():
         andrew = created_by_name["Andrew Green"]
         sophie = created_by_name["Sophie Walker"]
         tom = created_by_name["Tom Hughes"]
+        # Round 9 additions — used by `_historical_window_specs`.
+        marco = created_by_name["Marco Bianchi"]
+        olivia = created_by_name["Olivia Hayes"]
+        emma = created_by_name["Emma Thompson"]
+        james = created_by_name["James O'Connor"]
+        rachel = created_by_name["Rachel Kim"]
+        luca = created_by_name["Luca Romano"]
+        # Silence linter for now — IDs may be used by future hand-crafted
+        # specs; today they are reached via `_CUSTOMER_PHONES_BY_NAME`.
+        _ = (marco, olivia, emma, james, rachel, luca)
 
         # Flush so the customer IDs are usable for the seeded Call rows.
         await session.flush()
@@ -874,6 +940,7 @@ async def seed():
                 restaurant_id, dentist_id, bodyshop_id,
                 mark.id, julia.id, laura.id, andrew.id,
                 sophie.id, tom.id,
+                anchor=anchor,
             )
         )
         for spec in call_specs:
@@ -889,7 +956,7 @@ async def seed():
             _emit_seeded_call_audit(session, spec)
             await session.flush()
 
-        await _ensure_personal_calls(session)
+        await _ensure_personal_calls(session, anchor)
         await session.commit()
         print(
             f"[seed] Demo data inserted: 3 templates, {len(SEED_CUSTOMERS)} customers, "
@@ -915,8 +982,17 @@ def _seed_call_specs(
     andrew_id,
     sophie_id,
     tom_id,
+    *,
+    anchor: date,
 ):
-    """Yield the SeedCallSpec list."""
+    """Yield the SeedCallSpec list.
+
+    Every `created_at` is computed as `_anchor_dt(anchor, day_offset, hh, mm)`
+    where `day_offset` is the round-8 canonical offset relative to the
+    busy-week tail (2026-05-17). On a fresh DB `anchor == today`, on a legacy
+    DB `anchor == 2026-05-17`; either way the relative spacing between calls
+    is preserved.
+    """
     yield {
         "id": uuid.UUID("11111111-1111-4111-8111-000000000001"),
         "customer_id": mark_id,
@@ -924,7 +1000,8 @@ def _seed_call_specs(
         "phone_e164": "+15551112233",
         "phone_display": "Mark Ross",
         "language": "en",
-        "created_at": datetime(2026, 4, 20, 19, 45, tzinfo=timezone.utc),
+        # 2026-04-20 19:45 UTC → anchor -27 days
+        "created_at": _anchor_dt(anchor, -27, 19, 45),
         "transcript": (
             "Operator: Good evening, La Trattoria. How may I help you?\n"
             "Caller: Hi, I'd like to book a table for Wednesday at eight. "
@@ -972,9 +1049,11 @@ def _seed_call_specs(
             {
                 "action_type": "booking.create",
                 "title": "Create booking",
-                "summary": "Quiet table for 2 on 22 Apr at 20:00, gluten-free menu",
+                "summary": "Quiet table for 2 at 20:00, gluten-free menu",
                 "payload": {
                     "party_size": 2,
+                    # booking_date stays an ISO date and is shifted in JSONB
+                    # by `refresh_seed_dates_if_needed`.
                     "booking_date": "2026-04-22",
                     "booking_time": "20:00",
                     "customer_name": "Mark",
@@ -1017,7 +1096,8 @@ def _seed_call_specs(
         "phone_e164": "+15551112233",
         "phone_display": "Mark Ross",
         "language": "en",
-        "created_at": datetime(2026, 5, 7, 20, 30, tzinfo=timezone.utc),
+        # 2026-05-07 20:30 UTC → anchor -10 days
+        "created_at": _anchor_dt(anchor, -10, 20, 30),
         "transcript": (
             "Operator: La Trattoria, good evening.\n"
             "Caller: Hi, it's Mark. Friday eight-thirty, party of four. "
@@ -1060,13 +1140,13 @@ def _seed_call_specs(
         "urgency": "routine",
         "briefing": (
             "Mark prefers a quiet table and is gluten-intolerant. "
-            "Last booked party of 4 on 9 May — confirm the same setup if he calls again."
+            "Last time booked party of 4 quiet — confirm the same setup if he calls again."
         ),
         "actions": [
             {
                 "action_type": "booking.create",
                 "title": "Create booking",
-                "summary": "Quiet table for 4 on 9 May at 20:30, gluten-free menu",
+                "summary": "Quiet table for 4 at 20:30, gluten-free menu",
                 "payload": {
                     "party_size": 4,
                     "booking_date": "2026-05-09",
@@ -1129,7 +1209,8 @@ def _seed_call_specs(
         "phone_e164": "+15554445566",
         "phone_display": "Julia White",
         "language": "en",
-        "created_at": datetime(2026, 4, 15, 21, 0, tzinfo=timezone.utc),
+        # 2026-04-15 21:00 UTC → anchor -32 days
+        "created_at": _anchor_dt(anchor, -32, 21, 0),
         "transcript": (
             "Operator: La Trattoria, good evening.\n"
             "Caller: Hi, it's Julia White. I'd like to book for our anniversary "
@@ -1169,14 +1250,14 @@ def _seed_call_specs(
         "sentiment": "positive",
         "urgency": "routine",
         "briefing": (
-            "Julia is a VIP, prefers the window table. Celebrating her anniversary "
-            "on 20 May — surprise dessert was offered last time."
+            "Julia is a VIP, prefers the window table. Anniversary booking recently — "
+            "surprise dessert was offered last time."
         ),
         "actions": [
             {
                 "action_type": "booking.create",
                 "title": "Create booking",
-                "summary": "Window table for 2 on 20 May, anniversary",
+                "summary": "Window table for 2, anniversary",
                 "payload": {
                     "party_size": 2,
                     "booking_date": "2026-05-20",
@@ -1220,7 +1301,8 @@ def _seed_call_specs(
         "phone_e164": "+15559991122",
         "phone_display": "Laura Bennett",
         "language": "en",
-        "created_at": datetime(2026, 4, 8, 9, 30, tzinfo=timezone.utc),
+        # 2026-04-08 09:30 UTC → anchor -39 days
+        "created_at": _anchor_dt(anchor, -39, 9, 30),
         "transcript": (
             "Operator: Greenwood Dental, this is the front desk.\n"
             "Caller: Hi, it's Laura Bennett. I'm confirming the crown fitting today.\n"
@@ -1258,14 +1340,14 @@ def _seed_call_specs(
         "sentiment": "neutral",
         "urgency": "soon",
         "briefing": (
-            "Laura had a porcelain crown fitted on her lower-right molar on 8 April. "
+            "Laura had a porcelain crown fitted on her lower-right molar recently. "
             "Sensitivity settled; flag any looseness on the next visit."
         ),
         "actions": [
             {
                 "action_type": "booking.create",
                 "title": "Confirm booking",
-                "summary": "Crown fitting · 8 Apr · 10:00 with Dr. Patel",
+                "summary": "Crown fitting · 10:00 with Dr. Patel",
                 "payload": {
                     "patient_name": "Laura Bennett",
                     "is_new_patient": False,
@@ -1293,7 +1375,8 @@ def _seed_call_specs(
         "phone_e164": "+15558883344",
         "phone_display": "Andrew Green",
         "language": "en",
-        "created_at": datetime(2026, 5, 3, 14, 0, tzinfo=timezone.utc),
+        # 2026-05-03 14:00 UTC → anchor -14 days
+        "created_at": _anchor_dt(anchor, -14, 14, 0),
         "transcript": (
             "Operator: Greenline Auto Body, good afternoon.\n"
             "Caller: Hi, it's Andrew. The Panda needs a rear bumper repair.\n"
@@ -1336,7 +1419,7 @@ def _seed_call_specs(
         "urgency": "routine",
         "briefing": (
             "Andrew drives a 2019 Fiat Panda (plate AB123CD). Pays out of pocket — "
-            "no insurance claim. Last visit: rear bumper repair on 3 May."
+            "no insurance claim. Last visit was a rear bumper repair."
         ),
         "actions": [
             {
@@ -1370,7 +1453,8 @@ def _seed_call_specs(
         "phone_e164": "+15552223344",
         "phone_display": "Sophie Walker",
         "language": "en",
-        "created_at": datetime(2026, 5, 8, 19, 15, tzinfo=timezone.utc),
+        # 2026-05-08 19:15 UTC → anchor -9 days
+        "created_at": _anchor_dt(anchor, -9, 19, 15),
         "transcript": (
             "Operator: La Trattoria, good evening.\n"
             "Caller: Hi, Sophie Walker. Quarterly review dinner — "
@@ -1410,13 +1494,13 @@ def _seed_call_specs(
         "urgency": "routine",
         "briefing": (
             "Sophie books business dinners, prefers a corner table, "
-            "parties of 4-6. Quarterly review on 8 May."
+            "parties of 4-6. Quarterly review recently."
         ),
         "actions": [
             {
                 "action_type": "booking.create",
                 "title": "Create booking",
-                "summary": "Corner table for 6 on 8 May at 19:30, business dinner",
+                "summary": "Corner table for 6 at 19:30, business dinner",
                 "payload": {
                     "party_size": 6,
                     "booking_date": "2026-05-08",
@@ -1443,7 +1527,8 @@ def _seed_call_specs(
         "phone_e164": "+15557778899",
         "phone_display": "Tom Hughes",
         "language": "en",
-        "created_at": datetime(2026, 5, 7, 11, 0, tzinfo=timezone.utc),
+        # 2026-05-07 11:00 UTC → anchor -10 days
+        "created_at": _anchor_dt(anchor, -10, 11, 0),
         "transcript": (
             "Operator: Greenwood Dental, this is the front desk.\n"
             "Caller: Hi, my name's Tom Hughes. I'm a new patient — I'd "
@@ -1490,7 +1575,7 @@ def _seed_call_specs(
             {
                 "action_type": "booking.create",
                 "title": "Create booking",
-                "summary": "Wisdom-tooth consultation · 7 May · 11:00 with Dr. Patel",
+                "summary": "Wisdom-tooth consultation · 11:00 with Dr. Patel",
                 "payload": {
                     "patient_name": "Tom Hughes",
                     "is_new_patient": True,
@@ -1677,14 +1762,18 @@ def _emit_seeded_call_audit(session, spec) -> None:
 #   pc_004 Daniel Edwards    +447911100004
 #   pc_008 Henry Iverson     +447911100008
 #   pc_009 Isla Johnson      +447911100009
-_PERSONAL_CALL_FIXTURES = [
+# Personal phonebook fixtures expressed as `(day_offset, hh, mm)` relative to
+# the seed anchor (round-8 canonical anchor = 2026-05-17). Materialized into
+# absolute `created_at` by `_personal_call_fixtures(anchor)` at runtime.
+_PERSONAL_CALL_FIXTURE_TEMPLATES: list[dict] = [
     # 3 × missed (status='failed') — appear in the Missed filter + Saved (mock)
     {
         "id": uuid.UUID("22222222-2222-4222-8222-000000000001"),
         "phone_e164": "+447911100001",  # Amelia Brooks
         "status": "failed",
         "error": "empty_or_noise_audio",
-        "created_at": datetime(2026, 5, 16, 9, 12, tzinfo=timezone.utc),
+        # 2026-05-16 09:12 UTC → anchor -1 day
+        "day_offset": -1, "hh": 9, "mm": 12,
         "language": None,
     },
     {
@@ -1692,7 +1781,8 @@ _PERSONAL_CALL_FIXTURES = [
         "phone_e164": "+447911100004",  # Daniel Edwards
         "status": "failed",
         "error": "empty_or_noise_audio",
-        "created_at": datetime(2026, 5, 15, 14, 47, tzinfo=timezone.utc),
+        # 2026-05-15 14:47 → anchor -2 days
+        "day_offset": -2, "hh": 14, "mm": 47,
         "language": None,
     },
     {
@@ -1700,7 +1790,8 @@ _PERSONAL_CALL_FIXTURES = [
         "phone_e164": "+447911100009",  # Isla Johnson
         "status": "failed",
         "error": "empty_or_noise_audio",
-        "created_at": datetime(2026, 5, 14, 18, 5, tzinfo=timezone.utc),
+        # 2026-05-14 18:05 → anchor -3 days
+        "day_offset": -3, "hh": 18, "mm": 5,
         "language": None,
     },
     # 2 × unsaved (status='completed', phone NOT in mock list, no customer)
@@ -1708,14 +1799,16 @@ _PERSONAL_CALL_FIXTURES = [
         "id": uuid.UUID("22222222-2222-4222-8222-000000000004"),
         "phone_e164": "+15550009999",
         "status": "completed",
-        "created_at": datetime(2026, 5, 13, 11, 30, tzinfo=timezone.utc),
+        # 2026-05-13 11:30 → anchor -4 days
+        "day_offset": -4, "hh": 11, "mm": 30,
         "language": "en",
     },
     {
         "id": uuid.UUID("22222222-2222-4222-8222-000000000005"),
         "phone_e164": "+447700900800",
         "status": "completed",
-        "created_at": datetime(2026, 5, 12, 16, 22, tzinfo=timezone.utc),
+        # 2026-05-12 16:22 → anchor -5 days
+        "day_offset": -5, "hh": 16, "mm": 22,
         "language": "en",
     },
     # 2 × human-handled (status='completed' but no extracted/no actions —
@@ -1724,17 +1817,32 @@ _PERSONAL_CALL_FIXTURES = [
         "id": uuid.UUID("22222222-2222-4222-8222-000000000006"),
         "phone_e164": "+447911100003",  # Charlotte Davies
         "status": "completed",
-        "created_at": datetime(2026, 5, 11, 20, 0, tzinfo=timezone.utc),
+        # 2026-05-11 20:00 → anchor -6 days
+        "day_offset": -6, "hh": 20, "mm": 0,
         "language": "en",
     },
     {
         "id": uuid.UUID("22222222-2222-4222-8222-000000000007"),
         "phone_e164": "+447911100008",  # Henry Iverson
         "status": "completed",
-        "created_at": datetime(2026, 5, 10, 8, 45, tzinfo=timezone.utc),
+        # 2026-05-10 08:45 → anchor -7 days
+        "day_offset": -7, "hh": 8, "mm": 45,
         "language": "en",
     },
 ]
+
+
+def _personal_call_fixtures(anchor: date) -> list[dict]:
+    """Materialize the personal call fixtures with absolute `created_at`
+    derived from `anchor + day_offset`."""
+    out: list[dict] = []
+    for tpl in _PERSONAL_CALL_FIXTURE_TEMPLATES:
+        fx = {k: v for k, v in tpl.items() if k not in {"day_offset", "hh", "mm"}}
+        fx["created_at"] = _anchor_dt(
+            anchor, tpl["day_offset"], tpl["hh"], tpl["mm"]
+        )
+        out.append(fx)
+    return out
 
 
 # Phone numbers used by the "busy week" densification. Mix of known mock
@@ -1760,12 +1868,11 @@ _BUSY_UNKNOWN_PHONES = [
     "+447700901234",
 ]
 
-# Names match the six seed Customer rows created in `seed()` /
-# `_ensure_seed_customers` (Mark Ross, Julia White, Laura Bennett, Andrew
-# Green, Sophie Walker, Tom Hughes). Lookup by display_name keeps the
-# helper resilient to UUID changes — the customer IDs are random but the
-# phones/names are stable. Single source of truth for the customer roster
-# lives in `SEED_CUSTOMERS`.
+# Names match the twelve seed Customer rows created in `seed()` /
+# `_ensure_seed_customers` (6 originals + 6 round-9 additions). Lookup by
+# display_name keeps the helper resilient to UUID changes — the customer
+# IDs are random but the phones/names are stable. Single source of truth
+# for the customer roster lives in `SEED_CUSTOMERS`.
 _CUSTOMER_PHONES_BY_NAME = {
     "Mark Ross": "+15551112233",
     "Julia White": "+15554445566",
@@ -1773,6 +1880,13 @@ _CUSTOMER_PHONES_BY_NAME = {
     "Andrew Green": "+15558883344",
     "Sophie Walker": "+15552223344",
     "Tom Hughes": "+15557778899",
+    # Round 9 additions.
+    "Marco Bianchi": "+15556667701",
+    "Olivia Hayes": "+447911111201",
+    "Emma Thompson": "+447911111202",
+    "James O'Connor": "+15556667702",
+    "Rachel Kim": "+15556667703",
+    "Luca Romano": "+447911111203",
 }
 
 # Hour slots that look like realistic restaurant traffic — lunch and dinner
@@ -1788,12 +1902,14 @@ _HOUR_SLOTS_WEEKEND = [
 ]
 
 
-def _busy_week_specs() -> list[dict]:
-    """Deterministic fixtures for the dense 9–17 May window. Returns ~43
-    entries — combined with the 7 base fixtures we land at ~50 personal
-    calls, exactly the Home `limit=50` cap. UUIDs are UUID5-derived from
-    (phone, created_at) so re-running the seed is idempotent without
-    requiring a separate IDs table.
+def _busy_week_specs(anchor: date) -> list[dict]:
+    """Deterministic fixtures for the dense busy-week window (day_offset
+    -8 .. 0, the 9 days leading up to the anchor inclusive). Returns ~43
+    entries — combined with the 7 base personal fixtures we land at ~50
+    personal calls, exactly the Home `limit=50` cap. UUIDs are UUID5-derived
+    from `(phone, day_offset, slot_idx)` so re-running the seed is idempotent
+    AND stable across anchor shifts — `refresh_seed_dates_if_needed` shifts
+    `created_at` columns only, the PK stays the same.
 
     Kinds:
       - `completed` → human-handled personal call (Afterglow not engaged)
@@ -1808,66 +1924,66 @@ def _busy_week_specs() -> list[dict]:
     rng = random.Random(20260518)  # date-of-write seed → stable output
     out: list[dict] = []
 
-    # Per-day plan. Each entry: (date, list of (kind, phone_pool)) where
-    # kind is one of completed / missed / pipeline_error / ai_booking, and
+    # Per-day plan. Each entry: (day_offset, list of (kind, phone_pool)) where
+    # day_offset is relative to anchor (round-8: anchor=2026-05-17, so -8 = 9 May).
     # phone_pool is "mock" / "unknown" / "customer:<name>". Exactly one
-    # pipeline_error is sprinkled in (11 May) so the failure-kind badge is
+    # pipeline_error is sprinkled in so the failure-kind badge is
     # exercised. AI booking calls are sprinkled across the week so the
     # Bookings tab stays populated as the window scrolls forward.
     plan = [
-        # 9 May (Friday)
-        ("2026-05-09", [
+        # 9 May → -8 days (Friday relative to 2026-05-17)
+        (-8, [
             ("completed", "mock"),
             ("ai_booking", "customer:Andrew Green"),
             ("completed", "mock"), ("missed", "mock"),
         ]),
-        # 10 May (Saturday, weekend peak) — Sophie business dinner
-        ("2026-05-10", [
+        # 10 May → -7 (Saturday, weekend peak) — Sophie business dinner
+        (-7, [
             ("ai_booking", "customer:Sophie Walker"),
             ("completed", "mock"), ("completed", "unknown"),
             ("completed", "mock"),
             ("missed", "unknown"), ("missed", "mock"),
         ]),
-        # 11 May (Sunday) — pipeline_error lives here
-        ("2026-05-11", [
+        # 11 May → -6 (Sunday) — pipeline_error lives here
+        (-6, [
             ("ai_booking", "customer:Mark Ross"),
             ("completed", "mock"), ("completed", "mock"),
             ("completed", "unknown"),
             ("missed", "mock"), ("pipeline_error", "unknown"),
         ]),
-        # 12 May (Monday) — Tom new-patient check
-        ("2026-05-12", [
+        # 12 May → -5 (Monday) — Tom new-patient check
+        (-5, [
             ("completed", "mock"),
             ("ai_booking", "customer:Tom Hughes"),
             ("completed", "mock"), ("missed", "mock"),
         ]),
-        # 13 May (Tuesday)
-        ("2026-05-13", [
+        # 13 May → -4 (Tuesday)
+        (-4, [
             ("completed", "mock"),
             ("ai_booking", "customer:Laura Bennett"),
             ("completed", "mock"), ("missed", "unknown"),
         ]),
-        # 14 May (Wednesday)
-        ("2026-05-14", [
+        # 14 May → -3 (Wednesday)
+        (-3, [
             ("ai_booking", "customer:Julia White"),
             ("completed", "mock"), ("completed", "mock"),
             ("missed", "mock"),
         ]),
-        # 15 May (Thursday) — Sophie repeat business dinner
-        ("2026-05-15", [
+        # 15 May → -2 (Thursday) — Sophie repeat business dinner
+        (-2, [
             ("completed", "mock"), ("completed", "mock"),
             ("ai_booking", "customer:Sophie Walker"),
             ("missed", "mock"),
         ]),
-        # 16 May (Friday)
-        ("2026-05-16", [
+        # 16 May → -1 (Friday)
+        (-1, [
             ("completed", "mock"),
             ("ai_booking", "customer:Mark Ross"),
             ("completed", "mock"), ("completed", "unknown"),
             ("missed", "mock"),
         ]),
-        # 17 May (Saturday weekend peak)
-        ("2026-05-17", [
+        # 17 May → 0 (Saturday weekend peak — anchor day)
+        (0, [
             ("ai_booking", "customer:Andrew Green"),
             ("completed", "mock"), ("completed", "mock"),
             ("completed", "unknown"),
@@ -1875,15 +1991,20 @@ def _busy_week_specs() -> list[dict]:
         ]),
     ]
 
-    for date_str, calls in plan:
-        y, m, d = (int(x) for x in date_str.split("-"))
-        day_dt = datetime(y, m, d, tzinfo=timezone.utc)
+    for day_offset, calls in plan:
+        # Compute weekday at anchor + day_offset (rather than from the legacy
+        # 2026-05-17 fixed date) so the weekday-vs-weekend slot pool stays
+        # honest after a refresh shift. The "weekend peak" comment above
+        # remains a documentation hint of the original layout.
+        day_dt = datetime.combine(anchor, time(0), tzinfo=timezone.utc) + timedelta(
+            days=day_offset
+        )
         weekend = day_dt.weekday() >= 5
         slots = list(_HOUR_SLOTS_WEEKEND if weekend else _HOUR_SLOTS_WEEKDAY)
         rng.shuffle(slots)
         for idx, (kind, pool) in enumerate(calls):
             hh, mm = slots[idx % len(slots)]
-            created = datetime(y, m, d, hh, mm, tzinfo=timezone.utc)
+            created = _anchor_dt(anchor, day_offset, hh, mm)
             if pool == "mock":
                 phone = rng.choice(_BUSY_MOCK_PHONES)
                 customer_name = None
@@ -1901,12 +2022,18 @@ def _busy_week_specs() -> list[dict]:
             # round-7 deploy) doesn't silently skip the new AI bookings
             # via UUID5 collision. The namespace is fixed per kind so
             # the second run is still idempotent.
+            #
+            # UUID5 composition uses (phone, day_offset, slot_idx) instead
+            # of `created_at.isoformat()` so the PK is STABLE across anchor
+            # shifts — the refresh task only touches the date columns.
             namespace = (
                 uuid.UUID("22222222-2222-5222-8222-aaaa00000000")
                 if kind == "ai_booking"
                 else uuid.UUID("22222222-2222-5222-8222-000000000000")
             )
-            fixture_uuid = uuid.uuid5(namespace, f"{phone}@{created.isoformat()}")
+            fixture_uuid = uuid.uuid5(
+                namespace, f"{phone}@day_{day_offset}@slot_{idx}"
+            )
 
             if kind == "completed":
                 fixture = {
@@ -1953,6 +2080,107 @@ def _busy_week_specs() -> list[dict]:
 
             if customer_name:
                 fixture["customer_name"] = customer_name
+            out.append(fixture)
+    return out
+
+
+# Namespaces for the round-9 8-week historical window. Kept distinct from
+# the busy-week namespaces so the two pools cannot collide on UUID5 even
+# if a phone happens to be reused.
+_NAMESPACE_HISTORICAL_AI = uuid.UUID("33333333-3333-5333-8333-aaaa00000000")
+_NAMESPACE_HISTORICAL_COMPLETED = uuid.UUID("33333333-3333-5333-8333-000000000000")
+
+
+# Per-customer historical plan: (day_offset, "ai_booking" | "completed").
+# Spread over an 8-week window so the RAG retrieval has plenty of prior
+# turns to surface, and the Bookings tab stays populated as the user
+# scrolls back. day_offset = -56 means "56 days before anchor".
+_HISTORICAL_WINDOW_PLAN: list[tuple[str, list[tuple[int, str]]]] = [
+    # Marco Bianchi — anniversary regular, quarterly cadence.
+    ("Marco Bianchi", [(-42, "ai_booking"), (-28, "ai_booking"), (-14, "completed")]),
+    # Olivia Hayes — family dinners, monthly-ish.
+    ("Olivia Hayes", [
+        (-49, "ai_booking"), (-35, "ai_booking"),
+        (-21, "completed"), (-10, "ai_booking"),
+    ]),
+    # Emma Thompson — hygienist follow-up every 4 weeks.
+    ("Emma Thompson", [(-56, "ai_booking"), (-28, "ai_booking"), (-14, "completed")]),
+    # James O'Connor — root canal recovery follow-up, tight cadence.
+    ("James O'Connor", [(-42, "ai_booking"), (-21, "completed"), (-10, "ai_booking")]),
+    # Rachel Kim — fleet vehicle steady rotation.
+    ("Rachel Kim", [
+        (-35, "ai_booking"), (-28, "completed"),
+        (-21, "ai_booking"), (-14, "ai_booking"),
+    ]),
+    # Luca Romano — classic car interventions are rare.
+    ("Luca Romano", [(-49, "ai_booking"), (-28, "completed"), (-10, "ai_booking")]),
+]
+
+
+def _historical_window_specs(anchor: date) -> list[dict]:
+    """Round-9 historical traffic for the six new seed customers.
+
+    Spreads ~20 fixtures across day_offset [-56, -10] (8 weeks down to 10
+    days before anchor). About 70% are AI-handled bookings (re-using the
+    same `_AI_BOOKING_BLUEPRINTS` as the busy week), the rest are plain
+    `completed` rows (human-handled, no extracted/no actions) for realism.
+
+    UUID5 namespacing is independent from the busy-week pools so the two
+    generators cannot collide on a phone that happens to be reused
+    (defensive — we don't expect that today). UUID5 composition is
+    `(phone, day_offset, slot_idx)` so the PK stays stable after a
+    `refresh_seed_dates_if_needed` shift.
+    """
+    rng = random.Random(20260519)  # historical-window-specific seed
+    out: list[dict] = []
+    for customer_name, entries in _HISTORICAL_WINDOW_PLAN:
+        phone = _CUSTOMER_PHONES_BY_NAME[customer_name]
+        for slot_idx, (day_offset, kind) in enumerate(entries):
+            day_dt = datetime.combine(
+                anchor, time(0), tzinfo=timezone.utc
+            ) + timedelta(days=day_offset)
+            weekend = day_dt.weekday() >= 5
+            slots = list(_HOUR_SLOTS_WEEKEND if weekend else _HOUR_SLOTS_WEEKDAY)
+            # Use the slot_idx (plus a salt from the day_offset) to pick a
+            # stable hour-slot — different from random.choice each boot so
+            # the IDs derived from (phone, day_offset, slot_idx) point at
+            # the same wall-clock time on every run.
+            hh, mm = slots[(slot_idx + abs(day_offset)) % len(slots)]
+            # Add a small minute jitter, deterministic per (phone, day, slot),
+            # so multiple customers don't pile up at the exact same minute.
+            jitter = rng.randint(0, 9)
+            created = _anchor_dt(anchor, day_offset, hh, (mm + jitter) % 60)
+
+            namespace = (
+                _NAMESPACE_HISTORICAL_AI
+                if kind == "ai_booking"
+                else _NAMESPACE_HISTORICAL_COMPLETED
+            )
+            fixture_uuid = uuid.uuid5(
+                namespace, f"{phone}@day_{day_offset}@slot_{slot_idx}"
+            )
+
+            if kind == "completed":
+                fixture = {
+                    "id": fixture_uuid,
+                    "phone_e164": phone,
+                    "status": "completed",
+                    "created_at": created,
+                    "language": "en",
+                    "customer_name": customer_name,
+                }
+            elif kind == "ai_booking":
+                fixture = {
+                    "id": fixture_uuid,
+                    "phone_e164": phone,
+                    "status": "completed",
+                    "created_at": created,
+                    "language": "en",
+                    "ai_booking": True,
+                    "customer_name": customer_name,
+                }
+            else:
+                raise ValueError(f"unknown historical kind: {kind}")
             out.append(fixture)
     return out
 
@@ -2028,7 +2256,7 @@ _AI_BOOKING_BLUEPRINTS: dict[str, dict] = {
             },
         },
         "briefing": (
-            "Julia is a VIP, anniversary on 20 May. "
+            "Julia is a VIP, anniversary booking recurring. "
             "Window table + surprise dessert is the usual."
         ),
     },
@@ -2171,6 +2399,250 @@ _AI_BOOKING_BLUEPRINTS: dict[str, dict] = {
             "Anxious about extraction — handle gently."
         ),
     },
+    # ---------------- Round 9 additions ----------------
+    "Marco Bianchi": {
+        "domain": "restaurant",
+        "transcript_template": (
+            "Operator: La Trattoria, good evening.\n"
+            "Caller: Hi, it's Marco Bianchi. We'd like the corner table for "
+            "our wedding anniversary, party of two, around eight.\n"
+            "Operator: Of course Marco. Same vegetarian main for your partner "
+            "as last time — mushroom risotto?\n"
+            "Caller: Yes please, and a side of grilled vegetables.\n"
+            "Operator: I'll WhatsApp the confirmation and a complimentary "
+            "dessert note. See you soon."
+        ),
+        "fields": {
+            "party_size": 2,
+            "booking_time": "20:00",
+            "customer_name": "Marco Bianchi",
+            "occasion": "anniversary",
+            "seating_preference": "corner table",
+            "dietary_restrictions": "vegetarian main",
+            "callback_channel": "whatsapp",
+        },
+        "intent": "booking_anniversary",
+        "action": {
+            "type": "booking.create",
+            "title": "Create booking",
+            "summary_template": "Anniversary corner table for 2 on {date} at 20:00, vegetarian partner",
+            "payload_template": {
+                "party_size": 2,
+                "booking_time": "20:00",
+                "customer_name": "Marco Bianchi",
+                "seating_preference": "corner table",
+                "occasion": "anniversary",
+            },
+        },
+        "briefing": (
+            "Marco's partner is vegetarian and they prefer the corner table "
+            "for anniversaries. Flag the vegetarian main when he books."
+        ),
+    },
+    "Olivia Hayes": {
+        "domain": "restaurant",
+        "transcript_template": (
+            "Operator: La Trattoria, good evening.\n"
+            "Caller: Hi, it's Olivia Hayes. Family dinner for four on "
+            "Saturday at seven — two adults, two kids under ten.\n"
+            "Operator: Wonderful. The usual two vegetarian mains for the "
+            "kids?\n"
+            "Caller: Yes please. And remember the peanut allergy — I need "
+            "the kitchen fully briefed.\n"
+            "Operator: Noted, I'll flag the allergy on the booking note and "
+            "send the confirmation by SMS.\n"
+            "Caller: Perfect, thank you."
+        ),
+        "fields": {
+            "party_size": 4,
+            "booking_time": "19:00",
+            "customer_name": "Olivia Hayes",
+            "seating_preference": "family-friendly",
+            "dietary_restrictions": "2 vegetarian mains, peanut allergy",
+            "callback_channel": "sms",
+        },
+        "intent": "booking_new",
+        "action": {
+            "type": "booking.create",
+            "title": "Create booking",
+            "summary_template": "Family of 4 on {date} at 19:00, 2 veg mains, peanut allergy",
+            "payload_template": {
+                "party_size": 4,
+                "booking_time": "19:00",
+                "customer_name": "Olivia Hayes",
+                "seating_preference": "family-friendly",
+                "dietary_restrictions": "2 vegetarian mains, peanut allergy",
+            },
+        },
+        "briefing": (
+            "Olivia books family of 4 dinners with two kids under 10. "
+            "Two vegetarian mains required and severe peanut allergy — "
+            "brief the kitchen at every booking."
+        ),
+    },
+    "Emma Thompson": {
+        "domain": "dentist",
+        "transcript_template": (
+            "Operator: Greenwood Dental, this is the front desk.\n"
+            "Caller: Hi, Emma Thompson. I'm due for my hygienist follow-up.\n"
+            "Operator: Of course Emma. You're on the four-month rotation — "
+            "your last cleaning went well. Tuesday at half nine?\n"
+            "Caller: Tuesday at nine-thirty works. One thing — the lower-left "
+            "felt a touch sensitive last visit. Could you flag it for the "
+            "hygienist?\n"
+            "Operator: I'll add a note on the chart. We'll see you then."
+        ),
+        "fields": {
+            "patient_name": "Emma Thompson",
+            "booking_time": "09:30",
+            "concern": "hygienist follow-up + lower-left sensitivity",
+            "preferred_doctor": "hygienist",
+            "callback_channel": "phone",
+        },
+        "intent": "booking_new",
+        "action": {
+            "type": "booking.create",
+            "title": "Create booking",
+            "summary_template": "Hygienist follow-up on {date} at 09:30, flag lower-left sensitivity",
+            "payload_template": {
+                "patient_name": "Emma Thompson",
+                "booking_time": "09:30",
+                "concern": "hygienist follow-up + lower-left sensitivity",
+                "preferred_doctor": "hygienist",
+            },
+        },
+        "briefing": (
+            "Emma is on a four-month hygienist rotation. Mild gum "
+            "sensitivity on the lower-left at her last visit — flag for "
+            "the hygienist at every booking."
+        ),
+    },
+    "James O'Connor": {
+        "domain": "dentist",
+        "transcript_template": (
+            "Operator: Greenwood Dental, this is the front desk.\n"
+            "Caller: Hi, James O'Connor. I'm calling about the root canal "
+            "recovery — the upper-right second molar.\n"
+            "Operator: How's it feeling, James?\n"
+            "Caller: Mostly fine. A little tenderness when I bite hard food, "
+            "no throbbing pain at night.\n"
+            "Operator: That sounds within range. Let's book a check with "
+            "Dr. Patel — Wednesday at half four?\n"
+            "Caller: Wednesday at four-thirty works. Thank you."
+        ),
+        "fields": {
+            "patient_name": "James O'Connor",
+            "booking_time": "16:30",
+            "concern": "root canal recovery follow-up, mild bite tenderness",
+            "preferred_doctor": "Dr. Patel",
+            "callback_channel": "phone",
+        },
+        "intent": "booking_new",
+        "action": {
+            "type": "booking.create",
+            "title": "Create booking",
+            "summary_template": "Post-op check with Dr. Patel on {date} at 16:30, root canal recovery",
+            "payload_template": {
+                "patient_name": "James O'Connor",
+                "booking_time": "16:30",
+                "concern": "root canal recovery follow-up",
+                "preferred_doctor": "Dr. Patel",
+            },
+        },
+        "briefing": (
+            "James is recovering from a root canal on the upper-right "
+            "second molar. Tracks mild bite tenderness — flag any "
+            "throbbing pain on the next visit."
+        ),
+    },
+    "Rachel Kim": {
+        "domain": "bodyshop",
+        "transcript_template": (
+            "Operator: Greenline Auto Body, good afternoon.\n"
+            "Caller: Hi, Rachel Kim from FleetCo Logistics. Van number "
+            "three — Mercedes Sprinter, plate Foxtrot Lima five five Romeo "
+            "Kilo — clipped a delivery bollard. Front-left fender dented.\n"
+            "Operator: Routing through FleetCo insurance as usual?\n"
+            "Caller: Yes — claim number FLC dash twenty twenty six dash "
+            "forty seven. Don't bill personal payment.\n"
+            "Operator: Got it. Bring it Thursday at nine, I'll have the "
+            "quote ready in PDF for the claim. I'll e-mail confirmation.\n"
+            "Caller: Perfect, thanks."
+        ),
+        "fields": {
+            "customer_name": "Rachel Kim",
+            "vehicle_plate": "FL55RK",
+            "damage_area": "front-left fender",
+            "booking_time": "09:00",
+            "payment_method": "fleet_insurance",
+            "insurance_claim_number": "FLC-2026-47",
+            "callback_channel": "email",
+        },
+        "intent": "booking_new",
+        "action": {
+            "type": "booking.create",
+            "title": "Create booking",
+            "summary_template": "Fleet van #3 fender repair on {date} at 09:00, FleetCo claim FLC-2026-47",
+            "payload_template": {
+                "customer_name": "Rachel Kim",
+                "vehicle_plate": "FL55RK",
+                "damage_area": "front-left fender",
+                "booking_time": "09:00",
+                "payment_method": "fleet_insurance",
+                "insurance_claim_number": "FLC-2026-47",
+            },
+        },
+        "briefing": (
+            "Rachel manages 3 FleetCo delivery vans — all repairs go "
+            "through FleetCo insurance pre-approval. Use the FleetCo "
+            "claim number, never bill personal payment."
+        ),
+    },
+    "Luca Romano": {
+        "domain": "bodyshop",
+        "transcript_template": (
+            "Operator: Greenline Auto Body, good morning.\n"
+            "Caller: Hi, it's Luca Romano. The Alfa Romeo Spider — the "
+            "seventy-two — picked up a scuff on the rear quarter panel.\n"
+            "Operator: Original paint match, original parts as always?\n"
+            "Caller: Original parts only, please. No aftermarket, no "
+            "insurance — I'll pay cash on collection.\n"
+            "Operator: Understood. Tuesday at half eleven for the "
+            "inspection?\n"
+            "Caller: Tuesday at eleven-thirty works. I don't want any "
+            "invoice mentioning insurance — cash receipt only.\n"
+            "Operator: Cash receipt, no insurance line. I'll send a SMS "
+            "confirmation."
+        ),
+        "fields": {
+            "customer_name": "Luca Romano",
+            "vehicle_make_model": "1972 Alfa Romeo Spider",
+            "damage_area": "rear quarter panel scuff",
+            "booking_time": "11:30",
+            "payment_method": "cash",
+            "parts_preference": "original_only",
+            "callback_channel": "sms",
+        },
+        "intent": "booking_new",
+        "action": {
+            "type": "booking.create",
+            "title": "Create booking",
+            "summary_template": "Alfa Spider rear quarter inspection on {date} at 11:30, original parts, cash",
+            "payload_template": {
+                "customer_name": "Luca Romano",
+                "vehicle_make_model": "1972 Alfa Romeo Spider",
+                "damage_area": "rear quarter panel scuff",
+                "booking_time": "11:30",
+                "payment_method": "cash",
+                "parts_preference": "original_only",
+            },
+        },
+        "briefing": (
+            "Luca owns a 1972 Alfa Romeo Spider — only original parts "
+            "accepted, no aftermarket. Pays cash, declines invoices that "
+            "mention insurance."
+        ),
+    },
 }
 
 
@@ -2258,7 +2730,7 @@ async def _ensure_seed_customers(session) -> None:
         ).scalars().all()
     )
     inserted = 0
-    for (name, phone, tags, memory, lang, total, last) in SEED_CUSTOMERS:
+    for (name, phone, tags, memory, lang) in SEED_CUSTOMERS:
         if phone in existing_phones:
             continue
         session.add(
@@ -2269,8 +2741,10 @@ async def _ensure_seed_customers(session) -> None:
                 preferred_language=lang,
                 tags=tags,
                 memory_summary=memory,
-                total_calls=total,
-                last_call_at=last,
+                # total_calls / last_call_at recomputed below from the
+                # actual Call rows once all fixtures are inserted.
+                total_calls=0,
+                last_call_at=None,
                 is_seed=True,
             )
         )
@@ -2280,10 +2754,11 @@ async def _ensure_seed_customers(session) -> None:
         print(f"[seed] upserted {inserted} missing seed customers.")
 
 
-async def _ensure_personal_calls(session) -> None:
+async def _ensure_personal_calls(session, anchor: date) -> None:
     """Insert missing personal phonebook calls plus a "busy week" densified
-    history. Idempotent via fixed UUIDs (base fixtures) and UUID5-derived
-    IDs (busy week).
+    history and an 8-week historical window for the round-9 customers.
+    Idempotent via fixed UUIDs (base fixtures) and UUID5-derived IDs
+    (busy week, historical window).
 
     Call.template_id is non-nullable, so personal calls are attached to
     the first seed template we find — they carry no extracted fields and
@@ -2292,6 +2767,10 @@ async def _ensure_personal_calls(session) -> None:
     the customer detail "Calls (N)" surfaces real repeat-caller history;
     `Customer.total_calls` and `last_call_at` are recomputed at the end
     so the Contacts ordering stays consistent with the inserted rows.
+
+    `anchor` is resolved upstream by `resolve_seed_anchor_for_materialization`
+    so that newly materialized fixtures stay coherent with whatever the
+    rest of the dataset is anchored to.
     """
     seed_template = (
         await session.execute(
@@ -2339,7 +2818,11 @@ async def _ensure_personal_calls(session) -> None:
         ).all()
         phone_to_customer_id = {phone: cid for cid, phone in rows}
 
-    all_fixtures = list(_PERSONAL_CALL_FIXTURES) + _busy_week_specs()
+    all_fixtures = (
+        _personal_call_fixtures(anchor)
+        + _busy_week_specs(anchor)
+        + _historical_window_specs(anchor)
+    )
 
     inserted = 0
     ai_specs: list[dict] = []  # deferred — emitted via _emit_seeded_call_core

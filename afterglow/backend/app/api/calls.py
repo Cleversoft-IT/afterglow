@@ -18,7 +18,9 @@ from fastapi import (
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.agents.orchestrator import run_pipeline
+from app.agents import briefing_regenerator, memory_retrieval
+from app.agents.orchestrator import _seed_exists_for_phone, run_pipeline
+from app.audit.logger import audit_step
 from app.api.session_context import (
     SessionContext,
     get_session_context,
@@ -301,6 +303,7 @@ async def get_call(
             sentiment=extracted.sentiment,
             urgency=extracted.urgency,
             field_definitions=field_defs,
+            briefing=extracted.briefing_snapshot,
         )
 
     return CallDetailView(
@@ -342,6 +345,139 @@ async def get_call(
             for a in actions
         ],
     )
+
+
+@router.post("/{call_id}/regenerate-summary", response_model=CallDetailView)
+async def regenerate_summary(
+    call_id: uuid.UUID,
+    ctx: SessionContext = Depends(get_session_context),
+    session: AsyncSession = Depends(get_session),
+) -> CallDetailView:
+    """Rewrite this call's next-call briefing without re-running fields or actions.
+
+    Scoped intentionally narrow: only `ExtractedFields.briefing_snapshot`
+    and `Customer.memory_summary` move. Extracted fields, executed actions,
+    and the transcript are untouched — clicking Regenerate must not produce
+    duplicate bookings or shift past data.
+
+    Preconditions (409 otherwise):
+      - `call.status == "completed"`
+      - extracted_fields row exists
+      - call.customer_id is set
+    """
+    call = (
+        await session.execute(
+            select(Call).where(
+                Call.id == call_id,
+                visibility_filter_seedable(Call.session_id, Call.is_seed, ctx),
+            )
+        )
+    ).scalar_one_or_none()
+    if call is None:
+        raise HTTPException(status_code=404, detail="Call not found")
+    if call.status != "completed":
+        raise HTTPException(
+            status_code=409,
+            detail=f"Call is not completed (status={call.status})",
+        )
+    if call.customer_id is None:
+        raise HTTPException(
+            status_code=409, detail="Call has no linked customer"
+        )
+
+    extracted = (
+        await session.execute(
+            select(ExtractedFields).where(ExtractedFields.call_id == call.id)
+        )
+    ).scalar_one_or_none()
+    if extracted is None:
+        raise HTTPException(
+            status_code=409, detail="Call has no extracted fields to refresh"
+        )
+
+    customer = (
+        await session.execute(
+            select(Customer).where(Customer.id == call.customer_id)
+        )
+    ).scalar_one_or_none()
+    if customer is None:
+        raise HTTPException(status_code=409, detail="Customer not found")
+
+    template = (
+        await session.execute(
+            select(Template).where(Template.id == call.template_id)
+        )
+    ).scalar_one()
+
+    # Re-fetch prior facts with the same demo/prod logic as the orchestrator.
+    is_demo = call.session_id is not None
+    collection_id = settings.vultr_vector_default_collection or None
+    preseed_available = False
+    if is_demo and collection_id:
+        preseed_available = customer.is_seed or await _seed_exists_for_phone(
+            session, call.phone_e164
+        )
+    demo_can_rag = is_demo and bool(collection_id) and preseed_available
+    use_structured = not (
+        demo_can_rag or (not is_demo and (customer.total_calls or 0) > 10)
+    )
+    if use_structured:
+        prior_facts, _source = await memory_retrieval.retrieve_structured_history(
+            session, customer
+        )
+    else:
+        prior_facts, _in, _out = await memory_retrieval.retrieve_customer_context(
+            collection_id=collection_id,
+            phone_e164=call.phone_e164,
+            domain_hint=template.domain_hint,
+            is_demo=is_demo,
+            preseed_available=preseed_available,
+        )
+
+    transcript_text = (call.raw_transcript or {}).get("text") or ""
+
+    try:
+        async with audit_step(
+            call_id=call.id,
+            session_id=call.session_id,
+            agent_name="briefing_regenerator",
+            step_type="llm_call",
+            model=settings.gemini_default_model,
+        ) as regen_audit:
+            new_briefing, usage = await briefing_regenerator.regenerate_briefing(
+                transcript_text=transcript_text,
+                fields=extracted.fields or {},
+                intent=extracted.intent,
+                sentiment=extracted.sentiment,
+                language=call.detected_language or customer.preferred_language,
+                prior_facts=prior_facts,
+            )
+            regen_audit.input_tokens = usage.input_tokens
+            regen_audit.output_tokens = usage.output_tokens
+            regen_audit.payload = {
+                "previous_briefing_chars": len(extracted.briefing_snapshot or ""),
+                "new_briefing_chars": len(new_briefing),
+            }
+    except Exception as exc:  # noqa: BLE001
+        async with audit_step(
+            call_id=call.id,
+            session_id=call.session_id,
+            agent_name="briefing_regenerator",
+            step_type="llm_call",
+            status="error",
+            payload={"reason": str(exc)},
+        ):
+            pass
+        await session.rollback()
+        raise HTTPException(
+            status_code=502, detail=f"briefing_regenerator: {exc}"
+        ) from exc
+
+    extracted.briefing_snapshot = new_briefing
+    customer.memory_summary = new_briefing
+    await session.commit()
+
+    return await get_call(call_id=call_id, ctx=ctx, session=session)
 
 
 @router.get("", response_model=list[CallListItem])

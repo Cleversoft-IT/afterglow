@@ -44,7 +44,7 @@ const steps = [
   {
     n: '04',
     title: 'Vultr is the system of record',
-    body: 'Calls, customers, audit log on Managed Postgres; caller memory on Vultr Vector Store. At the next ring, RAG pre-fetches the history so the operator opens the call already briefed.',
+    body: 'Calls, customers, audit log on Managed Postgres; caller memory on Vultr Vector Store. In production every call enriches the Vector Store; in the public demo the Vector Store is pre-seeded read-only, so the first ring of a known caller already retrieves real prior facts — judges see the RAG audit step succeed on day 1, not on call number two.',
   },
 ];
 
@@ -62,7 +62,7 @@ const features: { icon: LucideIcon; title: string; body: string }[] = [
   {
     icon: Brain,
     title: 'Caller memory',
-    body: 'Every call enriches a Vector Store. At the next ring, prior history is pre-fetched via RAG so the operator greets the caller already knowing their preferences.',
+    body: 'Every production call enriches a Vector Store; at the next ring the prior history is pre-fetched via RAG so the operator greets the caller already knowing their preferences. The public demo runs the same retrieval read-only against a pre-seeded collection, so judges can watch the RAG audit step land on the very first call.',
   },
   {
     icon: Layers,
