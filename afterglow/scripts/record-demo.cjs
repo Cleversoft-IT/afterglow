@@ -30,14 +30,23 @@ const { execFileSync, spawnSync } = require('node:child_process');
 const APP_URL = process.env.APP_URL || 'https://app.95-179-245-107.sslip.io';
 const API_URL = process.env.API_URL || 'https://api.95-179-245-107.sslip.io';
 
-// 390 × 845 = same aspect ratio as the .phone-frame in the demo-site hero.
-// DPR=1 → no upscale needed, the captured pixels drop straight into a 390-wide frame.
+// 390 × 845 = the viewport we drive the app at. React-native-web's mobile
+// layout has a ~30 px top padding before the search bar (status-bar safe
+// area). We clip that strip from each screenshot below — the bezel of the
+// phone-frame in the demo-site would otherwise sit on top of a light-grey
+// gap, which reads as "wrong margin".
 const VIEWPORT = { width: 390, height: 845 };
+const APP_TOP_PADDING = 15; // px to clip off the top of each screenshot
+const FRAME_W = VIEWPORT.width;
+const FRAME_H = VIEWPORT.height - APP_TOP_PADDING; // 830
 
 // Centre of the blue (AI) FAB on the incoming-call screen. RN Paper renders
 // the 3 FABs (Decline / AI / Accept) as 64-px circles centred horizontally
 // on the bottom of the viewport.
 const AI_FAB = { x: VIEWPORT.width / 2, y: 770 };
+// Centre of the red hangup pill on the in-call screen (single FAB centred
+// below the Keypad/Mute/Speaker/More control row).
+const HANGUP = { x: VIEWPORT.width / 2, y: 780 };
 
 const FRAMES_DIR = '/tmp/afterglow-demo-frames';
 const OUT_DIR = resolve(__dirname, '../demo-site/public');
@@ -54,21 +63,28 @@ const DEMO_SESSION_HEADER = 'X-Demo-Session';
 // Every click in the flow gets a single combined "tap" frame (cursor
 // pinned on the target + ripple captured mid-bloom). Showing a cursor
 // only on one tap and skipping the others felt incoherent.
+// Special frame: `*-white` is synthesised at compose time by magick
+// (xc:white), it doesn't come from a screenshot. Used as a brief fade
+// between "Afterglow listening" and the later in-call frame to suggest
+// time passing during the call.
 const FRAMES = [
   { name: '01-home',          delay: 320 }, // 3.2s — read the call list
   { name: '02-tap-bookings',  delay: 80  }, // 0.8s — tap on Bookings tab
   { name: '03-bookings',      delay: 270 }, // 2.7s — filtered subset
   { name: '04-incoming',      delay: 380 }, // 3.8s — caller + briefing (key)
   { name: '05-tap-blue',      delay: 90  }, // 0.9s — tap on AI FAB
-  { name: '06-answering',     delay: 200 }, // 2.0s — "Afterglow listening" badge
-  { name: '07-calls',         delay: 240 }, // 2.4s — back to call list
-  { name: '08-tap-mark',      delay: 80  }, // 0.8s — tap on Mark Ross row
-  { name: '09-detail-top',    delay: 250 }, // 2.5s — call detail header
-  { name: '10-detail-mid',    delay: 30  }, // 0.3s — scroll motion
-  { name: '11-detail-mid2',   delay: 30  }, // 0.3s — scroll motion
-  { name: '12-detail-bottom', delay: 420 }, // 4.2s — final read (key)
+  { name: '06-answering',     delay: 160 }, // 1.6s — "Afterglow listening"
+  { name: '07-white',         delay: 35,  synth: 'white' }, // 0.35s fade
+  { name: '08-call-later',    delay: 180 }, // 1.8s — call still in progress
+  { name: '09-tap-red',       delay: 90  }, // 0.9s — tap on hangup pill
+  { name: '10-calls',         delay: 230 }, // 2.3s — back to call list
+  { name: '11-tap-mark',      delay: 80  }, // 0.8s — tap on Mark Ross row
+  { name: '12-detail-top',    delay: 240 }, // 2.4s — call detail header
+  { name: '13-detail-mid',    delay: 30  }, // 0.3s — scroll motion
+  { name: '14-detail-mid2',   delay: 30  }, // 0.3s — scroll motion
+  { name: '15-detail-bottom', delay: 400 }, // 4.0s — final read (key)
 ];
-// Total ≈ 23.9s loop.
+// Total ≈ 25.0s loop.
 
 // ─── Init scripts injected into every page in the context ───────────────
 
@@ -187,6 +203,36 @@ async function tapAndCapture(page, { x, y, name, fire }) {
 
 // ─── Helpers ─────────────────────────────────────────────────────────────
 
+async function callsList(api, sessionId) {
+  const r = await api.get(`${API_URL}/api/v1/calls?limit=10`, {
+    headers: { [DEMO_SESSION_HEADER]: sessionId, Accept: 'application/json' },
+  });
+  if (!r.ok()) throw new Error(`calls list failed: ${r.status()} ${await r.text()}`);
+  return r.json();
+}
+
+// After hang-up the new call enters Speechmatics + Gemini analysis in the
+// background. It only appears at the top of the call list once status
+// reaches "completed". The mock audio is ~1 min, plus a few seconds of
+// model latency, so 2 minutes is a safe ceiling.
+async function waitForNewCall(api, sessionId, preTopId, timeoutMs = 150000) {
+  const start = Date.now();
+  let lastStatus = null;
+  while (Date.now() - start < timeoutMs) {
+    const list = await callsList(api, sessionId);
+    const top = list[0];
+    if (top && top.id !== preTopId) {
+      if (top.status === 'completed') return top;
+      if (top.status !== lastStatus) {
+        console.log(`  new call status: ${top.status}`);
+        lastStatus = top.status;
+      }
+    }
+    await new Promise((res) => setTimeout(res, 2000));
+  }
+  throw new Error(`timed out (${timeoutMs}ms) waiting for new-call analysis`);
+}
+
 async function provisionSession() {
   const api = await request.newContext();
 
@@ -228,7 +274,10 @@ async function provisionSession() {
 }
 
 function shot(page, name) {
-  return page.screenshot({ path: join(FRAMES_DIR, `${name}.png`) });
+  return page.screenshot({
+    path: join(FRAMES_DIR, `${name}.png`),
+    clip: { x: 0, y: APP_TOP_PADDING, width: FRAME_W, height: FRAME_H },
+  });
 }
 
 // Wait for webfonts + paint settle before snapping. Without this, the
@@ -247,6 +296,10 @@ async function record() {
 
   const { sessionId } = await provisionSession();
   console.log(`session: ${sessionId}`);
+
+  // Persistent API context for polling the call list throughout the run
+  // (used to detect when the freshly-handled call finishes analysis).
+  const api = await request.newContext();
 
   const browser = await chromium.launch({ headless: true });
   const context = await browser.newContext({
@@ -282,6 +335,11 @@ async function record() {
   await settle(page, 700);
   await shot(page, '03-bookings');
 
+  // Snapshot of the current top-of-list id before we trigger the incoming
+  // call. We'll wait until a *new* id surfaces at the top with status
+  // "completed" — that's the one whose detail the GIF should land on.
+  const preTopId = (await callsList(api, sessionId))[0]?.id ?? null;
+
   // ── Frame 04: Incoming call (Mark Ross + briefing) ────────────────────
   await page.goto(`${APP_URL}/incoming-call?caller=existing`, {
     waitUntil: 'networkidle',
@@ -297,51 +355,105 @@ async function record() {
     fire: () => page.mouse.click(AI_FAB.x, AI_FAB.y),
   });
 
-  // ── Frame 06: "Afterglow listening" — call in progress ────────────────
+  // ── Frame 06: "Afterglow listening" — call just answered ──────────────
   await page.waitForTimeout(1300);  // ringing → in-call transition
   await shot(page, '06-answering');
 
-  // ── Frame 07: back to Calls list ──────────────────────────────────────
-  // Skip the live-call timer screen entirely — narratively the user has
-  // answered, Afterglow is recording, and now we review the call list.
+  // ── Frame 07 (synth): white fade card. Generated by magick later.
+  // It bridges the real-world ~minute of call between answering and hang
+  // up; without it the cut from 00:01 to a later state reads as a jump.
+
+  // ── Frame 08: in-call screen later — timer has advanced ──────────────
+  // Wait long enough for the in-call timer to tick a few times. We are
+  // not chasing a specific "01:00" — any visibly higher number sells the
+  // "time passed during the call" beat.
+  await page.waitForTimeout(15000);
+  await shot(page, '08-call-later');
+
+  // ── Frame 09: tap the red hangup pill — VISUAL ONLY ──────────────────
+  // The app's real hangUp() handler stops the audio and goes back, which
+  // skips the submit. The submit only happens when acceptAi's audio
+  // playback ends naturally (~30-40 s of recording) and submitAndClose
+  // POSTs the blob to /api/v1/calls. So we render the cursor + ripple on
+  // the hangup pill for narrative beat, but we don't fire a real click.
+  await tapAndCapture(page, {
+    x: HANGUP.x,
+    y: HANGUP.y,
+    name: '09-tap-red',
+    fire: () => Promise.resolve(),
+  });
+
+  // ── Wait for the audio to finish playing and the app to auto-submit ──
+  // submitAndClose() runs router.replace('/(drawer)/(tabs)') after the
+  // POST returns. We wait for the navigation away from /incoming-call.
+  console.log('waiting for audio playback to end and the call to submit…');
+  await page.waitForFunction(
+    () => !window.location.pathname.includes('incoming-call'),
+    null,
+    { timeout: 90000 },
+  );
+
+  // ── Now wait for Speechmatics + Gemini + ADK to finish the analysis ──
+  // Only when that pipeline finishes does the new call surface at the
+  // top of /api/v1/calls with status=completed. The GIF should land on
+  // the detail of *that* call, not a seeded one.
+  console.log('waiting for the new call to finish analysis…');
+  const newCall = await waitForNewCall(api, sessionId, preTopId);
+  console.log(`new call ready: ${newCall.id}`);
+
+  // ── Frame 10: back to Calls list — new call is now at the top ────────
   await page.goto(`${APP_URL}/`, { waitUntil: 'networkidle' });
   await settle(page, 1200);
-  await shot(page, '07-calls');
+  await shot(page, '10-calls');
 
-  // ── Frame 08: tap the Mark Ross row ───────────────────────────────────
+  // ── Frame 11: tap the top Mark Ross row (= the new call) ─────────────
+  // getByText('Mark Ross').first() resolves to the topmost occurrence,
+  // which is the call we just recorded (sorted by date desc).
   const markRow = page.getByText('Mark Ross').first();
   const mb = await markRow.boundingBox();
   await tapAndCapture(page, {
     x: mb.x + mb.width / 2,
     y: mb.y + mb.height / 2,
-    name: '08-tap-mark',
-    fire: () => markRow.click(),
+    name: '11-tap-mark',
+    fire: () => page.goto(`${APP_URL}/call/${newCall.id}`, { waitUntil: 'networkidle' }),
   });
 
-  // ── Frame 09: Call detail header ──────────────────────────────────────
-  await page.waitForLoadState('networkidle');
+  // ── Frame 12: Call detail header (the new call) ──────────────────────
   await settle(page, 900);
-  await shot(page, '09-detail-top');
+  await shot(page, '12-detail-top');
 
-  // ── Frame 10-12: smooth-ish scroll through the detail ─────────────────
+  // ── Frame 13-15: smooth-ish scroll through the detail ────────────────
   await page.mouse.wheel(0, 320);
   await page.waitForTimeout(280);
-  await shot(page, '10-detail-mid');
+  await shot(page, '13-detail-mid');
 
   await page.mouse.wheel(0, 320);
   await page.waitForTimeout(280);
-  await shot(page, '11-detail-mid2');
+  await shot(page, '14-detail-mid2');
 
   await page.mouse.wheel(0, 320);
   await page.waitForTimeout(700);
-  await shot(page, '12-detail-bottom');
+  await shot(page, '15-detail-bottom');
 
   await browser.close();
+  await api.dispose();
 }
 
 // ─── GIF compose (ImageMagick) + optional gifsicle squeeze ──────────────
 
 function composeGif() {
+  // Synthesise any frames flagged with `synth` (currently only the white
+  // fade frame) so the recorder doesn't have to capture them.
+  for (const f of FRAMES) {
+    if (f.synth !== 'white') continue;
+    const path = join(FRAMES_DIR, `${f.name}.png`);
+    execFileSync('magick', [
+      '-size', `${FRAME_W}x${FRAME_H}`,
+      'xc:white',
+      path,
+    ]);
+  }
+
   const args = [];
   for (const { name, delay } of FRAMES) {
     const path = join(FRAMES_DIR, `${name}.png`);
