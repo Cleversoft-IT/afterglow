@@ -27,6 +27,7 @@ from app.db.models import (
     AuditLog,
     Call,
     Customer,
+    CustomerMemoryChunk,
     ExecutedAction,
     ExtractedFields,
     Template,
@@ -2068,13 +2069,10 @@ def _busy_week_specs(anchor: date) -> list[dict]:
             ("completed", "mock"), ("completed", "unknown"),
             ("missed", "mock"),
         ]),
-        # 17 May → 0 (Saturday weekend peak — anchor day)
-        (0, [
-            ("ai_booking", "customer:Andrew Green"),
-            ("completed", "mock"), ("completed", "mock"),
-            ("completed", "unknown"),
-            ("missed", "mock"), ("missed", "mock"),
-        ]),
+        # Anchor-day (`day_offset == 0`) entries are intentionally omitted:
+        # every refresh shifts them to "today" and they end up sitting on
+        # top of any real call placed at an earlier hour of the day. Legacy
+        # rows from older seeds are purged in `_ensure_personal_calls`.
     ]
 
     for day_offset, calls in plan:
@@ -2974,6 +2972,47 @@ async def _ensure_personal_calls(session, anchor: date) -> None:
             )
         ).all()
         phone_to_customer_id = {phone: cid for cid, phone in rows}
+
+    # Round-10 cleanup: drop residual anchor-day busy-week seed calls left
+    # over from older deploys. They used to live in the (0, [...]) block of
+    # `_busy_week_specs()`, which has been removed because every refresh
+    # shifts them to "today" and they end up sitting on top of any real
+    # call placed at an earlier hour of the day. New fixtures never set
+    # `created_at::date == anchor`, so this DELETE only matches legacy rows.
+    #
+    # Scope is tight: seed-only (`is_seed = True`), no visitor clones
+    # (`session_id IS NULL`). CustomerMemoryChunk.call_id is ondelete=SET
+    # NULL, so chunks would survive otherwise — we purge them first so the
+    # RAG preseed collection doesn't keep recalling briefings tied to a
+    # call that no longer exists. ExtractedFields / ExecutedAction cascade
+    # automatically; AuditLog.call_id is SET NULL (logs survive without
+    # the link, which is acceptable for the demo).
+    seed_anchor_day_calls = (
+        select(Call.id)
+        .where(
+            Call.is_seed.is_(True),
+            Call.session_id.is_(None),
+            func.date(Call.created_at) == anchor,
+        )
+        .scalar_subquery()
+    )
+    await session.execute(
+        delete(CustomerMemoryChunk).where(
+            CustomerMemoryChunk.call_id.in_(seed_anchor_day_calls)
+        )
+    )
+    purge_res = await session.execute(
+        delete(Call).where(
+            Call.is_seed.is_(True),
+            Call.session_id.is_(None),
+            func.date(Call.created_at) == anchor,
+        )
+    )
+    if purge_res.rowcount:
+        print(
+            f"[seed] purged {purge_res.rowcount} legacy anchor-day "
+            f"seed calls (anchor={anchor.isoformat()})."
+        )
 
     all_fixtures = (
         _personal_call_fixtures(anchor)
