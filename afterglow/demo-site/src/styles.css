@@ -250,11 +250,26 @@ html, body, #root {
 }
 
 .phone-frame iframe {
-  /* Render the iframe 30 px taller than the visible window and shift it
-     up by 30 px (`top: -5px` instead of `25px`); the overflow sits under
-     the bezel and hides the app's own top padding — mirroring the crop
-     the recorder does on the GIF. */
+  /* The iframe has TWO geometry quirks the static GIF doesn't:
+
+       a) the live app paints its own status-bar padding at the top —
+          render it 30 px taller (`height: calc(100% - 20px)` instead of
+          `calc(100% - 50px)`) and shift it up by 30 px (`top: -5px`
+          instead of `25px`). The 30 px of overflow lives under the bezel
+          and hides the padding — mirroring the GIF crop.
+
+       b) react-native-web renders a real vertical scrollbar on the right
+          edge of the call list. With a symmetric 15 px safe area the
+          scrollbar lands INSIDE the visible area and is distractingly
+          obvious. Drop the safe area on the right ONLY (`width:
+          calc(100% - 15px)` instead of `calc(100% - 50px)`) so the
+          iframe runs all the way to the bezel — the scrollbar then sits
+          under the painted bezel and disappears. As a bonus the live
+          app gets ~35 px of extra horizontal space versus a centred
+          iframe, so the layout doesn't feel cramped. */
   top: -5px;
+  left: 15px;
+  width: calc(100% - 15px);
   height: calc(100% - 20px);
 }
 
