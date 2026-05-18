@@ -89,7 +89,10 @@ export function relativeDay(iso: string, loc: Locale, now: Date = new Date()): s
 // "just now / N min ago / N h ago / HH:MM" — i18n only on the unit suffix.
 export function formatRelativeTime(iso: string, loc: Locale, now: Date = new Date()): string {
   const d = parse(iso);
-  const diffMs = now.getTime() - d.getTime();
+  // Future timestamps (e.g. seed calls shifted to today but with a clock hour
+  // later than now) collapse to "just now" instead of leaking a negative sign
+  // into the "N min fa / ago" branch.
+  const diffMs = Math.max(0, now.getTime() - d.getTime());
   const mins = Math.round(diffMs / 60_000);
   if (mins < 1) return loc === 'it' ? 'adesso' : 'just now';
   if (mins < 60) return loc === 'it' ? `${mins} min fa` : `${mins} min ago`;
