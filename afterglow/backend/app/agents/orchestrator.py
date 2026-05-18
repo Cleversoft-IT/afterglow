@@ -210,23 +210,12 @@ async def run_pipeline(session: AsyncSession, call_id: uuid.UUID) -> None:
 
     # Map completion_reason → call.status (no re-raise on error).
     if result.completion_reason == "error":
-        call.status = "failed"
-        call.error = (result.error or "call_agent error")[:1000]
-        call.completed_at = datetime.now(tz=timezone.utc)
+        _apply_agent_error(call, result)
         await session.commit()
         return
 
     if result.completion_reason == "max_turns":
-        call.status = "needs_review"
-        # Honor an agent-set review_flag if present; otherwise auto-fill.
-        if call.review_flag is None:
-            call.review_flag = {
-                "reason": "agent_did_not_finalize",
-                "severity": "high",
-                "turn_count": result.turn_count,
-                "flagged_by": "system",
-            }
-        call.completed_at = datetime.now(tz=timezone.utc)
+        _apply_agent_max_turns(call, result)
         await session.commit()
         return
 
@@ -367,6 +356,35 @@ def _pre_classify(transcript_text: str) -> bool:
     if len(transcript_text.split()) < _MIN_TRANSCRIPT_WORDS:
         return False
     return True
+
+
+def _apply_agent_error(call: Call, result: "call_agent.CallAgentResult") -> None:
+    """Apply CallAgentResult(completion_reason='error') onto the Call row.
+
+    Pure function: mutates `call` in place, never raises, never touches the
+    DB session. The orchestrator's commit comes next so the error landing
+    cannot be lost to a rollback.
+    """
+    call.status = "failed"
+    call.error = (result.error or "call_agent error")[:1000]
+    call.completed_at = datetime.now(tz=timezone.utc)
+
+
+def _apply_agent_max_turns(call: Call, result: "call_agent.CallAgentResult") -> None:
+    """Apply CallAgentResult(completion_reason='max_turns') onto the Call row.
+
+    Honor an agent-set review_flag (from `flag_for_review`) if present;
+    otherwise auto-fill a `system`-flagged entry.
+    """
+    call.status = "needs_review"
+    if call.review_flag is None:
+        call.review_flag = {
+            "reason": "agent_did_not_finalize",
+            "severity": "high",
+            "turn_count": result.turn_count,
+            "flagged_by": "system",
+        }
+    call.completed_at = datetime.now(tz=timezone.utc)
 
 
 def _coerce_extractions(

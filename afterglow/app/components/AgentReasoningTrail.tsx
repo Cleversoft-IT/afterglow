@@ -85,10 +85,15 @@ export function AgentReasoningTrail({ callId }: Props) {
   }, [load]);
 
   const { loopStart, loopEnd, turns } = useMemo(() => {
+    // Two-pass: action_exec audit rows are written DURING the loop, while
+    // agent_turn rows are emitted AFTER run_call_agent returns. Sorted by
+    // created_at ASC, action_exec arrives BEFORE its matching agent_turn,
+    // so a single-pass map.has(t) check classifies them as orphans. Collect
+    // agent_turn first, then attach action_executor rows by payload.agent_turn.
     let start: AuditLogEntry | null = null;
     let end: AuditLogEntry | null = null;
     const byTurn = new Map<number, Turn>();
-    const orphanExec: AuditLogEntry[] = [];
+    const execRows: AuditLogEntry[] = [];
 
     for (const r of rows) {
       if (r.agent_name === 'call_agent' && r.step_type === 'agent_loop_start') {
@@ -112,22 +117,29 @@ export function AgentReasoningTrail({ callId }: Props) {
         continue;
       }
       if (r.agent_name === 'action_executor') {
-        // Nest under the matching agent_turn when payload.agent_turn is set.
-        const t = _payloadNumber(r.payload, 'agent_turn');
-        if (t !== null && byTurn.has(t)) {
-          const existing = byTurn.get(t)!;
-          existing.action_exec = r;
-          existing.action_status =
-            _payloadString(r.payload, 'reason') ?? r.step_type ?? null;
-        } else {
-          orphanExec.push(r);
-        }
+        execRows.push(r);
+      }
+    }
+
+    // Pass 2: attach action_executor rows to their agent_turn now that all
+    // turns have been collected.
+    const orphanExec: AuditLogEntry[] = [];
+    for (const r of execRows) {
+      const t = _payloadNumber(r.payload, 'agent_turn');
+      if (t !== null && byTurn.has(t)) {
+        const existing = byTurn.get(t)!;
+        existing.action_exec = r;
+        existing.action_status =
+          _payloadString(r.payload, 'reason') ?? r.step_type ?? null;
+      } else {
+        orphanExec.push(r);
       }
     }
 
     // Append orphan exec rows as pseudo-turns at the end so the operator
     // still sees them. Rare — only when the agent_turn payload key is missing
-    // (legacy seed data).
+    // (legacy seed data) or when an action_executor row predates the agentic
+    // pipeline.
     let next = byTurn.size + 1;
     for (const r of orphanExec) {
       byTurn.set(next, {
