@@ -30,6 +30,16 @@ if (Platform.OS === 'web' && typeof document !== 'undefined') {
   document.documentElement.style.colorScheme = dark ? 'dark' : 'light';
   document.documentElement.style.backgroundColor = bg;
   if (document.body) document.body.style.backgroundColor = bg;
+
+  // Hide native scrollbars across the whole web app. The mobile UI has
+  // no visible scrollbars on iOS/Android — only react-native-web's
+  // <ScrollView> / <FlatList> in a desktop browser render them, and
+  // they show up cropped on the right edge of the demo-site phone
+  // mockup. The lists still scroll normally with wheel / touch.
+  const hideScrollbars = document.createElement('style');
+  hideScrollbars.textContent =
+    '*::-webkit-scrollbar{display:none}*{scrollbar-width:none;-ms-overflow-style:none}';
+  document.head.appendChild(hideScrollbars);
 }
 
 export default function RootLayout() {
