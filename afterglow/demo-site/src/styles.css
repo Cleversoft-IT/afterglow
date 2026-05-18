@@ -238,8 +238,14 @@ html, body, #root {
 }
 
 .phone-frame iframe {
-  width: 100%;
-  height: 100%;
+  /* Fit inside the 10 px painted bezel — the iframe occupies the
+     390 × 815 screen area, so the live app renders at a smaller
+     mobile viewport that fits the frame without crowding the bezel. */
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  width: calc(100% - 20px);
+  height: calc(100% - 20px);
   border: 0;
   background: var(--background);
   display: block;
@@ -310,12 +316,9 @@ html, body, #root {
    when the phone is downscaled to fit the viewport; hidden at
    full size. Amber palette, subtle backdrop blur, never loud. */
 .phone-scale-badge {
-  /* Float ABOVE the phone-frame (top: -32px) rather than over the
-     screen — sitting on top of the screen used to cover the live
-     app's search bar at small scales. */
   position: absolute;
-  top: -32px;
-  right: 0;
+  top: 10px;
+  right: 10px;
   z-index: 5;
   display: inline-flex;
   align-items: center;
