@@ -498,16 +498,18 @@ entry. The backend, audit log, and `result.mock` are unchanged.
 `_ensure_personal_calls(session)` that runs every seed pass (it lives
 *outside* the "templates already present, skipping" early-return). It
 calls `_ensure_seed_customers(session)` at the top — an idempotent upsert
-that inserts any of the **six** `SEED_CUSTOMERS` (Mark Ross, Julia White,
-Laura Bennett, Andrew Green, Sophie Walker, Tom Hughes) missing from the
-DB by phone, so a round-8-clean DB picks up the round-9 additions (Sophie,
-Tom) without a wipe. Then it idempotently inserts the base personal
-fixtures (3 missed + 2 unsaved + 2 human-handled mock-contact calls)
-plus a "busy week" 9–17 May densification that yields ~43 entries; combined
-with the 7 base fixtures the Home `limit=50` page lands fully populated.
-The busy-week plan emits **9 `ai_booking` calls** distributed across all
-6 customers (Mark×2, Julia×1, Laura×1, Andrew×2, Sophie×2, Tom×1, never
-more than one same-customer ai_booking per day) so the Bookings sort
+that inserts any of the **twelve** `SEED_CUSTOMERS` (round-9 original
+six: Mark Ross, Julia White, Laura Bennett, Andrew Green, Sophie Walker,
+Tom Hughes; round-10 additions: Marco Bianchi, Olivia Hayes, Emma Thompson,
+James O'Connor, Rachel Kim, Luca Romano) missing from the DB by phone,
+so a partially-seeded DB picks up new entries without a wipe. Then it
+idempotently inserts the base personal fixtures (3 missed + 2 unsaved
++ 2 human-handled mock-contact calls) plus a "busy week" 9–17 May
+densification that yields ~43 entries; combined with the 7 base fixtures
+the Home `limit=50` page lands fully populated.
+The busy-week plan emits **9 `ai_booking` calls** distributed across the
+original six customers (Mark×2, Julia×1, Laura×1, Andrew×2, Sophie×2,
+Tom×1, never more than one same-customer ai_booking per day) so the Bookings sort
 doesn't show monotonous customer streaks. AI booking blueprints live in
 `_AI_BOOKING_BLUEPRINTS` (one entry per `SEED_CUSTOMERS` name); the three
 dicts `SEED_CUSTOMERS` / `_AI_BOOKING_BLUEPRINTS` / `_CUSTOMER_PHONES_BY_NAME`

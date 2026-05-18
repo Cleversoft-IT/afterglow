@@ -73,7 +73,7 @@ local edit  →  git push origin main  →  GitHub App webhook  →  Coolify on 
 
 ## Keep docs & memory in sync — non-negotiable
 
-This is a **multi-person project**. The files under `.claude/memory/`, the plan files under `.claude/plans/`, `afterglow/README.md`, `afterglow/docs/ARCHITECTURE.md`, `afterglow/docs/templates-roadmap.md`, the agent prompts in `afterglow/backend/app/agents/prompts/`, and this `CLAUDE.md` are all **shared onboarding surface**: every teammate (human or future Claude session) reads them to understand the project state. Stale docs poison every downstream decision — a sub-agent that trusts an outdated memory file will propose code based on a world that no longer exists.
+This is a **multi-person project**. The files under `.claude/memory/`, the plan files under `.claude/plans/`, `afterglow/README.md`, `afterglow/docs/ARCHITECTURE.md`, `afterglow/docs/future-ideas.md`, `afterglow/docs/SUBMISSION.md` (the pitch bible used to produce the lablab submission artifacts), the inline system prompts in `afterglow/backend/app/agents/*.py` (`call_agent.py`, `briefing_regenerator.py`, `wizard_chat.py`, `simulation_script.py`, `memory_retrieval.py`), and this `CLAUDE.md` are all **shared onboarding surface**: every teammate (human or future Claude session) reads them to understand the project state. Stale docs poison every downstream decision — a sub-agent that trusts an outdated memory file will propose code based on a world that no longer exists.
 
 **Whenever a change in code, infra, or product decision lands, in the same commit/PR update the docs and memory that are affected.** Concretely:
 

@@ -22,6 +22,7 @@ Knowledge base completa dell'hackathon (~22.900 parole, 14 file MD):
 | `12-vultr-deep-dive.md` | ⭐ Architettura Vultr completa (Serverless Inference, Vector Store, Coolify, IAM). **Nota:** contiene warning box sulla differenza `VULTR_API_KEY` vs `INFERENCE_API_KEY` aggiunto 2026-05-15 |
 | `13-gemini-deep-dive.md` | ⭐ Gemini function calling, grounding, structured output, ADK |
 | `14-tutorial-gemini-vultr-document-agent.md` | 🚀 Baseline ufficiale lablab (FastAPI+ADK+Gemini+Vultr+Docker) |
+| `15-competitor-submissions-wip.md` | Snapshot WIP competitor 2026-05-18 (situational awareness, non canonical) |
 
 **Source repos / URL pubblici di riferimento:**
 - Baseline tutorial: https://github.com/Stephen-Kimoi/gemini-multimodal-document-agent
