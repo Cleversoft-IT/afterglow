@@ -185,21 +185,28 @@ export default function SimulatorScreen() {
       {header}
       <ScrollView contentContainerStyle={styles.scroll}>
       <Card mode="elevated">
-        <Card.Title
-          title="Incoming call simulator"
-          subtitle={`Active template: ${template.name} (${template.domain_hint})`}
-          left={(p) => <Avatar.Icon {...p} icon={domainIcon(template.domain_hint)} />}
-          right={() => (
-            <Chip
-              selected={audioReady}
-              mode="flat"
-              icon={audioReady ? 'check' : 'alert-circle-outline'}
-              style={{ marginRight: 12 }}
-            >
-              {audioReady ? 'Audio ready' : 'Audio missing'}
-            </Chip>
-          )}
-        />
+        <Card.Content style={{ gap: 12 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+            <Avatar.Icon size={40} icon={domainIcon(template.domain_hint)} />
+            <View style={{ flex: 1 }}>
+              <Text variant="labelMedium" style={{ color: theme.colors.onSurfaceVariant }}>
+                Active template
+              </Text>
+              <Text variant="titleMedium">{template.name}</Text>
+              <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
+                {template.domain_hint}
+              </Text>
+            </View>
+          </View>
+          <Chip
+            icon={audioReady ? 'check' : 'progress-clock'}
+            compact
+            selected={audioReady}
+            style={{ alignSelf: 'flex-start' }}
+          >
+            {audioReady ? 'Audio ready' : 'Audio not ready'}
+          </Chip>
+        </Card.Content>
       </Card>
 
       {audioReady ? (

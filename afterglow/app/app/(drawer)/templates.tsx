@@ -155,9 +155,10 @@ export default function TemplatesScreen() {
                   </Chip>
                 ) : (
                   <Button
-                    mode="text"
+                    mode="outlined"
                     loading={switching === item.id}
                     onPress={() => activate(item.id)}
+                    style={{ marginRight: 12 }}
                   >
                     Activate
                   </Button>

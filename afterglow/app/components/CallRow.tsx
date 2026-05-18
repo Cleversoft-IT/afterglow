@@ -12,7 +12,7 @@ type Props = {
   call: CallListItem;
   booking?: BookingListItem;
   mode: CallFilterKey;
-  onPress: () => void;
+  onPress?: () => void;
 };
 
 type StatusLabel = { text: string; color: string };
@@ -78,6 +78,7 @@ export function CallRow({ call, booking, mode, onPress }: Props) {
             name={caller.display_name}
             avatarUrl={caller.avatar_url}
             size={48}
+            isCustomer={caller.is_customer}
           />
         </View>
       )}
@@ -88,32 +89,33 @@ export function CallRow({ call, booking, mode, onPress }: Props) {
           </Text>
         </View>
       )}
-      description={() => {
-        if (isBookingsMode && booking) {
-          // In bookings mode the whole row is about the booking; show title
-          // (or summary) as the description and let the badge carry the slot.
-          const p = booking.payload as Record<string, unknown>;
-          const titleText =
-            booking.title ||
-            (typeof p.booking_title === 'string' ? p.booking_title : null) ||
-            booking.summary ||
-            null;
-          return (
+      description={(() => {
+        if (isBookingsMode) {
+          // In bookings mode show the customer's tags (if any) as the
+          // description. The right-side BookingBadge already carries the
+          // slot info; tags give context that's actually useful to the
+          // operator (e.g. "repeat · gluten_free"). When the customer
+          // has no tags we return `undefined` so List.Item skips the
+          // description slot entirely instead of leaving an empty line.
+          const tags = call.customer_tags ?? [];
+          if (tags.length === 0) return undefined;
+          const text = tags.slice(0, 3).join(' · ');
+          return () => (
             <Text
               variant="bodySmall"
               numberOfLines={1}
               style={{ color: theme.colors.onSurfaceVariant }}
             >
-              {titleText ?? ''}
+              {text}
             </Text>
           );
         }
-        return (
+        return () => (
           <Text variant="bodySmall" style={{ color: status.color }}>
             {status.text} · {formatRelativeTime(call.created_at, locale)}
           </Text>
         );
-      }}
+      })()}
       right={
         booking
           ? () => (

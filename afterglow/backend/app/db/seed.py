@@ -20,7 +20,7 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from app.db.engine import SessionLocal
 from app.db.models import (
@@ -1439,6 +1439,7 @@ _PERSONAL_CALL_FIXTURES = [
         "id": uuid.UUID("22222222-2222-4222-8222-000000000001"),
         "phone_e164": "+447911100001",  # Amelia Brooks
         "status": "failed",
+        "error": "empty_or_noise_audio",
         "created_at": datetime(2026, 5, 16, 9, 12, tzinfo=timezone.utc),
         "language": None,
     },
@@ -1446,6 +1447,7 @@ _PERSONAL_CALL_FIXTURES = [
         "id": uuid.UUID("22222222-2222-4222-8222-000000000002"),
         "phone_e164": "+447911100004",  # Daniel Edwards
         "status": "failed",
+        "error": "empty_or_noise_audio",
         "created_at": datetime(2026, 5, 15, 14, 47, tzinfo=timezone.utc),
         "language": None,
     },
@@ -1453,6 +1455,7 @@ _PERSONAL_CALL_FIXTURES = [
         "id": uuid.UUID("22222222-2222-4222-8222-000000000003"),
         "phone_e164": "+447911100009",  # Isla Johnson
         "status": "failed",
+        "error": "empty_or_noise_audio",
         "created_at": datetime(2026, 5, 14, 18, 5, tzinfo=timezone.utc),
         "language": None,
     },
@@ -1490,13 +1493,189 @@ _PERSONAL_CALL_FIXTURES = [
 ]
 
 
-async def _ensure_personal_calls(session) -> None:
-    """Insert missing personal phonebook calls. Idempotent via fixed UUIDs.
+# Phone numbers used by the "busy week" densification. Mix of known mock
+# contacts (avatars resolve in the UI) and a few unknown numbers to keep
+# the Unsaved filter populated. Customer-owned phones live in
+# `_CUSTOMER_PHONES_BY_NAME` below; those calls get a customer_id linked
+# at insert time so the customer detail "Calls (N)" shows real history.
+_BUSY_MOCK_PHONES = [
+    "+447911100001",  # Amelia Brooks
+    "+447911100002",  # Benjamin Clark
+    "+447911100005",  # Eleanor Foster
+    "+447911100006",  # Finn Gallagher
+    "+447911100010",  # Jack Kennedy
+    "+447911100013",  # Mia Nguyen
+    "+447911100015",  # Olivia Patel
+    "+447911100017",  # Rosie Stewart
+]
 
-    Call.template_id is non-nullable, so we attach personal calls to the
-    first seed template we find. These rows carry no extracted fields and
-    no executed actions, so the template choice is cosmetic only — the UI
-    renders them as plain phonebook entries.
+_BUSY_UNKNOWN_PHONES = [
+    "+15550001234",
+    "+447700900112",
+    "+15558887766",
+    "+447700901234",
+]
+
+# Names match the four seed Customer rows created in `seed()` (Mark Ross,
+# Julia White, Laura Bennett, Andrew Green). Lookup by display_name keeps
+# the helper resilient to UUID changes — the customer IDs are random but
+# the phones/names are stable.
+_CUSTOMER_PHONES_BY_NAME = {
+    "Mark Ross": "+15551112233",
+    "Julia White": "+15554445566",
+    "Laura Bennett": "+15559991122",
+    "Andrew Green": "+15558883344",
+}
+
+# Hour slots that look like realistic restaurant traffic — lunch and dinner
+# clusters on weekdays, broader spread on weekends. Used to scatter calls
+# across the day rather than bunching them all at midnight.
+_HOUR_SLOTS_WEEKDAY = [
+    (12, 15), (12, 45), (13, 20), (13, 55),
+    (19, 5), (19, 35), (20, 10), (20, 40), (21, 5),
+]
+_HOUR_SLOTS_WEEKEND = [
+    (11, 30), (12, 10), (12, 50), (13, 25), (14, 5),
+    (18, 45), (19, 15), (19, 50), (20, 25), (21, 0), (21, 30),
+]
+
+
+def _busy_week_specs() -> list[dict]:
+    """Deterministic fixtures for the dense 9–17 May window. Returns ~43
+    entries — combined with the 7 base fixtures we land at ~50 personal
+    calls, exactly the Home `limit=50` cap. UUIDs are UUID5-derived from
+    (phone, created_at) so re-running the seed is idempotent without
+    requiring a separate IDs table."""
+    rng = random.Random(20260518)  # date-of-write seed → stable output
+    out: list[dict] = []
+
+    # Per-day plan. Each entry: (date, list of (kind, phone_pool)) where
+    # kind is one of completed / missed / pipeline_error, and phone_pool
+    # is "mock" / "unknown" / "customer:<name>". Exactly one pipeline_error
+    # is sprinkled in (11 May) so the failure-kind badge is exercised.
+    plan = [
+        # 9 May (Friday)
+        ("2026-05-09", [
+            ("completed", "mock"), ("completed", "mock"),
+            ("completed", "customer:Andrew Green"), ("missed", "mock"),
+        ]),
+        # 10 May (Saturday, weekend peak)
+        ("2026-05-10", [
+            ("completed", "mock"), ("completed", "customer:Julia White"),
+            ("completed", "unknown"), ("completed", "mock"),
+            ("missed", "unknown"), ("missed", "mock"),
+        ]),
+        # 11 May (Sunday) — pipeline_error lives here
+        ("2026-05-11", [
+            ("completed", "customer:Mark Ross"), ("completed", "mock"),
+            ("completed", "mock"), ("completed", "unknown"),
+            ("missed", "mock"), ("pipeline_error", "unknown"),
+        ]),
+        # 12 May (Monday)
+        ("2026-05-12", [
+            ("completed", "mock"), ("completed", "mock"),
+            ("completed", "customer:Andrew Green"), ("missed", "mock"),
+        ]),
+        # 13 May (Tuesday)
+        ("2026-05-13", [
+            ("completed", "mock"), ("completed", "customer:Laura Bennett"),
+            ("completed", "mock"), ("missed", "unknown"),
+        ]),
+        # 14 May (Wednesday)
+        ("2026-05-14", [
+            ("completed", "customer:Mark Ross"), ("completed", "mock"),
+            ("completed", "mock"), ("missed", "mock"),
+        ]),
+        # 15 May (Thursday)
+        ("2026-05-15", [
+            ("completed", "mock"), ("completed", "mock"),
+            ("completed", "customer:Mark Ross"), ("missed", "mock"),
+        ]),
+        # 16 May (Friday)
+        ("2026-05-16", [
+            ("completed", "mock"), ("completed", "customer:Julia White"),
+            ("completed", "mock"), ("completed", "unknown"),
+            ("missed", "mock"),
+        ]),
+        # 17 May (Saturday weekend peak)
+        ("2026-05-17", [
+            ("completed", "customer:Mark Ross"), ("completed", "mock"),
+            ("completed", "mock"), ("completed", "unknown"),
+            ("missed", "mock"), ("missed", "mock"),
+        ]),
+    ]
+
+    for date_str, calls in plan:
+        y, m, d = (int(x) for x in date_str.split("-"))
+        day_dt = datetime(y, m, d, tzinfo=timezone.utc)
+        weekend = day_dt.weekday() >= 5
+        slots = list(_HOUR_SLOTS_WEEKEND if weekend else _HOUR_SLOTS_WEEKDAY)
+        rng.shuffle(slots)
+        for idx, (kind, pool) in enumerate(calls):
+            hh, mm = slots[idx % len(slots)]
+            created = datetime(y, m, d, hh, mm, tzinfo=timezone.utc)
+            if pool == "mock":
+                phone = rng.choice(_BUSY_MOCK_PHONES)
+                customer_name = None
+            elif pool == "unknown":
+                phone = rng.choice(_BUSY_UNKNOWN_PHONES)
+                customer_name = None
+            elif pool.startswith("customer:"):
+                customer_name = pool.split(":", 1)[1]
+                phone = _CUSTOMER_PHONES_BY_NAME[customer_name]
+            else:
+                raise ValueError(f"unknown pool: {pool}")
+
+            namespace = uuid.UUID("22222222-2222-5222-8222-000000000000")
+            fixture_uuid = uuid.uuid5(namespace, f"{phone}@{created.isoformat()}")
+
+            if kind == "completed":
+                fixture = {
+                    "id": fixture_uuid,
+                    "phone_e164": phone,
+                    "status": "completed",
+                    "created_at": created,
+                    "language": "en",
+                }
+            elif kind == "missed":
+                fixture = {
+                    "id": fixture_uuid,
+                    "phone_e164": phone,
+                    "status": "failed",
+                    "error": "empty_or_noise_audio",
+                    "created_at": created,
+                    "language": None,
+                }
+            elif kind == "pipeline_error":
+                fixture = {
+                    "id": fixture_uuid,
+                    "phone_e164": phone,
+                    "status": "failed",
+                    "error": "action_planner: simulated failure",
+                    "created_at": created,
+                    "language": "en",
+                }
+            else:
+                raise ValueError(f"unknown kind: {kind}")
+
+            if customer_name:
+                fixture["customer_name"] = customer_name
+            out.append(fixture)
+    return out
+
+
+async def _ensure_personal_calls(session) -> None:
+    """Insert missing personal phonebook calls plus a "busy week" densified
+    history. Idempotent via fixed UUIDs (base fixtures) and UUID5-derived
+    IDs (busy week).
+
+    Call.template_id is non-nullable, so personal calls are attached to
+    the first seed template we find — they carry no extracted fields and
+    no executed actions, so the template choice is cosmetic. Customer
+    calls (Mark Ross etc.) get `customer_id` resolved by phone lookup so
+    the customer detail "Calls (N)" surfaces real repeat-caller history;
+    `Customer.total_calls` and `last_call_at` are recomputed at the end
+    so the Contacts ordering stays consistent with the inserted rows.
     """
     seed_template = (
         await session.execute(
@@ -1507,21 +1686,46 @@ async def _ensure_personal_calls(session) -> None:
         print("[seed] no seed template found, skipping personal calls.")
         return
 
+    # Resolve customer IDs by phone — keeps the helper independent of the
+    # random UUIDs assigned in `seed()`. Customers absent from the DB
+    # (e.g. running an older seed) silently drop to customer_id=None.
+    customer_phones = list(_CUSTOMER_PHONES_BY_NAME.values())
+    phone_to_customer_id: dict[str, uuid.UUID] = {}
+    if customer_phones:
+        rows = (
+            await session.execute(
+                select(Customer.id, Customer.phone_e164).where(
+                    Customer.phone_e164.in_(customer_phones),
+                    Customer.is_seed.is_(True),
+                )
+            )
+        ).all()
+        phone_to_customer_id = {phone: cid for cid, phone in rows}
+
+    all_fixtures = list(_PERSONAL_CALL_FIXTURES) + _busy_week_specs()
+
     inserted = 0
-    for fx in _PERSONAL_CALL_FIXTURES:
+    for fx in all_fixtures:
         present = await session.scalar(select(Call.id).where(Call.id == fx["id"]))
         if present is not None:
             continue
+        customer_name = fx.get("customer_name")
+        customer_id: uuid.UUID | None = None
+        if customer_name:
+            phone_for_lookup = _CUSTOMER_PHONES_BY_NAME.get(customer_name)
+            if phone_for_lookup:
+                customer_id = phone_to_customer_id.get(phone_for_lookup)
         session.add(
             Call(
                 id=fx["id"],
                 template_id=seed_template.id,
-                customer_id=None,
+                customer_id=customer_id,
                 phone_e164=fx["phone_e164"],
                 audio_url=None,
                 detected_language=fx["language"],
                 raw_transcript=None,
                 status=fx["status"],
+                error=fx.get("error"),
                 started_at=fx["created_at"],
                 completed_at=fx["created_at"] if fx["status"] != "failed" else None,
                 is_seed=True,
@@ -1530,8 +1734,32 @@ async def _ensure_personal_calls(session) -> None:
             )
         )
         inserted += 1
+
     if inserted:
         await session.flush()
+
+        # Recompute total_calls and last_call_at for every seed Customer
+        # we wired calls to. Contacts list ordering and customer detail
+        # subtitle both depend on these — leaving them stale at "1 call"
+        # while we insert 4 more would make the demo feel broken.
+        touched_customer_ids = {
+            cid for cid in phone_to_customer_id.values() if cid is not None
+        }
+        for cid in touched_customer_ids:
+            row = (
+                await session.execute(
+                    select(
+                        func.count(Call.id),
+                        func.max(Call.created_at),
+                    ).where(Call.customer_id == cid)
+                )
+            ).one()
+            total, last_at = row
+            cust = await session.get(Customer, cid)
+            if cust is not None:
+                cust.total_calls = int(total or 0)
+                cust.last_call_at = last_at
+
         print(f"[seed] inserted {inserted} personal calls.")
 
 

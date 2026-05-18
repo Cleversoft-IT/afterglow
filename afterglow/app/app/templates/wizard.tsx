@@ -13,6 +13,7 @@ import {
   Button,
   Card,
   Chip,
+  ProgressBar,
   Surface,
   Text,
   TextInput,
@@ -254,15 +255,18 @@ function DraftSidebar({
   const confidencePct = Math.round(confidence * 100);
   return (
     <Card mode="elevated" style={{ backgroundColor: theme.colors.elevation.level2 }}>
-      <Card.Title
-        title="Draft preview"
-        right={() => (
-          <Chip selected={ready} mode="flat" style={{ marginRight: 12 }}>
-            {`${confidencePct}% ready`}
-          </Chip>
-        )}
-      />
+      <Card.Title title="Draft preview" />
       <Card.Content>
+        <View style={{ marginBottom: 12 }}>
+          <ProgressBar
+            progress={Math.min(1, Math.max(0, confidence))}
+            color={ready ? theme.colors.primary : theme.colors.secondary}
+            style={{ height: 6, borderRadius: 3, marginBottom: 4 }}
+          />
+          <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
+            {`${confidencePct}% ready`}
+          </Text>
+        </View>
         {draft ? (
           <View style={{ marginBottom: 12 }}>
             <TextInput
@@ -293,34 +297,36 @@ function DraftSidebar({
         ) : null}
 
         {draft ? (
-          <View style={{ marginTop: 12, gap: 4 }}>
+          <View style={{ marginTop: 12, gap: 8 }}>
             <Text variant="labelMedium" style={{ color: theme.colors.onSurfaceVariant }}>
               Fields ({draft.fields_schema.length})
             </Text>
-            {draft.fields_schema.slice(0, 6).map((f) => (
-              <Text key={f.key} variant="bodySmall">
-                · {f.label || f.key}{' '}
-                <Text style={{ color: theme.colors.onSurfaceVariant }}>({f.type})</Text>
-              </Text>
-            ))}
-            {draft.fields_schema.length > 6 ? (
-              <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
-                +{draft.fields_schema.length - 6} more
-              </Text>
-            ) : null}
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+              {draft.fields_schema.slice(0, 8).map((f) => (
+                <Chip key={f.key} mode="outlined" compact textStyle={{ fontSize: 11 }}>
+                  {f.label || f.key}
+                </Chip>
+              ))}
+              {draft.fields_schema.length > 8 ? (
+                <Chip mode="flat" compact textStyle={{ fontSize: 11 }}>
+                  {`+${draft.fields_schema.length - 8} more`}
+                </Chip>
+              ) : null}
+            </View>
 
             <Text
               variant="labelMedium"
-              style={{ color: theme.colors.onSurfaceVariant, marginTop: 8 }}
+              style={{ color: theme.colors.onSurfaceVariant, marginTop: 4 }}
             >
               Actions ({draft.action_types.length})
             </Text>
-            {draft.action_types.map((a) => (
-              <Text key={a.key} variant="bodySmall">
-                · {a.label || a.key}{' '}
-                <Text style={{ color: theme.colors.onSurfaceVariant }}>({a.execution_mode})</Text>
-              </Text>
-            ))}
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+              {draft.action_types.map((a) => (
+                <Chip key={a.key} mode="outlined" compact textStyle={{ fontSize: 11 }}>
+                  {a.label || a.key}
+                </Chip>
+              ))}
+            </View>
           </View>
         ) : null}
 

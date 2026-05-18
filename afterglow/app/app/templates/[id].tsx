@@ -588,8 +588,16 @@ function ActionEditor({
         onPress={() => setExpanded(!expanded)}
         badges={
           <View style={styles.badgeRow}>
-            {catalogEntry?.mutates ? <Chip compact>Changes records</Chip> : null}
-            {action.evidence_required ? <Chip compact>Needs transcript proof</Chip> : null}
+            {catalogEntry?.mutates ? (
+              <Chip compact textStyle={{ fontSize: 11 }}>
+                Changes records
+              </Chip>
+            ) : null}
+            {action.evidence_required ? (
+              <Chip compact textStyle={{ fontSize: 11 }}>
+                Needs transcript proof
+              </Chip>
+            ) : null}
           </View>
         }
         trailing={
@@ -843,14 +851,12 @@ function EditorHeader({
           color={theme.colors.onSurfaceVariant}
         />
         <View style={styles.itemContent}>
-          <Text variant="bodyMedium" numberOfLines={1}>
-            {title}
-          </Text>
-          <Text variant="bodySmall" numberOfLines={1} style={styles.metaText}>
+          <Text variant="bodyMedium">{title}</Text>
+          <Text variant="bodySmall" style={styles.metaText}>
             {meta}
           </Text>
+          {badges ? <View style={{ marginTop: 4 }}>{badges}</View> : null}
         </View>
-        {badges}
         {trailing}
       </View>
     </TouchableRipple>
@@ -906,7 +912,7 @@ function createTemplateDetailStyles(theme: AppTheme) {
     },
     itemContent: { flex: 1, gap: spacing.xs },
     metaText: { color: theme.colors.onSurfaceVariant },
-    badgeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs, justifyContent: 'flex-end' },
+    badgeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs, justifyContent: 'flex-start' },
     footer: { paddingTop: spacing.md, paddingBottom: spacing.xl },
   });
 }

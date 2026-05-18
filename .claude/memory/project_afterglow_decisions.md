@@ -1,6 +1,6 @@
 ---
 name: project-afterglow-decisions
-description: Decisioni di prodotto/architettura di Afterglow. Pivot da non rinegoziare senza ridiscutere. Aggiornato 2026-05-18 (round 6 UI consistency) — drawer active highlight uniforme, Test simulator dentro (drawer), call/customer detail con Card.Content + Pressable + tags inline, calls list senza icone phone-incoming. 2026-05-17 (round 5 fix cluster) — failure_kind computed, default_payload_schema arricchito al persistence boundary, Integration discovery HARD RULE nel wizard, template rename end-to-end, validator source-based filter, sidebar pulito + Contacts top-right Home + welcome dialog fresh install. 2026-05-17 (legacy cleanup) — wizard one-shot rimosso, conversational wizard chat unica via; residui PII/sanitizer ripuliti da docstring/prompts. 2026-05-17 (template simplification) — schema Template ridotto al solo product surface; mock_target/mutates spostati nel catalog. 2026-05-17 (notte) — simulator dei custom template wizard-built: solo bottone "new" + audio cross-origin via blob URL. 2026-05-17 (sera) — round 3 UI audit (drawer "Calls" voice, locale IT/EN via Intl.DateTimeFormat, BookingBadge inline, TranscriptList accordion, REAL_ON_DEVICE whitelist UI-only, randomuser.me portraits hard-coded, web first-paint sync, drawer reset via Paper Dialog, eager customer FK al submit). 2026-05-17 — frontend Material 3 rewrite + UI bug cluster post-rewrite. 2026-05-16 — feedback round 2 (action catalog, dialer non bloccante, Undo/Redo flip-only, simulator 2-mode con MP3 distinti existing/new e 4 customer seedati).
+description: Decisioni di prodotto/architettura di Afterglow. Pivot da non rinegoziare senza ridiscutere. Aggiornato 2026-05-18 (round 7 UI polish + seed credibility) — avatar legend brand (primary border per customer), CallListItem.customer_tags additivo, no-op tap su call non-client, Home chip primaryContainer, wizard ProgressBar, simulator card multilinea, prettyValue helper, template badge wrap, seed densification ~50 personal calls 9-17 mag con 1 pipeline_error e Customer.total_calls ricomputato. 2026-05-18 (round 6 UI consistency) — drawer active highlight uniforme, Test simulator dentro (drawer), call/customer detail con Card.Content + Pressable + tags inline, calls list senza icone phone-incoming. 2026-05-17 (round 5 fix cluster) — failure_kind computed, default_payload_schema arricchito al persistence boundary, Integration discovery HARD RULE nel wizard, template rename end-to-end, validator source-based filter, sidebar pulito + Contacts top-right Home + welcome dialog fresh install. 2026-05-17 (legacy cleanup) — wizard one-shot rimosso, conversational wizard chat unica via; residui PII/sanitizer ripuliti da docstring/prompts. 2026-05-17 (template simplification) — schema Template ridotto al solo product surface; mock_target/mutates spostati nel catalog. 2026-05-17 (notte) — simulator dei custom template wizard-built: solo bottone "new" + audio cross-origin via blob URL. 2026-05-17 (sera) — round 3 UI audit (drawer "Calls" voice, locale IT/EN via Intl.DateTimeFormat, BookingBadge inline, TranscriptList accordion, REAL_ON_DEVICE whitelist UI-only, randomuser.me portraits hard-coded, web first-paint sync, drawer reset via Paper Dialog, eager customer FK al submit). 2026-05-17 — frontend Material 3 rewrite + UI bug cluster post-rewrite. 2026-05-16 — feedback round 2 (action catalog, dialer non bloccante, Undo/Redo flip-only, simulator 2-mode con MP3 distinti existing/new e 4 customer seedati).
 metadata:
   type: project
 ---
@@ -481,6 +481,143 @@ del piano round 5).
 (rinominato), `app/app/_layout.tsx`, `app/app/call/[id].tsx`,
 `app/app/customer/[id].tsx`. Niente backend, niente test backend, `tsc
 --noEmit` verde.
+
+### 1.dodici. Round 7 UI polish + seed credibility (2026-05-18)
+
+Dodici frizioni emerse dall'audit visivo post round 6, chiuse in un
+unico ciclo frontend+backend additivo. Niente lifecycle changes nel
+backend — solo response shape estesa (`CallListItem.customer_tags`) e
+densificazione seed. Plan:
+`.claude/plans/il-tuo-obiettivo-curried-lemur.md` (round 7, overwrite
+del round 6).
+
+**Decisioni durature:**
+
+1. **Avatar legend brand.** `ContactAvatar` accetta `isCustomer?:
+   boolean`. Quando true il border passa da `1dp rgba(0,0,0,0.08)` a
+   `2dp theme.colors.primary`. Il chip `Clients` del filter row porta
+   sempre un border `primary 1dp` (selected o no) — è la legenda
+   visiva. **Non aggiungere badge testuali per distinguere
+   customer vs phonebook**; il border + chip sono la convenzione del
+   prodotto.
+
+2. **Call non-client = no-op al tap.** In Home, `onPress` su una
+   `CallRow` è `undefined` quando `call.customer_id == null`. La row
+   diventa inerte (Paper TouchableRipple skippa il ripple). Niente
+   "expand inline" né "save as contact" — è scope post-hackathon,
+   vive in `afterglow/docs/future-ideas.md`. `CallRow.onPress` è ora
+   `optional`; rilassare la signature di altri call site se servirà.
+
+3. **`CallListItem.customer_tags` esposto dal backend.** Query in
+   `list_calls` (FastAPI) estesa a 3-uple
+   `select(Call, Customer.display_name, Customer.tags)` con
+   `LEFT OUTER JOIN`; gli item senza customer ritornano `[]` (mai
+   `None` lato client). Il frontend mostra questi tag come description
+   delle row in modalità `bookings` (`tags.slice(0, 3).join(' · ')`);
+   row senza tag → `description={undefined}` (la slot description di
+   `List.Item` non lascia un buco bianco). **Non passare un `<Text>`
+   vuoto come description**: `List.Item` riserva l'altezza anche per
+   string vuote.
+
+4. **Home filter chip — `primaryContainer` per selected.**
+   Material 3 light mode: il `secondaryContainer` su background neutro
+   è troppo sottile. Switch a `backgroundColor: primaryContainer +
+   selectedColor: onPrimaryContainer` per il chip selezionato. Il
+   chip `Clients` resta speciale (border primary sempre).
+
+5. **Templates Activate button → `mode="outlined"`.** Distingue
+   visivamente dall'Active chip filled del template attivo.
+
+6. **Wizard DraftSidebar — ProgressBar al posto del chip %.**
+   `<ProgressBar height=6 borderRadius=3>` con colore `primary` quando
+   ready, `secondary` altrimenti; label `bodySmall` `X% ready` sotto.
+   Fields e actions sono `<Chip mode="outlined" compact textStyle={{
+   fontSize: 11 }}>` in un row `flexWrap`, niente più bullet `·` con
+   tipo in parentesi.
+
+7. **Simulator card multilinea (scope chirurgico).** SOLO la prima
+   "status card" del simulator screen è cambiata: `Card.Title` →
+   `Card.Content` custom (avatar + label `Active template` + nome
+   multilinea + chip `Audio ready` con `alignSelf: 'flex-start'`). I
+   blocchi aggiunti dal commit `640c962` (Trigger demo call, Generate
+   script/audio, upload audio, Script preview con accordion existing/
+   new) sono **preservati intatti**.
+
+8. **Customer detail Calls list — relative time.** Ogni row ora ha
+   `formatDateTime` su `bodyMedium` + `formatRelativeTime` su
+   `bodySmall` sotto, chip status a destra. Style
+   `callRowText: { flex: 1, gap: 2 }`. Coerente col pattern delle
+   altre liste call.
+
+9. **Call detail `prettyValue` helper.** `whatsapp` → `WhatsApp`,
+   `sms` → `SMS`, `email` → `Email`, `phone` → `Phone`;
+   capitalizzazione di single-token lowercase (`dinner` → `Dinner`);
+   date / multi-word / mixed-case lasciati intatti. Sostituisce il
+   vecchio `formatValue`. **Non espandere a date+time merge o
+   field-name remapping**: dipenderebbe dal template schema e non
+   vale la complessità.
+
+10. **Template detail badge wrap.** Rimossa `numberOfLines={1}` da
+    title/meta dell'`EditorHeader`. Badge `<Chip compact>` (Changes
+    records / Needs transcript proof) ora vivono SOTTO title/meta
+    (non a destra accanto al chevron) e con `textStyle={{ fontSize:
+    11 }}`. `badgeRow.justifyContent` flippato `flex-end` →
+    `flex-start`. Risolve il troncamento `Cre...` / `app...` su
+    viewport 375px.
+
+11. **Seed credibility — busy week densification.** Nuovo helper
+    `_busy_week_specs()` che genera ~43 personal calls (UUID5
+    deterministico da `(phone, created_at.isoformat())`) sparpagliate
+    9-17 mag con slot orari realistici (lunch/dinner per weekday,
+    spread più largo per weekend). Status mix: ~70% completed (mock
+    human-handled), ~25% missed (`error="empty_or_noise_audio"`),
+    **esattamente 1 pipeline_error** (`error="action_planner:
+    simulated failure"`) per esercitare il badge "Pipeline error".
+    Customer reuse esplicito: Mark Ross 4×, Andrew Green 2×, Julia
+    White 2×, Laura Bennett 1× — i `customer_id` risolti da phone via
+    query, niente parametro tra moduli. Totale con i 7 base fixtures:
+    **esattamente 50 personal calls**, dentro la `limit=50` di Home.
+    `Customer.total_calls` e `last_call_at` ricomputati per i 4 seed
+    customer dopo l'insert (`func.count + func.max`), altrimenti
+    Contacts ordering e customer detail "N calls" diventerebbero
+    sfasati. **Quando aggiungi customer al seed, aggiungili a
+    `_CUSTOMER_PHONES_BY_NAME`** o il loro recompute non scatta.
+
+12. **Test backend pragmatico per `customer_tags`.** `Customer.tags`
+    è `ARRAY(String)` Postgres-only — niente SQLite parity. Test
+    integrato richiederebbe testcontainers, overkill per round UI.
+    Soluzione: `test_calls_list_schema.py` testa la response shape
+    al boundary Pydantic (default factory, roundtrip JSON, payload
+    senza la key). 4 nuovi test, 0.12s. **Per un test HTTP/DB end-to-
+    end servirebbe una fixture Postgres ephemeral** — se serve in
+    futuro, è il punto giusto da estendere.
+
+**Patterns da preservare:**
+
+- `Customer.tags` espone tag scrivibili via `customer.update_profile`;
+  ogni nuovo consumatore lato API deve unpackare `list(tags or [])`
+  per assorbire i LEFT JOIN miss.
+- `_ensure_personal_calls` recupera i customer per phone (non per ID
+  passato come argomento) — il flow "already seeded, just top up"
+  riusa lo stesso codepath del primo seed.
+- Quando si introducono nuovi `Call` con `customer_id` valorizzato in
+  un helper di seeding, aggiornare sempre `Customer.total_calls +
+  last_call_at` nello stesso transactional batch.
+
+**File toccati (round 7, ~10 file FE + 3 BE):**
+- FE: `app/components/ContactAvatar.tsx`,
+  `app/components/CallRow.tsx`,
+  `app/app/(drawer)/(tabs)/index.tsx`,
+  `app/app/(drawer)/contacts.tsx`,
+  `app/app/(drawer)/simulator.tsx`,
+  `app/app/(drawer)/templates.tsx`,
+  `app/app/call/[id].tsx`,
+  `app/app/customer/[id].tsx`,
+  `app/app/templates/[id].tsx`,
+  `app/app/templates/wizard.tsx`,
+  `app/lib/types.ts`.
+- BE: `backend/app/schemas/calls.py`, `backend/app/api/calls.py`,
+  `backend/app/db/seed.py` + nuovo `backend/tests/test_calls_list_schema.py`.
 
 ### 9. Stato env in produzione (volatile, 2026-05-15)
 Sezione "what's live right now" — da rileggere prima di pushare grossi cambi al backend.

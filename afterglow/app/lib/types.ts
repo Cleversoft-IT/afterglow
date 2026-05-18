@@ -253,6 +253,7 @@ export type CallListItem = {
   phone_e164: string;
   customer_id?: string | null;
   customer_display_name?: string | null;
+  customer_tags?: string[];
   template_id: string;
   status: string;
   failure_kind?: FailureKind | null;

@@ -84,11 +84,30 @@ function statusChip(call: CallDetailView, theme: AppTheme): {
   };
 }
 
-function formatValue(v: unknown): string {
+// Channel labels expand single-token machine values (whatsapp/sms/email/phone)
+// into their canonical human-facing form. Anything not in the map falls back
+// to a generic single-token capitalization so values like `dinner` or
+// `gluten` don't appear as raw lowercase in the operator UI.
+const CHANNEL_LABELS: Record<string, string> = {
+  whatsapp: 'WhatsApp',
+  sms: 'SMS',
+  email: 'Email',
+  phone: 'Phone',
+};
+
+function prettyValue(v: unknown): string {
   if (v == null) return '—';
-  if (Array.isArray(v)) return v.join(', ');
+  if (Array.isArray(v)) return v.map(prettyValue).join(', ');
   if (typeof v === 'object') return JSON.stringify(v);
-  return String(v);
+  const str = String(v);
+  const mapped = CHANNEL_LABELS[str.toLowerCase()];
+  if (mapped) return mapped;
+  // Capitalize single-token all-lowercase strings (`dinner` → `Dinner`).
+  // Leave dates, mixed-case, and multi-word strings untouched.
+  if (/^[a-z]+$/.test(str)) {
+    return str.charAt(0).toUpperCase() + str.slice(1);
+  }
+  return str;
 }
 
 export default function CallDetailScreen() {
@@ -189,6 +208,7 @@ export default function CallDetailScreen() {
               name={callerDisplay}
               avatarUrl={resolvedCaller.avatar_url}
               size={56}
+              isCustomer={resolvedCaller.is_customer}
             />
             <View style={styles.headerText}>
               <Text variant="titleMedium" numberOfLines={1}>
@@ -263,7 +283,7 @@ export default function CallDetailScreen() {
                       </Text>
                     </View>
                     <Text variant="bodyMedium" style={{ flex: 1, textAlign: 'right' }}>
-                      {formatValue(v)}
+                      {prettyValue(v)}
                     </Text>
                   </View>
                 </View>

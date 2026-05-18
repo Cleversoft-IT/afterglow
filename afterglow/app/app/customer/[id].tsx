@@ -15,7 +15,7 @@ import {
 } from 'react-native-paper';
 import { api, ApiError } from '../../lib/api';
 import { ContactAvatar } from '../../components/ContactAvatar';
-import { formatDateTime } from '../../lib/dateFormat';
+import { formatDateTime, formatRelativeTime } from '../../lib/dateFormat';
 import { flagFromE164 } from '../../lib/flagFromE164';
 import { useLocale } from '../../lib/LocaleContext';
 import { findMockContact } from '../../lib/mockContacts';
@@ -128,6 +128,7 @@ export default function CustomerDetailScreen() {
               name={display}
               avatarUrl={mockAvatarUrl}
               size={56}
+              isCustomer
             />
             <View style={styles.headerText}>
               <Text variant="titleMedium" numberOfLines={1}>
@@ -220,9 +221,17 @@ export default function CustomerDetailScreen() {
                   {i > 0 ? <Divider /> : null}
                   <TouchableRipple onPress={() => router.push(`/call/${c.id}` as never)}>
                     <View style={styles.callRow}>
-                      <Text variant="bodyMedium">
-                        {formatDateTime(c.created_at, locale)}
-                      </Text>
+                      <View style={styles.callRowText}>
+                        <Text variant="bodyMedium">
+                          {formatDateTime(c.created_at, locale)}
+                        </Text>
+                        <Text
+                          variant="bodySmall"
+                          style={{ color: theme.colors.onSurfaceVariant }}
+                        >
+                          {formatRelativeTime(c.created_at, locale)}
+                        </Text>
+                      </View>
                       <Chip
                         mode="flat"
                         compact
@@ -263,4 +272,5 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     gap: 12,
   },
+  callRowText: { flex: 1, gap: 2 },
 });

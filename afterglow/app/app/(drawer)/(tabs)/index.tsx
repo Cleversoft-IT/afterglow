@@ -253,24 +253,41 @@ export default function HomeScreen() {
         style={styles.chipsScroll}
         contentContainerStyle={styles.chipsRow}
       >
-        {FILTERS.map((k) => (
-          <Chip
-            key={k}
-            mode="flat"
-            compact
-            selected={filter === k}
-            onPress={() => setFilter(k)}
-            showSelectedCheck={false}
-            selectedColor={filter === k ? theme.colors.onSecondaryContainer : undefined}
-            style={
-              filter === k
-                ? { backgroundColor: theme.colors.secondaryContainer }
-                : { backgroundColor: theme.colors.surfaceVariant }
-            }
-          >
-            {FILTER_LABEL[k]}
-          </Chip>
-        ))}
+        {FILTERS.map((k) => {
+          const isSelected = filter === k;
+          // "Clients" is the legend for the customer-border treatment on
+          // avatars: it always carries a subtle primary border, even when
+          // unselected. Every other chip uses the standard Material flat
+          // treatment with primaryContainer when selected for stronger
+          // contrast than secondaryContainer in light mode.
+          const isClients = k === 'clients';
+          const baseStyle = isSelected
+            ? { backgroundColor: theme.colors.primaryContainer }
+            : { backgroundColor: theme.colors.surfaceVariant };
+          const clientsBorder = isClients
+            ? {
+                borderWidth: 1,
+                borderColor: theme.colors.primary,
+                backgroundColor: isSelected
+                  ? theme.colors.primaryContainer
+                  : 'transparent',
+              }
+            : null;
+          return (
+            <Chip
+              key={k}
+              mode="flat"
+              compact
+              selected={isSelected}
+              onPress={() => setFilter(k)}
+              showSelectedCheck={false}
+              selectedColor={isSelected ? theme.colors.onPrimaryContainer : undefined}
+              style={[baseStyle, clientsBorder]}
+            >
+              {FILTER_LABEL[k]}
+            </Chip>
+          );
+        })}
       </ScrollView>
 
       {filter === 'bookings' ? (
@@ -344,14 +361,24 @@ export default function HomeScreen() {
             </Text>
           </View>
         )}
-        renderItem={({ item }) => (
-          <CallRow
-            call={item}
-            booking={bookingByCallId.get(item.id)}
-            mode={filter}
-            onPress={() => router.push(`/call/${item.id}` as never)}
-          />
-        )}
+        renderItem={({ item }) => {
+          // Calls without a customer row don't navigate anywhere — the
+          // detail screen is only meaningful for client calls (extracted
+          // fields, executed actions, memory). For unsaved callers the
+          // row becomes inert; Paper's TouchableRipple gracefully skips
+          // the ripple when onPress is undefined.
+          const onPress = item.customer_id
+            ? () => router.push(`/call/${item.id}` as never)
+            : undefined;
+          return (
+            <CallRow
+              call={item}
+              booking={bookingByCallId.get(item.id)}
+              mode={filter}
+              onPress={onPress}
+            />
+          );
+        }}
         ListEmptyComponent={
           <Surface mode="flat" style={styles.empty}>
             <Text variant="titleMedium">No calls yet</Text>

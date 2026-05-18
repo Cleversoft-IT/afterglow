@@ -85,6 +85,7 @@ class CallListItem(BaseModel):
     phone_e164: str
     customer_id: Optional[UUID] = None
     customer_display_name: Optional[str] = None
+    customer_tags: list[str] = Field(default_factory=list)
     template_id: UUID
     status: str
     failure_kind: Optional[FailureKind] = None

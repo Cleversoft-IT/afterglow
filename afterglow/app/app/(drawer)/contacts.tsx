@@ -236,6 +236,7 @@ export default function ContactsScreen() {
                   name={item.display_name}
                   avatarUrl={item.avatar_url}
                   size={48}
+                  isCustomer={item.kind === 'customer'}
                 />
               </View>
             )}

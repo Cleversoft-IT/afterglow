@@ -377,7 +377,7 @@ async def list_calls(
                     customer_filter_ids = list(twin_ids)
 
     stmt = (
-        select(Call, Customer.display_name)
+        select(Call, Customer.display_name, Customer.tags)
         .join(Customer, Customer.id == Call.customer_id, isouter=True)
         .where(visibility_filter_seedable(Call.session_id, Call.is_seed, ctx))
         .order_by(Call.created_at.desc())
@@ -392,11 +392,12 @@ async def list_calls(
             phone_e164=c.phone_e164,
             customer_id=c.customer_id,
             customer_display_name=display_name,
+            customer_tags=list(tags or []),
             template_id=c.template_id,
             status=c.status,
             failure_kind=_failure_kind(c.status, c.error),
             detected_language=c.detected_language,
             created_at=c.created_at,
         )
-        for (c, display_name) in rows
+        for (c, display_name, tags) in rows
     ]
