@@ -261,9 +261,10 @@ export const api = {
     return request<BookingListItem[]>(`/api/v1/bookings${suffix}`);
   },
 
-  listAudit: (params?: { call_id?: string; limit?: number }) => {
+  listAudit: (params?: { call_id?: string; agent_name?: string; limit?: number }) => {
     const qs = new URLSearchParams();
     if (params?.call_id) qs.set('call_id', params.call_id);
+    if (params?.agent_name) qs.set('agent_name', params.agent_name);
     qs.set('limit', String(params?.limit ?? 500));
     return request<AuditLogEntry[]>(`/api/v1/audit?${qs.toString()}`);
   },

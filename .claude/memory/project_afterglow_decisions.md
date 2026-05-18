@@ -39,8 +39,12 @@ L'app è caricata in iframe da `demo.95...` durante la judging window; più giud
 
 **How to apply:** ogni nuovo endpoint deve aggiungere `ctx: SessionContext = Depends(get_session_context)` e usare `visibility_filter(Model.session_id, ctx)` per le letture, e impostare `session_id=ctx.session_id` sulle scritture. Ogni `audit_step(...)` deve ricevere `session_id=call.session_id` (o l'equivalente). Schema/migration: `0003_demo_sandbox_session.py`. Coordinate vive: `afterglow/backend/app/api/session_context.py`, `afterglow/backend/app/tasks/session_cleanup.py`.
 
-### 1.ter. Pipeline post-call: Gemini analyzer + ADK action planner (revisione 2026-05-16, semplificata 2026-05-17)
-**Architettura attuale:** zero AI durante la chiamata; tutta l'analisi gira **dopo** la fine call. La pipeline post-call è **4 step**: `call_analyzer` → `action_planner` → `action_executor` → `_persist_memory`. Tutti loggati nello stesso `audit_log`:
+### 1.ter. Pipeline post-call: Gemini analyzer + ADK action planner — **SUPERSEDED 2026-05-18 dal round-10 agentic single-agent (vedi sezione 1.quindici sotto)**
+> ⚠️ Storico — la descrizione qui sotto del flusso a 3 step `call_analyzer` → `action_planner` → `action_executor` non è più la pipeline live. Il round-10 (2026-05-18) ha collassato tutto in un singolo agente ADK multi-turn (`agents/call_agent.py`), `action_planner.py` è stato eliminato, `call_analyzer.py` ridotto a soli schemi. Cerca **sezione 1.quindici** e [[project-agentic-pipeline]] per la forma attuale. Il testo qui sotto è preservato per archeologia (audit_log/storia commit).
+>
+> Cosa resta valido dalla 1.ter: l'invariante "AI runs **after** the call, never during", il fail-fast esplicito (no stub / no `_fallback_planner` / no deterministic fallback), il token accounting (`usage_metadata` Gemini + Vultr usage block scritti in `audit_log.input_tokens`/`output_tokens`).
+
+**Architettura precedente (storica):** zero AI durante la chiamata; tutta l'analisi gira **dopo** la fine call. La pipeline post-call era **4 step**: `call_analyzer` → `action_planner` → `action_executor` → `_persist_memory`. Tutti loggati nello stesso `audit_log`:
 
 1. **`agents/call_analyzer.py`** — singolo Gemini structured-output call. Lo schema Pydantic `CallAnalysis` produce in un colpo: fields/confidence/evidence, intent/sentiment/language/urgency, `planned_actions[]` (con `payload: dict[str, Any]` tipato, niente più `payload_json: str`) e `next_call_briefing` (paragrafo in linguaggio naturale per l'operatore della prossima call). Il prompt cita i `depends_on` per-field, e le `preconditions` / `confidence_threshold` / `evidence_required` per-action. Le `prompt_hints` (struttura `list[{when, then}]` dopo migration 0006) vengono valutate deterministicamente in Python contro `memory_retrieval.retrieve_structured_facts` PRIMA di costruire il prompt e prependute al system instruction quando matchano.
 2. **`agents/action_planner.py`** — agentic loop via Google ADK (`integrations/gemini_adk.py`) che rilegge l'analisi del passo 1 e emette le tool call per le sole azioni `execution_mode=auto`. Ogni tool ha un parametro `payload` con annotation Pydantic dinamica costruita da `ActionDefinition.payload_schema` via `integrations/jsonschema_to_pydantic.py` (FunctionDeclaration tipizzata per Gemini). L'`executors/action_executor.py` ri-valida il payload con `jsonschema.validate` prima di MOCK_REGISTRY, rifiuta azioni con `evidence_required=True` ed evidence vuota, e legge `mutates` dal `action_catalog` propagandolo nell'audit + `ExecutedAction.result`. `_summarize_to_english` è un piccolo Gemini call extra (~120 token, dentro `orchestrator._persist_memory`) che genera l'EN summary del briefing quando la lingua detected non è EN (solo in prod), poi il chunk del Vector Store contiene native + EN.
@@ -816,6 +820,76 @@ Nuovo modulo dedicato `backend/app/agents/briefing_regenerator.py` (NON riusa `c
 - FE types + api: `app/lib/types.ts` (`briefing` su `CallExtractedView`, 3 campi su `AuditLogEntry`), `app/lib/api.ts` (`listAudit({limit})`, `regenerateSummary`), `app/lib/auditLabels.ts` (`briefing_regenerator → Briefing regenerator`).
 - FE UI: `app/app/call/[id].tsx` (Surface briefing + IconButton refresh + Dialog + Snackbar), `app/app/(drawer)/audit.tsx` (rewrite ScrollView + Accordion).
 - Docs: questo file, `CLAUDE.md`, `afterglow/README.md`, `afterglow/docs/ARCHITECTURE.md`, `afterglow/demo-site/src/App.tsx`, `.claude/memory/MEMORY.md`, due nuove memory `project_rag_demo_read_only.md` + `feedback_audit_collapse_pattern.md`.
+
+### 1.sedici. Round 10 — Agentic post-call pipeline (2026-05-18, single multi-turn Gemini/ADK agent)
+
+**Cosa cambia:** la pipeline post-call passa da tre stage indipendenti single-shot a **un unico Gemini/ADK agent multi-turn** che decide turno per turno quale tool invocare, osserva il risultato e si autocorregge. Concretamente:
+
+- **`backend/app/agents/call_analyzer.py`** → alleggerito a soli `FieldExtraction` + `TokenUsage`. `analyze_call`, `_SYSTEM_INSTRUCTION`, `_user_prompt`, `CallAnalysisError`, `CallAnalysis`, `PlannedAction` rimossi.
+- **`backend/app/agents/action_planner.py`** → **eliminato integralmente**. La logica `_make_tool` migrata in `backend/app/agents/tools/action_tool.py` con due differenze chiave: (a) il tool ora chiama `execute_single_action` *inline* invece di registrare nello state ADK; (b) ogni invocazione bumpa `tool_context.state["turn_counter"]` per correlation audit.
+- **`backend/app/agents/call_agent.py`** (nuovo) — orchestra il loop ADK. Tool surface:
+  - `lookup_customer_memory(query)` — RAG Vultr on-demand (NON più pre-fetch deterministico)
+  - `search_transcript(keyword)` / `read_transcript_segment(start, end)` — re-read diarization-aware
+  - `<action_key>(payload, ...)` — uno per ogni `template.action_types` con `execution_mode=auto`, esegue inline
+  - `flag_for_review(reason, severity)` — setta `Call.review_flag`
+  - `finalize_call(payload: FinalizeCallPayload)` — chiude il loop con payload `{fields, intent, sentiment, language, urgency, briefing}`
+- **`backend/app/agents/tools/`** (nuova) — `memory_tool.py`, `transcript_tool.py`, `control_tool.py`, `action_tool.py`, `turn.py` (helper `bump_turn`).
+- **`backend/app/executors/action_executor.py`** — estratto `execute_single_action(...)` da `execute_planned_actions`; il batch wrapper resta per backward compat dei test. Aggiunto un terzo livello di no-raise: anche le eccezioni dai handler `MOCK_REGISTRY` / `INTERNAL_HANDLERS` diventano `ExecutedAction.status="failed"` con `result.error`.
+- **`backend/app/integrations/gemini_adk.py`** — nuovo `run_agent_loop(runner, prompt_text, max_iterations=12)` che traccia `turn_count`, `turn_trail`, `token_usage_total`, `final` state, `terminated_by`. Il vecchio `run_agent` resta come legacy helper.
+- **`backend/app/agents/orchestrator.py`** — rimossi blocchi RAG pre-fetch + analyzer call + planner call + executor batch (~130 LOC). Sostituiti da un `audit_step("agent_loop_start")` + `run_call_agent(...)` + emissione di N `agent_turn` audit rows + `agent_loop_end`. Idempotency guard estesa con `"needs_review"` e `"failed"`. Status mapping:
+
+  | `result.completion_reason` | `Call.status` | side effects |
+  |---|---|---|
+  | `"finalize"` | `"completed"` | persist `ExtractedFields`, push briefing su Vultr (prod only) |
+  | `"max_turns"` | `"needs_review"` (NEW) | auto-fill `Call.review_flag` se l'agente non l'ha già settato |
+  | `"error"` | `"failed"` | `Call.error = result.error` |
+
+- **DB** — migration `0016_call_review_flag.py` aggiunge `Call.review_flag JSONB NULL`. Nessun CHECK constraint su `status` (`0001_init.py:90` lo definisce come `String(30)` libero, quindi `'needs_review'` è già accettato).
+- **DTO** — `CallDetailView` + `CallListItem` portano `review_flag`. Nuovo schema `ReviewFlag` con campi `reason`/`severity`/`turn_count`/`flagged_by`. TS mirror in `app/lib/types.ts`.
+- **API** — l'audit endpoint `/api/v1/audit?call_id=...&agent_name=...` accetta già `agent_name` da prima. Estesa solo la firma client `api.listAudit({call_id, agent_name, limit})`.
+- **UI** — nuovo componente `app/components/AgentReasoningTrail.tsx`: timeline dei turni dell'agente (fetch dell'audit log filtrato `agent_name=call_agent` + `action_executor` per le sub-step, correlazione deterministica via `payload.agent_turn`). Banner giallo sulla call detail quando `review_flag != null`. Chip `Needs review` in `CallRow` quando `status==='needs_review' || review_flag`. Nuovo filtro `'review'` in Home. Customer detail rende `Review` invece della stringa raw.
+
+**Audit trail per turn**:
+- `agent_loop_start` (1×) — `payload.max_iterations`, `payload.available_tools`
+- `agent_turn` (N×) — `payload.turn`, `payload.tool`, `payload.args_summary`, `payload.result_summary`, `input_tokens` + `output_tokens`
+- `agent_loop_end` (1×) — `payload.turn_count`, `payload.completion_reason`, totale token
+- `action_exec` (per ogni azione eseguita) — `payload.agent_turn` numerico, per join deterministico con il turno corrispondente
+
+**No-raise contract (vincolante)** — vedi [[project-agentic-pipeline]]:
+1. `execute_single_action` mai solleva (anche exception dai mock/internal handler diventano `status="failed"`).
+2. `run_call_agent` mai solleva: cattura tutte le exception ADK/tool/model e ritorna `CallAgentResult(completion_reason="error", error=...)`.
+3. `orchestrator.run_pipeline` NON re-solleva su error: setta `call.status="failed"` + `call.error`, commit, ritorna.
+4. `_run_pipeline_isolated.except` (`api/calls.py:222`) rollback path resta come safety net SOLO per crash veramente uncaught (DB disconnect catastrofico).
+
+Questo contratto è ciò che mantiene visibili gli `ExecutedAction` già flushed anche quando il loop max_turns o fallisce. La promessa "azioni restano visibili" non è una magia transazionale: è il commit dell'orchestrator che la garantisce.
+
+**Test (`backend/tests/`)** — layout flat:
+- `test_adk_smoke.py` (gate ADK 1.18 — async tools, state, function_call/response, usage_metadata)
+- `test_execute_single_action.py` (6 test: no-raise su validation/evidence/handler exception/manual-only/mock/hallucinated)
+- `test_action_tool_typed.py` (6 test: typed Pydantic annotation, fallback dict, attempt counter, refusal su double mutating success, turn counter monotonic)
+- `test_call_agent_offline.py` (5 test: finalize, max_turns, missing API key, runner exception, schema sanity)
+- `test_turn_counter_correlation.py` (3 test: bump_turn monotonic, agent_turn lands in action_exec audit payload)
+- `test_call_review_flag.py` (5 test: round-trip schemas, _failure_kind non-trigger su needs_review)
+- Test esistenti aggiornati: `test_action_planner_typed.py` eliminato (modulo rimosso), `test_pipeline_smoke.py` continua a passare, `test_action_executor_validation.py` invariato grazie al wrapper batch.
+- Risultato: **113 backend test verdi** dopo il refactor.
+
+**Hackathon alignment** (`hackathon-docs/07-judging-criteria.md`):
+- **Application of Technology (25%)** — agentic architecture, multi-step reasoning, tool use, self-correction su `validation_failed`/`evidence_missing`, RAG come tool (Vultr) anziché prompt prefix. Bonus combo multi-tech: Gemini + Speechmatics + Vultr nello stesso audit trail.
+- **Originality (25%)** — behaviour emergente: l'agente può cercare nel transcript ("search_transcript('Saturday')") o ri-interrogare la memoria con query specifiche, e si autocorregge su errori dell'executor. Visibile a colpo d'occhio nella "Agent reasoning" pane.
+- **Business Value (25%)** — operatore vede ogni decisione + retry + perché l'azione è stata flaggata. Auditabile, undo-able.
+- **Vultr "Web-Based Enterprise Agent" track** — multi-step agentic workflow su Vultr Inference + Vector Store, requisito letterale della track.
+
+**File toccati nel round 10:**
+- Backend pipeline: `backend/app/agents/{call_agent.py (NEW), call_analyzer.py (slim), orchestrator.py (rewritten), memory_retrieval.py (query param), briefing_regenerator.py (docstring), tools/__init__.py + tools/turn.py + tools/memory_tool.py + tools/transcript_tool.py + tools/control_tool.py + tools/action_tool.py (NEW)}`, `backend/app/agents/action_planner.py` (DELETED), `backend/app/executors/action_executor.py` (rewritten), `backend/app/integrations/gemini_adk.py` (extended).
+- Backend schema/API: `backend/app/db/models.py` (Call.review_flag), `backend/app/schemas/calls.py` (ReviewFlag + DTO fields), `backend/app/schemas/__init__.py`, `backend/app/api/calls.py` (mapper updates), `backend/alembic/versions/0016_call_review_flag.py` (NEW).
+- Backend cleanup: `backend/app/integrations/action_catalog.py` (commenti), `backend/app/api/templates.py` (commento), `backend/app/db/seed.py` (audit rows: `action_planner` → `call_agent` agent_loop_start/end).
+- Backend tests: nuovi 6 file `test_*.py`, eliminato `test_action_planner_typed.py`.
+- Frontend: `app/lib/types.ts` (ReviewFlag + DTO fields + status union), `app/lib/api.ts` (listAudit agent_name), `app/components/AgentReasoningTrail.tsx` (NEW), `app/components/CallRow.tsx` (chip + filter key), `app/app/call/[id].tsx` (banner + trail + placeholder Extracted), `app/app/(drawer)/(tabs)/index.tsx` (filter review), `app/app/customer/[id].tsx` (Review chip).
+- Docs: questo file (1.ter SUPERSEDED + 1.sedici nuova), `CLAUDE.md` (hard constraint #2 riscritto), `.claude/memory/MEMORY.md` + nuovo `project_agentic_pipeline.md`, `afterglow/README.md`, `afterglow/docs/ARCHITECTURE.md`.
+
+**Why:** entrare nei criteri agentic dell'hackathon non come etichetta ma come architettura. La pipeline pre-round-10 era "3 chiamate Gemini con tool calling spruzzato sopra" — descrivibile come agentic nel pitch ma non riconoscibile come tale nel codice o nell'audit. Ora ogni turno è una decisione del modello con feedback osservato; ogni azione fallita può essere corretta dal modello stesso; ogni look-up di memoria è scelto. La Trail UI lo rende leggibile in 5 secondi a un giudice.
+
+**How to apply:** la pipeline è bloccata in questa forma fino alla submission. Modificare il prompt dell'agente o aggiungere tool è OK (passare per `app/agents/call_agent.py:_SYSTEM_INSTRUCTION` + nuove factory in `app/agents/tools/`). Cambiamenti sostanziali (es. aggiungere un secondo agente, re-introdurre un fallback) richiedono nuova memory file + audit del piano. Vedi [[project-agentic-pipeline]] per la spec completa di tool surface, status lifecycle e audit correlation.
 
 ### 9. Stato env in produzione (volatile, 2026-05-15)
 Sezione "what's live right now" — da rileggere prima di pushare grossi cambi al backend.

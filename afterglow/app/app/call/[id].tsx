@@ -17,6 +17,7 @@ import {
   useTheme,
 } from 'react-native-paper';
 import { api, ApiError } from '../../lib/api';
+import { AgentReasoningTrail } from '../../components/AgentReasoningTrail';
 import { ContactAvatar } from '../../components/ContactAvatar';
 import { TranscriptList } from '../../components/TranscriptList';
 import { resolveFromCallDetail } from '../../lib/callerResolver';
@@ -72,6 +73,14 @@ function statusChip(call: CallDetailView, theme: AppTheme): {
       icon: 'progress-clock',
       style: { backgroundColor: theme.colors.secondaryContainer },
       textColor: theme.colors.onSecondaryContainer,
+    };
+  }
+  if (call.status === 'needs_review' || call.review_flag) {
+    return {
+      label: 'Needs review',
+      icon: 'alert-circle-outline',
+      style: { backgroundColor: theme.colors.tertiaryContainer },
+      textColor: theme.colors.onTertiaryContainer,
     };
   }
   const label = call.status
@@ -275,6 +284,19 @@ export default function CallDetailScreen() {
         </Card.Content>
       </Card>
 
+      {call.review_flag ? (
+        <Banner
+          visible
+          icon="alert-circle-outline"
+          style={{ backgroundColor: theme.colors.tertiaryContainer }}
+        >
+          {`Needs human review · ${call.review_flag.reason}` +
+            (call.review_flag.severity ? ` (${call.review_flag.severity})` : '')}
+        </Banner>
+      ) : null}
+
+      <AgentReasoningTrail callId={call.id} />
+
       {extracted ? (
         <Card mode="elevated">
           <Card.Title
@@ -342,6 +364,17 @@ export default function CallDetailScreen() {
                 </View>
               );
             })}
+          </Card.Content>
+        </Card>
+      ) : call.status === 'needs_review' ? (
+        <Card mode="elevated">
+          <Card.Content>
+            <Text variant="titleMedium" style={{ marginBottom: 6 }}>
+              Extracted
+            </Text>
+            <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
+              Pipeline did not finalize — review the agent trail above.
+            </Text>
           </Card.Content>
         </Card>
       ) : null}

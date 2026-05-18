@@ -22,4 +22,5 @@
 - [Wizard agentico draft-first](feedback_wizard_agentic.md) — Wizard è agentico (draft-first + budget 2-5 domande hard ceiling 5), NON form a slot né script con singola domanda; logica nel prompt+meta-state, no post-processing hard-coded; Integration discovery HARD RULE prima di azioni canale-dipendenti
 - [External audit on plans](feedback_external_audit.md) — l'utente porta audit di collaboratori esterni sui piani prima dell'esecuzione; verifica contro i contratti reali, patch chirurgico, documenta esplicitamente le correzioni nel piano
 - [RAG demo read-only](project_rag_demo_read_only.md) — round-9: demo RAG attiva in lettura su collection preseedata, write skipped.
+- [Agentic post-call pipeline](project_agentic_pipeline.md) — round-10: un unico Gemini/ADK multi-turn agent fonde analyzer+planner+executor; tool surface, no-raise contract, `needs_review` status, audit correlation via `payload.agent_turn`.
 - [Audit collapse pattern](feedback_audit_collapse_pattern.md) — pattern UI overview-first per pagine list-heavy (call → agent → step → payload).

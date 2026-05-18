@@ -11,6 +11,22 @@ from app.schemas.customers import CustomerCard
 FailureKind = Literal["missed", "pipeline_error"]
 
 
+class ReviewFlag(BaseModel):
+    """Set on a `Call` when the agentic pipeline asks for human review.
+
+    Two origins:
+      - `flagged_by="agent"`: the agent invoked `flag_for_review(reason, severity)`
+        during the loop (typical: ambiguous evidence, conflict, high stakes).
+      - `flagged_by="system"`: the orchestrator set it because the agent loop
+        terminated without `finalize_call` (e.g. `completion_reason="max_turns"`).
+    """
+
+    reason: str
+    severity: Literal["low", "medium", "high"] = "medium"
+    turn_count: Optional[int] = None
+    flagged_by: Literal["agent", "system"] = "agent"
+
+
 class CallSubmittedResponse(BaseModel):
     call_id: UUID
     status: str = "pending"
@@ -83,6 +99,10 @@ class CallDetailView(BaseModel):
     created_at: datetime
     extracted: Optional[CallExtractedView] = None
     executed_actions: list[CallActionView] = Field(default_factory=list)
+    # Populated when the agentic pipeline asked for human review. NULL means
+    # nothing to flag. The UI renders a banner at the top of the call detail
+    # whenever this is set.
+    review_flag: Optional[ReviewFlag] = None
 
 
 class CallListItem(BaseModel):
@@ -96,3 +116,6 @@ class CallListItem(BaseModel):
     failure_kind: Optional[FailureKind] = None
     detected_language: Optional[str] = None
     created_at: datetime
+    # Same field surfaced in list responses so the Home filter `'review'` and
+    # the CallRow chip can render without an extra fetch.
+    review_flag: Optional[ReviewFlag] = None

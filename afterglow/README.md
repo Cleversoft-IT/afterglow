@@ -24,47 +24,64 @@ App (Expo + react-native-web)         ◄── embedded by ── Demo site (Vi
        ▼
 FastAPI background task ─► Speechmatics batch (diarization + language auto-detect)
        │
-       ├─► Vultr Vector Store /v1/chat/completions/RAG  (pre-fetch: prior_facts)
-       │   ├─► single collection, configured via VULTR_VECTOR_DEFAULT_COLLECTION
-       │   ├─► production: read + write every completed call
-       │   └─► demo: READ only on the pre-seeded collection (seed customers + matching
-       │       phones); write-back stays skipped. The lifespan task
-       │       app/tasks/vector_preseed.py pushes one chunk per seed call at boot,
-       │       with per-call idempotency (chunk_metadata.preseed=true).
+       ├─► retrieve_structured_facts (SQL pass)  ─►  prompt_hints evaluation
+       │       (the heavy RAG read is NOT pre-fetched any more — the agent
+       │        decides whether and what to query on demand.)
        │
-       ├─► Gemini structured-output call  (single Gemini pass — see app/agents/call_analyzer.py)
-       │       prompt: transcript + template fields_schema (confidence_threshold /
-       │               extractor_hint / depends_on) + action_types (preconditions /
-       │               confidence_threshold / evidence_required / payload_schema) +
-       │               applicable prompt_hints rules + prior_facts
-       │       Grounding rule: evidence MUST be a verbatim span from the current
-       │       transcript; prior_facts only inform the briefing.
-       │       response_schema = CallAnalysis (Pydantic):
-       │         - fields[]  (key, value, confidence, evidence)
-       │         - intent, sentiment, language, urgency
-       │         - planned_actions[]  (subset of template auto-actions, typed payload)
-       │         - next_call_briefing  (NL paragraph, detected language)
-       │       Fail-fast: missing key / error / schema mismatch → Call.failed.
+       ├─► ╭─────────────────────────────────────────────────────────────────╮
+       │   │  run_call_agent  (Gemini/ADK multi-turn agent, up to 12 turns) │
+       │   │  app/agents/call_agent.py                                       │
+       │   │                                                                 │
+       │   │  Tool surface (every tool bumps state["turn_counter"] first):   │
+       │   │   · lookup_customer_memory(query)     ◄── Vultr RAG on demand  │
+       │   │   · search_transcript(keyword)        — diarization-aware match │
+       │   │   · read_transcript_segment(s, e)     — word-indexed re-read    │
+       │   │   · <action_key>(payload, ...)        — INLINE execution via   │
+       │   │       executors/action_executor.execute_single_action.         │
+       │   │       Result `{status, result, attempt}` flows back to the     │
+       │   │       model: it may retry once with a corrected payload on     │
+       │   │       validation_failed / evidence_missing, refuses doubles    │
+       │   │       on mutating actions that already executed.               │
+       │   │   · flag_for_review(reason, severity) — sets Call.review_flag  │
+       │   │   · finalize_call(payload)            — emits the final        │
+       │   │       FinalizeCallPayload (fields, intent, sentiment,          │
+       │   │       language, urgency, briefing) and ends the loop.          │
+       │   │                                                                 │
+       │   │  No-raise contract: ADK/tool/model failures become              │
+       │   │  CallAgentResult(completion_reason="error"); orchestrator       │
+       │   │  commits the resulting status and never re-raises, so the      │
+       │   │  ExecutedAction rows already flushed by the loop stay visible. │
+       │   ╰─────────────────────────────────────────────────────────────────╯
        │
-       ├─► Action Planner (agentic ADK loop — see app/agents/action_planner.py)
-       │       Each auto-mode action_type is exposed as an ADK tool with a
-       │       Pydantic payload model built dynamically from payload_schema.
-       │       Gemini emits a typed JSON payload; the executor revalidates.
-       │       Fail-fast: ADK error → Call.failed (no fallback).
+       ├─► Status mapping (orchestrator.run_pipeline):
+       │       finalize    → Call.status="completed"     + persist ExtractedFields
+       │       max_turns   → Call.status="needs_review"  + auto-fill review_flag
+       │       error       → Call.status="failed"        + Call.error
        │
-       ├─► Action Executor (deterministic Python) ─► jsonschema.validate(payload),
-       │       evidence_required gate, `mutates` flag read from action_catalog
-       │       (single source of truth), routes the call to either MOCK_REGISTRY
-       │       (integration_kind=mock_external, e.g. booking.create) or
-       │       INTERNAL_HANDLERS (integration_kind=internal_real, e.g.
-       │       customer.update_profile which actually writes Customer.tags +
-       │       profile_facts on Postgres). Audit log records the integration_kind
-       │       and mutates flag on every step.
-       │
-       └─► Memory write-back ─► customer.memory_summary (Postgres, operator-visible)
-                                + bilingual chunk (native + EN summary) pushed to
-                                  Vultr Vector Store
+       └─► Memory write-back (only on status="completed") ─►
+                customer.memory_summary (Postgres, operator-visible)
+              + bilingual chunk (native + EN summary) pushed to Vultr Vector Store
 ```
+
+### Why agentic (round-10, 2026-05-18)
+
+Through round-9 the pipeline was three glued single-shot stages — an analyzer
+producing `CallAnalysis`, an ADK planner registering tool calls without
+executing them, and a deterministic batch executor. The model never observed
+an action's result and never iterated. The lablab hackathon criteria
+(`hackathon-docs/07-judging-criteria.md`) reward exactly the missing pieces:
+multi-step reasoning, tool use, self-correction, emergent behaviour. The
+Vultr "Web-Based Enterprise Agent" track demands *multi-step agentic
+workflows* literally. Round-10 collapses everything into a single ADK agent
+that decides turn-by-turn which tool to call, observes the response, and
+self-corrects on failures. Every turn is recorded in the audit log
+(`agent_loop_start` / `agent_turn` × N / `agent_loop_end`) and every action
+execution carries `payload.agent_turn` so the operator UI's `<AgentReasoningTrail>`
+correlates them deterministically — not by timestamp join.
+
+See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the full description
+of tool surface, no-raise contract, audit correlation, and the
+`needs_review` status lifecycle.
 
 PII / privacy classification and the Speechmatics ASR custom dictionary
 were removed from the template surface on 2026-05-17 (see
@@ -82,16 +99,53 @@ System of record: **Vultr Managed Postgres**. Deploy: **Vultr Cloud Compute + Co
 
 ## Award alignment
 
-### Best use of Vultr
-- `POST /v1/chat/completions/RAG` powers the pre-call memory lookup. In production it runs end-to-end (read + write). In demo mode the read path is **active on a pre-seeded collection** (one chunk per seed call, pushed at backend boot with per-call idempotency); the write-back stays disabled so judges don't pollute the shared collection — see "Demo isolation policy"
-- Single Vector Store collection (single-tenant), populated by every completed production call's `next_call_briefing`
-- Vultr Managed Postgres as the system of record (every call, customer, action, audit row)
-- Vultr IAM Service User with a minimal-privilege ACL (`subscriptions_view, subscriptions, provisioning, firewall`)
-- Coolify auto-deploy from `main` via GitHub App webhook, with HTTPS via Traefik + Let's Encrypt
-- Note: Kimi-K2 was originally planned as the Classification model. Day 2 we
-  collapsed Classification into the same Gemini structured output to reduce
-  failure surface, and switched the RAG model to `MiniMaxAI/MiniMax-M2.7`
-  (the model Vultr actually serves on `/v1/chat/completions/RAG`).
+### Agentic architecture (round-10, headline)
+- One Gemini/ADK multi-turn agent fuses what used to be three single-shot
+  stages. Tool surface: RAG-on-demand, transcript re-read, action execution
+  with feedback, escalation flag, finalize.
+- **Self-correction**: the model reads `{status, result, attempt}` returned
+  by each action tool and retries with a corrected payload on
+  `validation_failed` / `evidence_missing`. Mutating actions cannot be
+  replayed after success.
+- **Emergent behaviour**: the agent decides whether to query memory
+  (`lookup_customer_memory("Does this caller prefer window seats?")`),
+  re-read a transcript span, or flag for human review — none of those
+  decisions is hard-coded.
+- **Auditable**: every turn becomes an `agent_turn` audit row; every action
+  carries `payload.agent_turn` for deterministic correlation; the operator
+  sees the full reasoning trail in the `Agent reasoning` pane of the call
+  detail.
+- **No-raise**: failures become data (`completion_reason="error"` +
+  `Call.error`), not exceptions. Already-flushed `ExecutedAction` rows stay
+  visible even when the loop fails.
+- Direct match to **Application of Technology** (agentic architecture,
+  tool use, multi-step, self-correction) and **Originality** (decision-making
+  systems, emergent behaviours) — see
+  [`hackathon-docs/07-judging-criteria.md`](../hackathon-docs/07-judging-criteria.md).
+
+### Best use of Vultr ("Web-Based Enterprise Agent" track)
+- `POST /v1/chat/completions/RAG` is exposed as the `lookup_customer_memory`
+  **tool** of the agent. The model decides when (and with what specific
+  question) to interrogate the Vector Store — not the prompt prefix. This
+  is exactly the multi-step agentic workflow pattern Vultr's track
+  rewards.
+- In production the loop runs end-to-end (read + write). In demo mode the
+  read path is **active on a pre-seeded collection** (one chunk per seed
+  call, pushed at backend boot with per-call idempotency); the write-back
+  stays disabled so judges don't pollute the shared collection — see
+  "Demo isolation policy".
+- Single Vector Store collection (single-tenant), populated by every
+  completed production call's `next_call_briefing`.
+- Vultr Managed Postgres as the system of record (every call, customer,
+  action, audit row).
+- Vultr IAM Service User with a minimal-privilege ACL
+  (`subscriptions_view, subscriptions, provisioning, firewall`).
+- Coolify auto-deploy from `main` via GitHub App webhook, with HTTPS via
+  Traefik + Let's Encrypt.
+- Note: Kimi-K2 was originally planned as the Classification model. Day 2
+  we collapsed Classification into the Gemini agent, and switched the RAG
+  model to `MiniMaxAI/MiniMax-M2.7` (the model Vultr actually serves on
+  `/v1/chat/completions/RAG`).
 
 #### Demo isolation policy
 
@@ -123,18 +177,25 @@ and the full `/v1/chat/completions/RAG` loop fires — call → write
 chunk → next call prefetches the chunk → briefing returns the memory.
 
 ### Best use of Gemini
-- **Single multi-purpose structured-output call** with Pydantic `response_schema` —
-  extracts fields, classifies, plans actions and writes the briefing in one shot
-- Default model: `gemini-3.1-flash-lite`. We pin the explicit model instead of
-  using moving aliases such as `gemini-flash-latest` / `gemini-latest-flash`,
-  which can shift under us; this is also the value configured in Coolify for
-  the backend.
-- Multimodal-ready: the analyzer interface accepts an `audio_bytes` argument and
-  the `Part.from_bytes` path is wired in `app/integrations/gemini_adk.py` for the
-  forthcoming multimodal upgrade
-- Template Wizard wired live on the same `gemini-3.1-flash-lite` with structured
-  output (Pydantic `response_schema=TemplateWizardResponse`). Fail-fast: a
-  missing key or a Gemini error bubbles up as HTTP 502 — no offline stub.
+- **Multi-turn Gemini/ADK agent** with N typed tools (one per template
+  action + RAG + transcript helpers + flag + finalize). Each tool's
+  `payload` annotation is a Pydantic v2 model built dynamically from the
+  template's `payload_schema` via
+  `app/integrations/jsonschema_to_pydantic.py`, so the model never sees an
+  untyped `dict`; Gemini emits structured-output JSON that matches the
+  schema.
+- Default model: `gemini-3.1-flash-lite`. We pin the explicit model
+  instead of using moving aliases such as `gemini-flash-latest` /
+  `gemini-latest-flash`, which can shift under us; same value is
+  configured in Coolify for the backend.
+- `finalize_call(payload: FinalizeCallPayload)` is the loop's stop
+  signal — its schema is the *only* structured-output Gemini still emits
+  directly (the rest is tool calls); `FinalizeCallPayload.fields` is the
+  `list[FieldExtraction]` the orchestrator funnels into `ExtractedFields`.
+- Template Wizard wired on the same `gemini-3.1-flash-lite` with
+  structured output (Pydantic `response_schema=TemplateWizardResponse`).
+  Fail-fast: a missing key or a Gemini error bubbles up as HTTP 502 — no
+  offline stub.
 
 ### Speechmatics
 - `speechmatics-batch` SDK wired live (`AsyncClient.transcribe` with

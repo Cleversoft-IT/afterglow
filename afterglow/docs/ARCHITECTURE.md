@@ -5,6 +5,52 @@
 > call; the AI runs silently after each one — extracting fields, executing
 > actions, and writing a one-line briefing for the next call.
 
+## Hackathon alignment (round-10, agentic)
+
+Afterglow's post-call pipeline is a **single Gemini/ADK multi-turn agent**
+(`backend/app/agents/call_agent.py`) — not a three-stage chain of
+single-shot calls. This was rebuilt in round-10 (2026-05-18) to make the
+agentic architecture explicit at the code level, not just in the pitch.
+
+Mapping to lablab's judging criteria
+([`hackathon-docs/07-judging-criteria.md`](../../hackathon-docs/07-judging-criteria.md)):
+
+- **Application of Technology (25%)** — agent loops up to 12 turns over
+  a typed tool surface, observes each tool's response, and self-corrects
+  on `validation_failed` / `evidence_missing` failures. Tool calling is
+  native (`google.adk.Agent(tools=[...])`), payloads are typed Pydantic
+  models built dynamically from `Action.payload_schema`. RAG is **a
+  tool**, not a prompt prefix.
+- **Originality (25%)** — emergent behaviours are visible in the audit
+  trail: the agent decides whether to query memory (and with what
+  specific question), whether to re-read a transcript span, whether to
+  retry an action with a corrected payload, whether to flag for human
+  review. None of those is hard-coded by an if-tree.
+- **Business Value (25%)** — the operator UI's `Agent reasoning` pane
+  exposes every decision and tool call as a numbered timeline, so a
+  small-business owner can audit the AI's behaviour without reading
+  logs. Undo on every mutating action via the existing
+  `undo_action` / `redo_action` endpoints.
+- **Presentation (25%)** — the demo-site iframe runs the full pipeline
+  end-to-end on Vultr Inference + Vector Store + Speechmatics, and the
+  `Agent reasoning` trail is visible to anyone clicking on a call.
+
+Sponsor-specific tracks:
+
+- **Vultr "Web-Based Enterprise Agent"** — multi-step agentic workflow
+  on Vultr Serverless Inference + Vultr Vector Store + Vultr Managed
+  Postgres + Vultr Compute (Coolify). Vultr RAG is exposed to the agent
+  as `lookup_customer_memory(query)`.
+- **Google Gemini** — `gemini-3.1-flash-lite` drives the agent loop;
+  Google ADK 1.18 provides the runner; typed FunctionDeclarations built
+  from JSONSchema via the `jsonschema_to_pydantic` helper.
+- **Speechmatics** — diarized + language-auto-detected transcript feeds
+  the agent. The diarization is consumed by `search_transcript` /
+  `read_transcript_segment` so the agent can quote the right speaker.
+
+The "AI runs **after** the call, never during" invariant is preserved:
+human operator handles every call live, agent runs once the audio ends.
+
 ## User-facing navigation
 
 The frontend is an Expo SDK 54 / react-native-web PWA shaped like the Google
@@ -286,7 +332,7 @@ section copy. A subtle "Click anywhere on the screen to interact" hint sits
 below the frame. On mobile, the iframe preview is hidden and the site shows
 a single CTA to open the live app full-screen.
 
-## End-to-end shape
+## End-to-end shape (round-10, agentic single agent)
 
 ```
 App (Expo + react-native-web)         ◄── embedded by ── Demo site (Vite)
@@ -302,66 +348,113 @@ FastAPI                ─► eager Customer lookup by phone (clone-first/seed-f
        ▼
 FastAPI background task ─► Speechmatics batch (diarization + lang detect)
        │
-       ├─► Memory lookup
-       │   ├─► structured SQL history (production customers with <=10 prior
-       │   │   calls, AND every demo caller whose phone does NOT match a
-       │   │   seed customer — _seed_exists_for_phone returns false → empty
-       │   │   structured payload, no Vultr call)
-       │   └─► Vultr Vector Store /v1/chat/completions/RAG
-       │       (production customers with >10 prior calls, OR demo callers
-       │        whose phone matches a seed customer — the pre-seeded
-       │        collection serves a real prior_facts hit at the first ring.
-       │        Single collection configured via VULTR_VECTOR_DEFAULT_COLLECTION;
-       │        preseed pushed at boot by app/tasks/vector_preseed.py with
-       │        per-call idempotency via chunk_metadata.preseed=true.)
+       ├─► retrieve_structured_facts (deterministic SQL pass)
+       │       Top-confidence fields from prior calls of this customer,
+       │       used to evaluate `template.prompt_hints` rules. The heavy
+       │       RAG read is NOT pre-fetched — the agent decides on demand.
        │
-       ├─► Gemini structured-output call  (call_analyzer.py — single Gemini pass)
-       │       prompt: transcript + template fields_schema (confidence_threshold /
-       │               extractor_hint / depends_on) + action_types (preconditions /
-       │               confidence_threshold / evidence_required / payload_schema) +
-       │               applicable prompt_hints rules (when evaluated against
-       │               prior_structured) + prior_facts
-       │       Grounding rule (enforced in the system instruction):
-       │         prior_facts can only inform next_call_briefing — they MUST NOT
-       │         be used as `evidence` for field extractions and MUST NOT fill
-       │         action `payload` fields unless the current transcript confirms
-       │         them. evidence must always be a verbatim span FROM the
-       │         current transcript.
-       │       response_schema = CallAnalysis (Pydantic):
-       │         - fields[]  (key, value, confidence, evidence)
-       │         - intent, sentiment, language, urgency
-       │         - planned_actions[]  (subset of template auto-actions, typed payload)
-       │         - next_call_briefing  (NL paragraph, detected language)
-       │       Fail-fast: missing key / error / schema mismatch → Call.failed.
+       ├─► ╭───────────────────────────────────────────────────────────────────╮
+       │   │  run_call_agent — Gemini/ADK multi-turn agent (max 12 turns)      │
+       │   │  app/agents/call_agent.py                                          │
+       │   │                                                                    │
+       │   │  System instruction (excerpt):                                     │
+       │   │    "Decide WHEN you need extra context (lookup_customer_memory     │
+       │   │    with a SPECIFIC question, not 'any facts'). Action tools        │
+       │   │    EXECUTE immediately — read {status, result, attempt} and        │
+       │   │    correct course on failures. prior_facts inform the briefing,    │
+       │   │    NEVER field evidence. End with exactly one finalize_call."      │
+       │   │                                                                    │
+       │   │  Tool surface:                                                     │
+       │   │   · lookup_customer_memory(query)                                  │
+       │   │       ─► Vultr /v1/chat/completions/RAG against                    │
+       │   │         VULTR_VECTOR_DEFAULT_COLLECTION (single collection,         │
+       │   │         single-tenant). Demo mode reads the pre-seeded             │
+       │   │         collection when the caller matches a seed; unknown         │
+       │   │         demo callers get an empty answer (no token burn).          │
+       │   │                                                                    │
+       │   │   · search_transcript(keyword)                                     │
+       │   │   · read_transcript_segment(start_word, end_word)                  │
+       │   │       ─► diarization-aware helpers over the Speechmatics output    │
+       │   │                                                                    │
+       │   │   · <action_key>(payload, confidence, evidence)                    │
+       │   │       One tool per `template.action_types` entry with              │
+       │   │       execution_mode="auto". Payload annotation is a Pydantic v2   │
+       │   │       model built dynamically from payload_schema via              │
+       │   │       jsonschema_to_pydantic — Gemini emits a typed JSON object.   │
+       │   │       Each invocation calls execute_single_action INLINE and       │
+       │   │       returns {status, result, attempt, agent_turn} to the         │
+       │   │       model:                                                       │
+       │   │         executed         → success (mock_external or internal_real)│
+       │   │         validation_failed → jsonschema rejected (retry once OK)    │
+       │   │         evidence_missing  → evidence_required + empty span         │
+       │   │         failed            → handler exception or mock error        │
+       │   │         refused           → 2nd mutating attempt after success,    │
+       │   │                             or attempt > 2 cap                     │
+       │   │       The model corrects on failures, retries with a fixed         │
+       │   │       payload, or calls flag_for_review.                           │
+       │   │                                                                    │
+       │   │   · flag_for_review(reason, severity)                              │
+       │   │       ─► sets Call.review_flag = {reason, severity,                │
+       │   │          turn_count, flagged_by: "agent"}                          │
+       │   │                                                                    │
+       │   │   · finalize_call(payload: FinalizeCallPayload)                    │
+       │   │       ─► last tool. Payload: fields[], intent, sentiment,          │
+       │   │         language, urgency, briefing. Ends the loop.                │
+       │   │                                                                    │
+       │   │  Audit per turn: agent_loop_start (1×), agent_turn (N×),           │
+       │   │  agent_loop_end (1×). Every action_exec audit row carries          │
+       │   │  payload.agent_turn = <int> so the UI's <AgentReasoningTrail>      │
+       │   │  groups actions under their source turn deterministically.         │
+       │   ╰───────────────────────────────────────────────────────────────────╯
        │
-       ├─► Action Planner (action_planner.py — Google ADK agentic loop)
-       │       reads the analysis, exposes the template's auto-mode
-       │       action_types as ADK tools with TYPED payload parameters
-       │       (Pydantic models built from payload_schema). Each tool's
-       │       docstring surfaces `mutates` from the action catalog (single
-       │       source of truth). Gemini emits a structured object that
-       │       matches the schema; the executor revalidates.
-       │       Fail-fast: ADK runner error → Call.failed (no fallback).
+       ├─► Status mapping (orchestrator):
+       │       finalize    → Call.status="completed"
+       │                     persist ExtractedFields (from FinalizeCallPayload.fields)
+       │       max_turns   → Call.status="needs_review" (NEW, round-10)
+       │                     auto-fill Call.review_flag = {reason:
+       │                       "agent_did_not_finalize", severity: "high",
+       │                       turn_count: N, flagged_by: "system"}
+       │                     NO ExtractedFields persisted
+       │       error       → Call.status="failed"
+       │                     Call.error = result.error
        │
-       ├─► Action Executor (deterministic Python) ─► jsonschema.validate(payload),
-       │       evidence_required gate, `mutates` flag read from action_catalog,
-       │       catalog dispatch: `mock_external` actions are stamped
-       │       `mock: True`; `internal_real` actions mutate Postgres and are
-       │       stamped `mock: False`. All executions/refusals write
-       │       executed_actions + audit_log.
-       │
-       └─► Memory write-back ─► customer.memory_summary (Postgres, operator-visible)
-                                + extracted_fields.briefing_snapshot (per-call copy)
-                                + customer.profile_facts / tags when internal profile
-                                  actions run
-                                + bilingual chunk pushed to Vultr Vector Store
-                                  (native briefing + EN summary; skipped when the
-                                   call carries a demo session_id)
+       └─► Memory write-back (only on status="completed") ─►
+             customer.memory_summary (Postgres, operator-visible)
+           + extracted_fields.briefing_snapshot (per-call frozen copy)
+           + bilingual chunk pushed to Vultr Vector Store
+             (native briefing + EN summary; skipped when call carries
+              a demo session_id)
 ```
 
 The pipeline runs **entirely after the call ends**. The human-facing latency
 is whatever Postgres takes to return `customer.memory_summary`. No AI in the
-live-call hot path.
+live-call hot path. The post-call agentic loop typically takes 15-40s on
+`gemini-3.1-flash-lite` (8-12 tool turns), monitored via the
+`agent_loop_end.input_tokens / output_tokens` audit row.
+
+### No-raise contract
+
+The agentic pipeline is built around the rule **failures become data, never
+exceptions**, so the rollback path of `_run_pipeline_isolated`
+(`api/calls.py:222`) does NOT erase already-flushed `ExecutedAction` rows
+when something goes wrong mid-loop:
+
+1. `execute_single_action` catches exceptions from `MOCK_REGISTRY` /
+   `INTERNAL_HANDLERS` and produces `status="failed"` with `result.error`,
+   never raising.
+2. `run_call_agent` catches every `Exception` from ADK and returns
+   `CallAgentResult(completion_reason="error", error=...)`.
+3. `orchestrator.run_pipeline` reads `completion_reason`, sets `call.status`
+   + `call.review_flag` accordingly, commits the session, and returns —
+   never re-raising. The `_run_pipeline_isolated.except` rollback is left
+   only as a safety net for catastrophic uncaught exceptions (DB
+   disconnect, OOM).
+
+This is what powers the `needs_review` status: when the agent's loop hits
+`max_iterations` without `finalize_call`, the actions it already executed
+(possibly with real Postgres side effects, e.g. `customer.update_profile`)
+stay visible to the operator + `review_flag` is set + `undo_action`
+(`action_executor.py:262`) is available if rollback is needed.
 
 **Startup recovery.** FastAPI lifespan startup also runs `orphan_recovery`:
 any call stuck in `transcribing` or `analyzing` for more than 10 minutes is
@@ -429,6 +522,56 @@ System of record: **Vultr Managed Postgres**. Deploy: **Vultr Cloud Compute +
 Coolify** with auto-deploy via GitHub App webhook on push to `main` (no
 manual deploy step, no GitHub Actions in the critical path). IAM: Vultr
 Service User with minimal-privilege ACL.
+
+## Call.status lifecycle
+
+| status | When | Terminal | UI affordance |
+|---|---|---|---|
+| `pending` | row inserted by `POST /api/v1/calls`, background task not started | NO — Home polls every 2s | progress chip |
+| `transcribing` | Speechmatics running | NO | progress chip |
+| `analyzing` | agentic loop running | NO | progress chip |
+| `completed` | agent invoked `finalize_call`; `ExtractedFields` + briefing persisted | YES | green chip; Regenerate briefing button enabled |
+| `needs_review` | (round-10 NEW) `completion_reason="max_turns"` OR agent invoked `flag_for_review` | YES | yellow chip + banner on call detail; "Review" Home filter shows the call |
+| `failed` | `completion_reason="error"` or pre-classifier rejected empty audio | YES | red chip; `failure_kind` ∈ {`missed`, `pipeline_error`} discriminates |
+
+The idempotency guard at the top of `run_pipeline` short-circuits on any
+terminal or in-flight status (`transcribing`, `analyzing`, `completed`,
+`needs_review`, `failed`) so a retry click on a completed call cannot
+re-trigger the loop. Home polling treats only `pending`/`transcribing`/`analyzing`
+as non-terminal.
+
+`Call.review_flag` (`JSONB`, migration `0016_call_review_flag.py`) is
+populated either by the agent (`flagged_by="agent"`, from a
+`flag_for_review` tool call) or by the orchestrator
+(`flagged_by="system"`, when the loop hits `max_iterations` without
+finalizing). The UI banner above the call detail shows
+`{review_flag.reason}` + severity.
+
+## Agent reasoning trail (UI)
+
+`app/components/AgentReasoningTrail.tsx` renders the per-turn audit log
+on every call detail screen. Implementation:
+
+1. Two parallel fetches against the existing audit endpoint:
+   - `GET /api/v1/audit?call_id=<id>&agent_name=call_agent&limit=500`
+   - `GET /api/v1/audit?call_id=<id>&agent_name=action_executor&limit=500`
+2. Merge + sort ascending by `created_at`.
+3. Bucket rows by `payload.agent_turn`:
+   - `call_agent.agent_loop_start` → header chip (model name).
+   - `call_agent.agent_turn` → numbered entry (tool name, args summary,
+     result summary, per-turn tokens).
+   - `action_executor.action_exec` with matching `payload.agent_turn` →
+     nested under that entry, with status chip
+     (`executed` / `validation_failed` / `evidence_missing` / `failed` /
+     `refused`).
+   - `call_agent.agent_loop_end` → footer with `completion_reason` +
+     total tokens.
+
+Correlation is deterministic via `payload.agent_turn` — every action tool
+wrapper bumps `tool_context.state["turn_counter"]` as its first
+instruction (`agents/tools/turn.py:bump_turn`) and forwards it to
+`execute_single_action(agent_turn=…)`. No timestamp join, no fragile
+ordering assumption.
 
 ## Multi-visitor demo isolation
 
@@ -570,9 +713,9 @@ ships with a working default until the admin chooses.
 
 PII/privacy classification is **out of scope for the hackathon demo** —
 `FieldDefinition` carries no privacy metadata and the post-call pipeline
-runs four steps (`call_analyzer` → `action_planner` → `action_executor`
-→ `_persist_memory`) with no sanitizer or redaction step. The original
-design and the rationale for removal live in `afterglow/docs/future-ideas.md` §4.
+runs through the single agentic loop in `agents/call_agent.py` with no
+sanitizer or redaction step. The original design and the rationale for
+removal live in `afterglow/docs/future-ideas.md` §4.
 
 `FieldDefinition.confidence_threshold` (per-field, 0.0–1.0) is kept and
 gates `depends_on` propagation in `orchestrator._coerce_extractions`.
@@ -594,11 +737,20 @@ back to native-only — the briefing on Postgres is unaffected.
 Every LLM step on the post-call path writes the token counts it consumed
 into `audit_log.input_tokens` / `audit_log.output_tokens`:
 
-- `call_analyzer.llm_call` — Gemini `response.usage_metadata`
-  (`prompt_token_count` / `candidates_token_count`).
-- `memory_summarizer_bilingual.llm_call` — same source.
-- `memory_lookup.rag_semantic` — Vultr RAG's `usage.prompt_tokens` /
-  `usage.completion_tokens` from the JSON response body.
+- `call_agent.agent_loop_end` — **aggregated** input/output tokens
+  across every turn of the agentic loop, computed in
+  `integrations/gemini_adk.run_agent_loop` by summing every event's
+  `usage_metadata.prompt_token_count` / `candidates_token_count`. The
+  per-turn `agent_turn` rows carry the local usage of that turn when ADK
+  surfaces it.
+- `memory_summarizer_bilingual.llm_call` — Gemini `response.usage_metadata`
+  for the optional EN restatement of the briefing (production only, only
+  when `transcript.language != "en"`).
+- `lookup_customer_memory` (tool invocation, surfaced inside the
+  enclosing `agent_turn` row) — Vultr RAG's `usage.prompt_tokens` /
+  `usage.completion_tokens` from the JSON response body, returned to the
+  model as part of the tool's `{facts, source, input_tokens, output_tokens}`
+  payload so the agent can decide whether to lookup again.
 
 The wizard surface (`wizard_chat`, `template_validator`) is not in the
 post-call path and is not audited per token today.
@@ -615,16 +767,12 @@ Preconditions (409 otherwise):
 - `extracted_fields` exists for the call
 - `call.customer_id IS NOT NULL`
 
-The flow re-fetches `prior_facts` through the same gate the orchestrator
-uses (`orchestrator._load_prior_facts` — extracted helper so the demo
-seed → RAG, demo unknown → empty, prod >10 → RAG, otherwise structured
-SQL semantics stay consistent between the live pipeline and the
-regenerate path). It then calls `backend/app/agents/briefing_regenerator.py`
-(a dedicated module — NOT a re-run of `call_analyzer.analyze_call`, to
-avoid re-extracting fields and re-spending tokens on planned actions).
-The Gemini call has a tight system instruction: rewrite the next-call
-briefing in `{language}`, 1–2 sentences, operator-actionable, no
-greeting. Output ~120 tokens.
+The flow calls `backend/app/agents/briefing_regenerator.py` — a dedicated
+module, NOT a re-run of the agentic loop (the loop would re-execute
+actions inline and re-spend dozens of tool turns; not what a "regenerate
+briefing" button promises). The Gemini call has a tight system
+instruction: rewrite the next-call briefing in `{language}`, 1–2
+sentences, operator-actionable, no greeting. Output ~120 tokens.
 
 On success both `extracted_fields.briefing_snapshot` and
 `customer.memory_summary` are overwritten in the same transaction, an

@@ -477,7 +477,7 @@ def _enrich_action_types_with_catalog_schemas(
     so the wizard's `ActionDefinitionDraft` (which cannot expose
     `payload_schema` because Gemini structured-output rejects
     `additionalProperties`) still lands typed in the database. The
-    action_planner then builds a typed Pydantic model for Gemini, instead of
+    call_agent's `make_action_tool` builds a typed Pydantic model for Gemini, instead of
     falling back to the untyped `dict` annotation that ADK 1.18+ rejects.
     """
     enriched: list[dict[str, object]] = []

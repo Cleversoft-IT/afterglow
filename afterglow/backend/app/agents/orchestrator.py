@@ -1,23 +1,32 @@
-"""Orchestrator — drives a call through the post-call pipeline.
+"""Orchestrator — drives a call through the agentic post-call pipeline.
 
-Design:
-    The human handles the call live. The orchestrator runs entirely AFTER the
-    call ends. There is one Gemini pass (see call_analyzer.py) that produces
-    the structured analysis in a single shot, grounded on the transcript,
-    template and prior facts retrieved from the Vultr Vector Store.
+The human handles the call live. The orchestrator runs entirely AFTER the
+call ends. As of round-10 the analysis stage is a single multi-turn ADK
+agent (`agents/call_agent.py`) that fuses the previous analyzer + planner +
+deterministic executor into one loop where every action is a tool the model
+can invoke with self-correction on failures.
 
 Steps:
     1. Speechmatics → transcript (diarization + language auto-detect)
-    2. Customer match by phone (global, single-tenant)
-    3. Vultr Vector Store RAG pre-fetch → prior_facts text
-    4. Gemini Call Analyzer → CallAnalysis (single structured-output call)
-    5. Persist ExtractedFields
-    6. Deterministic Action Executor
-    7. Memory write-back: customer.memory_summary + push to Vector Store
+    2. Pre-classifier — short-circuit on empty / noise audio
+    3. Customer match by phone (single-tenant prod / clone-on-write in demo)
+    4. retrieve_structured_facts — fast SQL pass for prompt_hints evaluation
+    5. **run_call_agent** — agentic loop (multi-turn ADK)
+         Tools: lookup_customer_memory, search_transcript, read_transcript_segment,
+                flag_for_review, <action_key>... (executed inline), finalize_call
+    6. Map completion_reason → call.status (completed / needs_review / failed)
+    7. Persist ExtractedFields (only when completion_reason="finalize")
+    8. display_name backfill
+    9. Memory write-back (only when status="completed")
+
+**No-raise contract**: `run_call_agent` never raises for normal ADK/tool/model
+errors — it returns `completion_reason="error"`. `run_pipeline` translates
+that into `Call.status="failed"` + `Call.error`, commits, and returns. The
+`_run_pipeline_isolated` rollback path (`api/calls.py:222`) is left as a
+safety net for catastrophic uncaught exceptions only.
 """
 from __future__ import annotations
 
-import json
 import logging
 import uuid
 from datetime import datetime, timezone
@@ -28,7 +37,7 @@ import httpx
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.agents import action_planner, call_analyzer, memory_retrieval
+from app.agents import call_agent, call_analyzer, memory_retrieval
 from app.audit.logger import audit_step
 from app.config import get_settings
 from app.db.models import (
@@ -38,7 +47,6 @@ from app.db.models import (
     ExtractedFields,
     Template,
 )
-from app.executors.action_executor import execute_planned_actions
 from app.integrations import speechmatics, vultr_inference
 
 logger = logging.getLogger("afterglow")
@@ -49,15 +57,18 @@ async def run_pipeline(session: AsyncSession, call_id: uuid.UUID) -> None:
     """Drive a call through the full pipeline.
 
     Idempotent: a second invocation on the same call_id while the first is
-    still running (or has already completed) is a no-op. Prevents double
-    booking on double-clicks of the operator's blue button.
+    still running (or has already terminated) is a no-op. Includes
+    `needs_review` and `failed` in the terminal set so retries cannot
+    accidentally re-run the agent.
     """
     call: Optional[Call] = (
         await session.execute(select(Call).where(Call.id == call_id))
     ).scalar_one_or_none()
     if call is None:
         return
-    if call.status in ("transcribing", "analyzing", "completed"):
+    if call.status in (
+        "transcribing", "analyzing", "completed", "needs_review", "failed"
+    ):
         logger.info("orchestrator: call %s already in status %s — skipping", call_id, call.status)
         return
 
@@ -92,7 +103,7 @@ async def run_pipeline(session: AsyncSession, call_id: uuid.UUID) -> None:
     await session.commit()
 
     # 1b) Pre-classifier — short-circuit on empty / noise audio so we don't
-    # spend Gemini tokens on a transcript that has no semantic content.
+    # spend tokens on a transcript that has no semantic content.
     if not _pre_classify(transcript.text):
         async with audit_step(
             call_id=call.id,
@@ -123,123 +134,107 @@ async def run_pipeline(session: AsyncSession, call_id: uuid.UUID) -> None:
     )
     call.customer_id = customer.id
 
-    # 3) Memory lookup — structured-first for thin history, RAG semantic
-    # when there's enough material. In demo we now read from the shared
-    # collection IF the caller is a seed customer (the lifespan preseed
-    # task populated chunks for those phones); writes still stay skipped
-    # so visitors don't pollute each other.
-    #
-    # We pull TWO things from prior calls:
-    #   (a) `prior_facts` — Markdown-formatted text, spliced into the analyzer
-    #       prompt as PRIOR FACTS section.
-    #   (b) `prior_structured` — typed dict[field_key, latest_value], used by
-    #       the analyzer to evaluate `prompt_hints` rules (`when: field.X is
-    #       null`) deterministically BEFORE the LLM call.
+    # 3) Memory lookup (structured fast-path only). The semantic RAG read is
+    # now an on-demand TOOL the agent invokes from inside its loop
+    # (`tools/memory_tool.py`), so it doesn't pre-burn tokens when the agent
+    # decides it doesn't need prior context.
     collection_id = settings.vultr_vector_default_collection or None
-    total_calls = customer.total_calls or 0
     preseed_available = False
     if is_demo and collection_id:
         preseed_available = customer.is_seed or await _seed_exists_for_phone(
             session, call.phone_e164
         )
-    demo_can_rag = is_demo and bool(collection_id) and preseed_available
-    use_structured = not (demo_can_rag or (not is_demo and total_calls > 10))
-    prior_facts = ""
     prior_structured: dict[str, Any] = await memory_retrieval.retrieve_structured_facts(
         session, customer
     )
 
-    if use_structured:
-        history_text, source = await memory_retrieval.retrieve_structured_history(
-            session, customer
-        )
-        async with audit_step(
-            call_id=call.id,
-            session_id=call.session_id,
-            agent_name="memory_lookup",
-            step_type="structured_history",
-            payload={
-                "count": total_calls,
-                "source": source,
-                "demo": is_demo,
-                "prior_facts_preview": history_text[:1000] if history_text else "",
-            },
-        ):
-            prior_facts = history_text
-    else:
-        async with audit_step(
-            call_id=call.id,
-            session_id=call.session_id,
-            agent_name="memory_lookup",
-            step_type="rag_semantic",
-            model="vultr-rag",
-            payload={
-                "count": total_calls,
-                "demo": is_demo,
-                "preseeded": preseed_available,
-            },
-        ) as rag_audit:
-            prior_facts, rag_input_tokens, rag_output_tokens = (
-                await memory_retrieval.retrieve_customer_context(
-                    collection_id=collection_id,
-                    phone_e164=call.phone_e164,
-                    domain_hint=template.domain_hint,
-                    is_demo=is_demo,
-                    preseed_available=preseed_available,
-                )
-            )
-            rag_audit.input_tokens = rag_input_tokens
-            rag_audit.output_tokens = rag_output_tokens
-            rag_audit.payload = {
-                **(rag_audit.payload or {}),
-                "prior_facts_preview": prior_facts[:1000] if prior_facts else "",
-            }
+    # 4-6) Agentic loop. The agent invokes action tools that execute INLINE
+    # via execute_single_action, so ExecutedAction rows are flushed turn by
+    # turn. Audit rows (`agent_turn`, `action_exec`) are linked deterministically
+    # via the `agent_turn` numeric counter in their payload.
+    async with audit_step(
+        call_id=call.id,
+        session_id=call.session_id,
+        agent_name="call_agent",
+        step_type="agent_loop_start",
+        model=settings.gemini_default_model,
+        payload={"max_iterations": 12},
+    ):
+        pass
 
-    # 4) Single Gemini structured-output call. Fail-fast: a missing key or a
-    # Gemini error bubbles up as CallAnalysisError; the orchestrator catches
-    # it below, marks the call as failed, and surfaces the reason to the UI.
-    try:
+    result = await call_agent.run_call_agent(
+        session,
+        call=call,
+        customer=customer,
+        template=template,
+        transcript_text=transcript.text,
+        prompt_hints=template.prompt_hints,
+        prior_structured=prior_structured,
+        is_demo=is_demo,
+        preseed_available=preseed_available,
+        collection_id=collection_id,
+        max_iterations=12,
+    )
+
+    # Emit the per-turn audit rows. We do this AFTER the loop so they share
+    # the orchestrator's session and stay visible even on rollback paths.
+    for entry in result.turn_trail:
         async with audit_step(
             call_id=call.id,
             session_id=call.session_id,
-            agent_name="call_analyzer",
-            step_type="llm_call",
-            model=settings.gemini_default_model,
-        ) as analyzer_audit:
-            analysis, analyzer_usage = await call_analyzer.analyze_call(
-                transcript_text=transcript.text,
-                template_name=template.name,
-                fields_schema=template.fields_schema,
-                action_types=template.action_types,
-                prompt_hints=template.prompt_hints,
-                prior_structured=prior_structured,
-                domain_hint=template.domain_hint,
-                prior_facts=prior_facts,
-            )
-            analyzer_audit.input_tokens = analyzer_usage.input_tokens
-            analyzer_audit.output_tokens = analyzer_usage.output_tokens
-    except call_analyzer.CallAnalysisError as exc:
-        logger.warning("call_analyzer failed for call %s: %s", call.id, exc)
-        async with audit_step(
-            call_id=call.id,
-            session_id=call.session_id,
-            agent_name="call_analyzer",
-            step_type="llm_call",
-            status="error",
-            payload={"reason": str(exc)},
+            agent_name="call_agent",
+            step_type="agent_turn",
+            payload={
+                "turn": entry.get("turn"),
+                "tool": entry.get("tool"),
+                "args_summary": entry.get("args_summary"),
+                "result_summary": entry.get("result_summary"),
+            },
         ):
             pass
+
+    async with audit_step(
+        call_id=call.id,
+        session_id=call.session_id,
+        agent_name="call_agent",
+        step_type="agent_loop_end",
+        payload={
+            "turn_count": result.turn_count,
+            "completion_reason": result.completion_reason,
+            "available_tools": result.available_tools,
+            "error": result.error,
+        },
+    ) as loop_audit:
+        loop_audit.input_tokens = result.token_usage.input_tokens
+        loop_audit.output_tokens = result.token_usage.output_tokens
+
+    # Map completion_reason → call.status (no re-raise on error).
+    if result.completion_reason == "error":
         call.status = "failed"
-        call.error = f"call_analyzer: {exc}"
+        call.error = (result.error or "call_agent error")[:1000]
         call.completed_at = datetime.now(tz=timezone.utc)
         await session.commit()
         return
 
-    # 5) Persist extracted fields. briefing_snapshot freezes the briefing
-    # generated for *this* call so future structured_history lookups can show
-    # the same operator-visible view that was used at call time.
+    if result.completion_reason == "max_turns":
+        call.status = "needs_review"
+        # Honor an agent-set review_flag if present; otherwise auto-fill.
+        if call.review_flag is None:
+            call.review_flag = {
+                "reason": "agent_did_not_finalize",
+                "severity": "high",
+                "turn_count": result.turn_count,
+                "flagged_by": "system",
+            }
+        call.completed_at = datetime.now(tz=timezone.utc)
+        await session.commit()
+        return
+
+    # ----- completion_reason == "finalize" path -----
+
+    fields = result.fields or []
     fields_dict, confidence_dict, evidence_dict = _coerce_extractions(
-        analysis.fields, template.fields_schema
+        fields, template.fields_schema
     )
     session.add(
         ExtractedFields(
@@ -247,108 +242,33 @@ async def run_pipeline(session: AsyncSession, call_id: uuid.UUID) -> None:
             fields=fields_dict,
             confidence=confidence_dict,
             evidence=evidence_dict,
-            intent=analysis.intent,
-            sentiment=analysis.sentiment,
-            urgency=analysis.urgency,
-            briefing_snapshot=analysis.next_call_briefing,
+            intent=result.intent,
+            sentiment=result.sentiment,
+            urgency=result.urgency,
+            briefing_snapshot=result.briefing,
         )
     )
 
-    # 6a) Agentic action planning — Gemini ADK with the template's auto-mode
-    # action_types exposed as typed tools (Pydantic models built from each
-    # action's payload_schema). The tools only *record* requested actions;
-    # the deterministic executor is the single place where they actually
-    # run. Fail-fast: an ADK error becomes a failed call (no fallback).
-    try:
-        async with audit_step(
-            call_id=call.id,
-            session_id=call.session_id,
-            agent_name="action_planner",
-            step_type="agent_loop",
-            model=settings.gemini_default_model,
-        ) as planner_audit:
-            plan, planner_mode = await action_planner.plan_actions(
-                analysis=analysis,
-                template=template,
-                customer=customer,
-                transcript_text=transcript.text,
-            )
-            planner_audit.payload = {
-                "mode": planner_mode,
-                "count": len(plan),
-                "actions": [
-                    {
-                        "action_type": a.get("action_type"),
-                        "title": a.get("title"),
-                        "summary": a.get("summary"),
-                        "payload": a.get("payload"),
-                        "evidence": a.get("evidence"),
-                        "confidence": a.get("confidence"),
-                    }
-                    for a in plan
-                ],
-            }
-    except action_planner.ActionPlannerError as exc:
-        logger.warning("action_planner failed for call %s: %s", call.id, exc)
-        async with audit_step(
-            call_id=call.id,
-            session_id=call.session_id,
-            agent_name="action_planner",
-            step_type="agent_loop",
-            status="error",
-            payload={"reason": str(exc)},
-        ):
-            pass
-        call.status = "failed"
-        call.error = f"action_planner: {exc}"
-        call.completed_at = datetime.now(tz=timezone.utc)
-        await session.commit()
-        return
+    # display_name backfill — if we just learned the caller's name and the
+    # Customer row has none yet, persist it so the next dial shows "Mark Ross"
+    # instead of the phone number.
+    _backfill_display_name(customer, template.fields_schema, fields)
 
-    # 6b) Deterministic action executor — the only place where MOCK_REGISTRY
-    # is invoked. Hallucination rejection + execution_mode read from the
-    # template stay here so the agentic planner cannot bypass them.
-    async with audit_step(
-        call_id=call.id,
-        session_id=call.session_id,
-        agent_name="action_executor",
-        step_type="action_exec",
-    ) as executor_audit:
-        executed = await execute_planned_actions(
-            session, call=call, customer=customer, template=template, plan=plan
-        )
-        executor_audit.payload = {
-            "count": len(executed),
-            "actions_executed": [
-                {
-                    "action_type": a.action_type,
-                    "status": a.status,
-                    "mock": bool((a.result or {}).get("mock")) if a.result else False,
-                    "evidence_count": len(a.evidence or []),
-                }
-                for a in executed
-            ],
-        }
-
-    # 6c) display_name backfill — if we just learned the caller's name and
-    # the Customer row has none yet, persist it so the next ring of the
-    # dialer shows "Mark Ross" instead of just the phone number.
-    _backfill_display_name(customer, template.fields_schema, analysis)
-
-    # 7) Memory write-back. The briefing is the only AI-authored summary the
-    # operator will read on the next call's caller card.
+    # Memory write-back: persist the briefing on Postgres + push a chunk into
+    # the Vultr Vector Store (prod only — demo writes are skipped to avoid
+    # cross-visitor pollution of the shared collection).
     await _persist_memory(
         session,
         call=call,
         customer=customer,
         template=template,
         collection_id=collection_id,
-        briefing=analysis.next_call_briefing,
+        briefing=result.briefing or "",
         classification={
-            "intent": analysis.intent,
-            "sentiment": analysis.sentiment,
-            "language": analysis.language,
-            "urgency": analysis.urgency,
+            "intent": result.intent,
+            "sentiment": result.sentiment,
+            "language": result.language,
+            "urgency": result.urgency,
         },
     )
 
@@ -381,7 +301,7 @@ def _is_name_field(key: str) -> bool:
 def _backfill_display_name(
     customer: Customer,
     fields_schema: list[dict[str, Any]],
-    analysis: "call_analyzer.CallAnalysis",
+    fields: list[call_analyzer.FieldExtraction],
 ) -> None:
     """Set `customer.display_name` when we extract the caller's name and the
     Customer row does not have one yet.
@@ -391,7 +311,7 @@ def _backfill_display_name(
     if customer.display_name:
         return
 
-    for extraction in analysis.fields:
+    for extraction in fields:
         if not _is_name_field(extraction.key):
             continue
         value = (extraction.value or "").strip()
@@ -404,13 +324,7 @@ def _backfill_display_name(
 async def _seed_exists_for_phone(
     session: AsyncSession, phone_e164: str
 ) -> bool:
-    """Return True iff a seed Customer row exists for this phone.
-
-    Used by the orchestrator to decide whether a demo caller can read from
-    the shared Vultr collection. A demo visitor calling Mark's phone gets
-    a clone-on-write Customer (is_seed=False, session_id=<theirs>); the
-    seed row itself is unchanged and answers True here.
-    """
+    """Return True iff a seed Customer row exists for this phone."""
     return bool(
         await session.scalar(
             select(Customer.id).where(
@@ -430,17 +344,7 @@ def _format_briefing_chunk(
     briefing_en: Optional[str],
     classification: dict[str, Any],
 ) -> str:
-    """Render the indexed content of a Vultr Vector Store chunk.
-
-    Phone-queryable: the embedded `customer.phone_e164` is what the RAG
-    retrieval looks for when answering `"facts about phone {e164}"`. The
-    chunk also carries domain, intent/sentiment/urgency and the bilingual
-    EN tail when the call wasn't already in English.
-
-    Reused by:
-      - `_persist_memory` (orchestrator runtime path)
-      - `tasks.vector_preseed` (lifespan preseed of seed-call chunks)
-    """
+    """Render the indexed content of a Vultr Vector Store chunk."""
     call_date = (
         call.completed_at or call.started_at or datetime.now(tz=timezone.utc)
     ).date()
@@ -457,12 +361,7 @@ def _format_briefing_chunk(
 
 
 def _pre_classify(transcript_text: str) -> bool:
-    """Return False if the transcript is too short / empty to analyze.
-
-    Speechmatics happily transcribes silence into an empty string. Running the
-    full Gemini pipeline on those is wasted budget; we instead fail fast and
-    surface the reason in the audit trail.
-    """
+    """Return False if the transcript is too short / empty to analyze."""
     if not transcript_text or not transcript_text.strip():
         return False
     if len(transcript_text.split()) < _MIN_TRANSCRIPT_WORDS:
@@ -474,17 +373,11 @@ def _coerce_extractions(
     extractions: list[call_analyzer.FieldExtraction],
     fields_schema: list[dict[str, Any]],
 ) -> tuple[dict[str, Any], dict[str, Any], dict[str, str]]:
-    """Turn the LLM's typed list into three keyed dicts, cast values, and
+    """Turn the agent's typed list into three keyed dicts, cast values, and
     flag fields whose `depends_on` chain is not satisfied.
-
-    A field is marked `manual_review` when any of its `depends_on` keys is
-    either missing from the extractions or below the dependency's
-    `confidence_threshold` (defaulting to 0.0 — i.e. presence alone is
-    enough when no threshold is configured). The flag lives inside
-    `confidence_dict` as a sentinel value
-    `{"value": <float>, "status": "manual_review", "reason": ...}` so the UI
-    can render a warning without losing the LLM's confidence.
     """
+    import json
+
     type_by_key = {f["key"]: f.get("type", "string") for f in fields_schema}
     field_def_by_key = {f["key"]: f for f in fields_schema}
 
@@ -538,6 +431,7 @@ def _cast_value(raw: str, ftype: str) -> Any:
     if ftype == "boolean":
         return raw.strip().lower() in ("true", "yes", "sì", "si", "1")
     if ftype == "string_list":
+        import json
         s = raw.strip()
         if s.startswith("[") and s.endswith("]"):
             try:
@@ -564,8 +458,6 @@ async def _resolve_customer(
         2. otherwise, if a seed exists for this phone, clone its memory and
            tag the clone with `session_id` (clone-on-write)
         3. otherwise create a fresh customer scoped to the session
-      The seed row is never mutated in demo mode, so two visitors who call
-      Marco Rossi on +393331112233 each get their own divergent timeline.
     """
     if session_id is not None:
         clone = (
@@ -681,14 +573,10 @@ async def _persist_memory(
         )
         return
 
-    # Make the chunk content phone-queryable. The RAG retrieval asks
-    # "facts about phone {e164}", so the phone number MUST appear inside the
-    # indexed content (Vultr embeds `content`; `description` is metadata).
     detected_language = (classification.get("language") or "en").lower()
 
     # Bilingual chunk: if the call was not already in English, ask Gemini for
     # a short EN summary so the vector index is searchable cross-language.
-    # Fail-fast: any error logs an audit row but still pushes the native chunk.
     briefing_en: Optional[str] = None
     if detected_language and detected_language != "en":
         async with audit_step(
@@ -768,16 +656,7 @@ async def _persist_memory(
 
 
 async def _summarize_to_english(briefing: str) -> tuple[str, call_analyzer.TokenUsage]:
-    """Translate / summarize the briefing to a one-sentence English line.
-
-    Used to populate the bilingual chunk for the Vultr Vector Store: native
-    + EN, so semantic retrieval works across the operator's spoken language
-    and the embedding language. Capped at ~80 tokens by the system instruction;
-    Gemini does this for free on the Flash tier.
-
-    Raises on missing key / SDK error / empty response. The caller catches
-    and degrades to native-only chunk.
-    """
+    """Translate / summarize the briefing to a one-sentence English line."""
     if not settings.google_api_key:
         raise RuntimeError("GOOGLE_API_KEY not set")
 

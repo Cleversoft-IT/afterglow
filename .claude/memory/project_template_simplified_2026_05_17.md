@@ -5,6 +5,8 @@ metadata:
   type: project
 ---
 
+> ⚠️ Round-10 (2026-05-18) ha rimosso `action_planner.py` integralmente e ridotto `call_analyzer.py` ai soli schemi. Le menzioni qui sotto a "`agents/action_planner.py`" e ai "4 step (call_analyzer → action_planner → action_executor → _persist_memory)" descrivono lo stato a 2026-05-17. La pipeline live è descritta in [[project-agentic-pipeline]] (unico agente ADK multi-turn). Il resto del file resta valido come riferimento sulla forma del `Template` (fields_schema / action_types / prompt_hints).
+
 Il modello `Template` è stato semplificato per riallinearsi con lo scope hackathon: un template descrive il prodotto (cosa estrarre + cosa fare dopo), non il sistema (routing mock, classificazione PII, dizionario ASR).
 
 **Cosa è stato rimosso dal template (Pydantic + TS + UI + seed + LLM prompt):**

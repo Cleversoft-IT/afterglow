@@ -1,10 +1,10 @@
 """Rewrite a single call's next-call briefing without re-running the full pipeline.
 
-Why a separate module instead of reusing `call_analyzer.analyze_call`:
-- `analyze_call` emits a full `CallAnalysis` (fields + actions + briefing),
-  which would waste tokens on a structured output we don't need and would
-  tempt callers to also overwrite `ExtractedFields.fields` and re-trigger
-  the planner. The regenerate endpoint is explicitly scoped to the briefing.
+Why a separate module instead of re-running the agentic loop:
+- The full agent loop re-extracts fields, re-runs actions and emits a fresh
+  briefing — too expensive (and side-effectful, given action tools execute
+  inline) for a button labelled "regenerate briefing". The regenerate
+  endpoint is explicitly scoped to the briefing.
 - The shape mirrors `orchestrator._summarize_to_english`: a small Gemini
   call (~120 output tokens) with a tight system instruction. Same pattern,
   different prompt.

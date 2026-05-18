@@ -182,8 +182,14 @@ async def retrieve_customer_context(
     domain_hint: str,
     is_demo: bool = False,
     preseed_available: bool = False,
+    query: Optional[str] = None,
 ) -> tuple[str, Optional[int], Optional[int]]:
-    """Ask Vultr RAG for any prior facts about this phone number.
+    """Ask Vultr RAG for facts about this phone number.
+
+    `query` (round-10): when provided, becomes the user message verbatim so
+    the agentic `lookup_customer_memory` tool can ask focused questions
+    (e.g. "any past complaints about the steak?") instead of the default
+    catch-all. The default text matches the legacy pre-fetch behaviour.
 
     Returns ``(prior_facts, input_tokens, output_tokens)``. The two int fields
     come from Vultr's ``usage`` block (prompt_tokens / completion_tokens) and
@@ -210,6 +216,7 @@ async def retrieve_customer_context(
     if is_demo and not preseed_available:
         return "", None, None
 
+    user_query = (query or "Return any prior call facts.").strip() or "Return any prior call facts."
     messages = [
         {
             "role": "system",
@@ -224,7 +231,7 @@ async def retrieve_customer_context(
             "content": (
                 f"Domain: {domain_hint}\n"
                 f"Phone number: {phone_e164}\n"
-                "Return any prior call facts."
+                f"{user_query}"
             ),
         },
     ]

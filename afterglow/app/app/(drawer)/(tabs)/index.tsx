@@ -38,13 +38,14 @@ const POLL_INTERVAL_MS = 2000;
 const FILTER_LABEL: Record<CallFilterKey, string> = {
   all: 'All',
   missed: 'Missed',
+  review: 'Review',
   bookings: 'Bookings',
   clients: 'Clients',
   saved: 'Saved',
   unsaved: 'Unsaved',
 };
 
-const FILTERS: CallFilterKey[] = ['all', 'missed', 'bookings', 'clients', 'saved', 'unsaved'];
+const FILTERS: CallFilterKey[] = ['all', 'missed', 'review', 'bookings', 'clients', 'saved', 'unsaved'];
 
 export default function HomeScreen() {
   const theme = useTheme();
@@ -136,6 +137,7 @@ export default function HomeScreen() {
       const mock = findMockContact(c.phone_e164);
       // Chip filter
       if (filter === 'missed' && c.status !== 'failed') return false;
+      if (filter === 'review' && !(c.status === 'needs_review' || c.review_flag)) return false;
       if (filter === 'bookings' && !booking) return false;
       if (filter === 'clients' && !caller.is_customer) return false;
       if (filter === 'saved' && !(caller.is_customer || mock)) return false;

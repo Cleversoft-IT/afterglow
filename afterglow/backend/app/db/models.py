@@ -168,6 +168,7 @@ class Call(Base):
     raw_transcript: Mapped[Optional[dict[str, Any]]] = mapped_column(JSONB, nullable=True)
     status: Mapped[str] = mapped_column(String(30), default="pending")
     error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    review_flag: Mapped[Optional[dict[str, Any]]] = mapped_column(JSONB, nullable=True)
     started_at: Mapped[Optional[datetime]] = mapped_column(
         DateTime(timezone=True), nullable=True
     )

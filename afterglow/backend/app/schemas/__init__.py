@@ -7,6 +7,7 @@ from app.schemas.calls import (
     CallListItem,
     CallSubmittedResponse,
     FieldDefinitionLite,
+    ReviewFlag,
 )
 from app.schemas.customers import CustomerCard, CustomerProfileView
 from app.schemas.templates import (
@@ -33,6 +34,7 @@ __all__ = [
     'CustomerProfileView',
     'CreateTemplateRequest',
     'FieldDefinitionLite',
+    'ReviewFlag',
     'TemplateView',
     'TemplateWizardResponse',
     'UpdateTemplateRequest',

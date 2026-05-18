@@ -321,6 +321,7 @@ async def get_call(
         status=call.status,
         error=call.error,
         failure_kind=_failure_kind(call.status, call.error),
+        review_flag=call.review_flag,
         started_at=call.started_at,
         completed_at=call.completed_at,
         created_at=call.created_at,
@@ -532,6 +533,7 @@ async def list_calls(
             template_id=c.template_id,
             status=c.status,
             failure_kind=_failure_kind(c.status, c.error),
+            review_flag=c.review_flag,
             detected_language=c.detected_language,
             created_at=c.created_at,
         )

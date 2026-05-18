@@ -231,6 +231,17 @@ export type CallExtractedView = {
 // `backend/app/schemas/calls.py:FailureKind`.
 export type FailureKind = 'missed' | 'pipeline_error';
 
+// Surfaced on calls when the agentic pipeline asked for human review:
+// either `flagged_by="agent"` (the agent called `flag_for_review`) or
+// `flagged_by="system"` (orchestrator set it after max_turns without finalize).
+// Mirrors `backend/app/schemas/calls.py:ReviewFlag`.
+export type ReviewFlag = {
+  reason: string;
+  severity: 'low' | 'medium' | 'high';
+  turn_count?: number | null;
+  flagged_by: 'agent' | 'system';
+};
+
 export type CallDetailView = {
   id: string;
   customer_id?: string | null;
@@ -239,9 +250,17 @@ export type CallDetailView = {
   phone_e164: string;
   detected_language?: string | null;
   raw_transcript?: { text: string; speakers?: unknown[]; language?: string } | null;
-  status: 'pending' | 'transcribing' | 'analyzing' | 'completed' | 'failed' | string;
+  status:
+    | 'pending'
+    | 'transcribing'
+    | 'analyzing'
+    | 'completed'
+    | 'needs_review'
+    | 'failed'
+    | string;
   error?: string | null;
   failure_kind?: FailureKind | null;
+  review_flag?: ReviewFlag | null;
   started_at?: string | null;
   completed_at?: string | null;
   created_at: string;
@@ -258,6 +277,7 @@ export type CallListItem = {
   template_id: string;
   status: string;
   failure_kind?: FailureKind | null;
+  review_flag?: ReviewFlag | null;
   detected_language?: string | null;
   created_at: string;
 };

@@ -1,8 +1,8 @@
 """Deterministic (non-LLM) action executor.
 
-Walks the planned actions and runs each one against the action catalog,
-writing audit rows + ExecutedAction records. Two execution paths based on
-the catalog entry's `integration_kind`:
+Runs ONE action at a time against the action catalog, writing an audit row +
+an ExecutedAction record. Two execution paths based on the catalog entry's
+`integration_kind`:
 
   - `mock_external`: dispatch to `MOCK_REGISTRY`. Result stamped `mock=True`
     so the UI shows the "Simulated" badge.
@@ -18,9 +18,16 @@ Enforcement on top of the catalog dispatch:
   dispatch; validation failure → status=`validation_failed`.
 - `mutates` is read from `action_catalog` (single source of truth) and
   flagged in audit + ExecutedAction.result["mutates"].
+
+**No-raise contract**: `execute_single_action` MUST translate every failure
+(validation, evidence, handler exception) into an `ExecutedAction` row with
+the appropriate status. It never propagates exceptions to the caller — this
+is what lets the agentic pipeline keep ExecutedAction rows visible even
+when the agent loop later fails or stalls (see `agents/call_agent.py`).
 """
 from __future__ import annotations
 
+import logging
 import uuid
 from typing import Any, Optional
 
@@ -32,6 +39,8 @@ from app.db.models import Call, Customer, ExecutedAction, Template
 from app.integrations import action_catalog
 from app.integrations.internal import INTERNAL_HANDLERS, INTERNAL_REVERTERS
 from app.integrations.mocks import MOCK_REGISTRY
+
+logger = logging.getLogger("afterglow")
 
 
 def _index_actions(template: Template) -> dict[str, dict[str, Any]]:
@@ -63,122 +72,139 @@ def _refuse(
     )
 
 
-async def execute_planned_actions(
+async def execute_single_action(
     session: AsyncSession,
     *,
     call: Call,
     customer: Optional[Customer],
     template: Template,
-    plan: list[dict[str, Any]],
-) -> list[ExecutedAction]:
-    """Run every action in `plan`. Return the persisted ExecutedAction rows.
+    entry: dict[str, Any],
+    agent_turn: Optional[int] = None,
+) -> Optional[ExecutedAction]:
+    """Run ONE action and persist its ExecutedAction row.
+
+    Returns the persisted row, or ``None`` when the action_type is not in
+    the active template (hallucinated tool call — audited as `rejected` but
+    no ExecutedAction is created on purpose).
+
+    `agent_turn` is forwarded into the audit payload so the UI trail can
+    pin the action under its source agent turn deterministically.
 
     Layered safety net:
-      1. Hallucinated action_type (not in template) → rejected.
+      1. Hallucinated action_type (not in template) → audited + return None.
       2. `evidence_required=True` + empty evidence → refused.
       3. `payload_schema` present → jsonschema validation; on failure refused.
       4. Otherwise: invoke MOCK_REGISTRY for `auto`, queue `manual_required`
          for `manual-only`. The execution_mode is read from the TEMPLATE,
-         never from the plan entry (the planner cannot escalate a
-         manual-only action to auto).
+         never from the plan entry.
+      5. Handler exceptions (mock/internal) are caught and surfaced as
+         `status="failed"` with the exception text in `result.error`.
     """
     actions_by_key = _index_actions(template)
+    action_type = entry["action_type"]
+    template_action = actions_by_key.get(action_type)
 
-    persisted: list[ExecutedAction] = []
-    for entry in plan:
-        action_type = entry["action_type"]
-        template_action = actions_by_key.get(action_type)
+    if template_action is None:
+        async with audit_step(
+            call_id=call.id,
+            session_id=call.session_id,
+            agent_name="action_executor",
+            step_type="rejected",
+            payload={
+                "action_type": action_type,
+                "reason": "action_type not in template",
+                "agent_turn": agent_turn,
+            },
+        ):
+            pass
+        return None
 
-        if template_action is None:
+    mode = template_action.get("execution_mode", "auto")
+    mutates = action_catalog.mutates(action_type)
+    evidence_required = bool(template_action.get("evidence_required", True))
+    payload_schema = template_action.get("payload_schema")
+    payload = entry.get("payload", {}) or {}
+    evidence = entry.get("evidence") or []
+
+    if evidence_required and not evidence:
+        async with audit_step(
+            call_id=call.id,
+            session_id=call.session_id,
+            agent_name="action_executor",
+            step_type="rejected",
+            payload={
+                "action_type": action_type,
+                "reason": "evidence_required",
+                "agent_turn": agent_turn,
+            },
+        ):
+            pass
+        record = _refuse(
+            call=call, customer=customer, template_action=template_action,
+            entry=entry, reason="evidence_missing",
+        )
+        session.add(record)
+        await session.flush()
+        return record
+
+    if isinstance(payload_schema, dict):
+        try:
+            jsonschema.validate(payload, payload_schema)
+        except jsonschema.ValidationError as exc:
             async with audit_step(
                 call_id=call.id,
                 session_id=call.session_id,
                 agent_name="action_executor",
                 step_type="rejected",
-                payload={"action_type": action_type, "reason": "action_type not in template"},
-            ):
-                pass
-            continue
-
-        mode = template_action.get("execution_mode", "auto")
-        mutates = action_catalog.mutates(action_type)
-        evidence_required = bool(template_action.get("evidence_required", True))
-        payload_schema = template_action.get("payload_schema")
-        payload = entry.get("payload", {}) or {}
-        evidence = entry.get("evidence") or []
-
-        if evidence_required and not evidence:
-            async with audit_step(
-                call_id=call.id,
-                session_id=call.session_id,
-                agent_name="action_executor",
-                step_type="rejected",
-                payload={"action_type": action_type, "reason": "evidence_required"},
+                payload={
+                    "action_type": action_type,
+                    "reason": "payload_schema",
+                    "error": exc.message,
+                    "agent_turn": agent_turn,
+                },
             ):
                 pass
             record = _refuse(
                 call=call, customer=customer, template_action=template_action,
-                entry=entry, reason="evidence_missing",
+                entry=entry, reason="validation_failed",
             )
             session.add(record)
-            persisted.append(record)
-            continue
+            await session.flush()
+            return record
 
-        if isinstance(payload_schema, dict):
-            try:
-                jsonschema.validate(payload, payload_schema)
-            except jsonschema.ValidationError as exc:
-                async with audit_step(
-                    call_id=call.id,
-                    session_id=call.session_id,
-                    agent_name="action_executor",
-                    step_type="rejected",
-                    payload={
-                        "action_type": action_type,
-                        "reason": "payload_schema",
-                        "error": exc.message,
-                    },
-                ):
-                    pass
-                record = _refuse(
-                    call=call, customer=customer, template_action=template_action,
-                    entry=entry, reason="validation_failed",
-                )
-                session.add(record)
-                persisted.append(record)
-                continue
+    record = ExecutedAction(
+        id=uuid.uuid4(),
+        call_id=call.id,
+        customer_id=customer.id if customer else None,
+        action_type=action_type,
+        title=entry.get("title") or template_action.get("label") or action_type,
+        summary=entry.get("summary"),
+        payload=payload,
+        confidence=entry.get("confidence"),
+        evidence=evidence,
+        execution_mode=mode,
+        status="executed" if mode == "auto" else "manual_required",
+        session_id=call.session_id,
+    )
 
-        record = ExecutedAction(
-            id=uuid.uuid4(),
-            call_id=call.id,
-            customer_id=customer.id if customer else None,
-            action_type=action_type,
-            title=entry["title"],
-            summary=entry.get("summary"),
-            payload=payload,
-            confidence=entry.get("confidence"),
-            evidence=evidence,
-            execution_mode=mode,
-            status="executed" if mode == "auto" else "manual_required",
-            session_id=call.session_id,
+    if mode == "auto":
+        catalog_entry = action_catalog.get(action_type)
+        integration_kind = (
+            catalog_entry.integration_kind if catalog_entry else "mock_external"
         )
-
-        if mode == "auto":
-            catalog_entry = action_catalog.get(action_type)
-            integration_kind = (
-                catalog_entry.integration_kind if catalog_entry else "mock_external"
-            )
-            async with audit_step(
-                call_id=call.id,
-                session_id=call.session_id,
-                agent_name="action_executor",
-                step_type="action_exec",
-                payload={
-                    "action_type": action_type,
-                    "integration_kind": integration_kind,
-                    "mutates": mutates,
-                },
-            ):
+        async with audit_step(
+            call_id=call.id,
+            session_id=call.session_id,
+            agent_name="action_executor",
+            step_type="action_exec",
+            payload={
+                "action_type": action_type,
+                "integration_kind": integration_kind,
+                "mutates": mutates,
+                "agent_turn": agent_turn,
+            },
+        ):
+            try:
                 if integration_kind == "internal_real":
                     record.result = _run_internal_real(
                         catalog_entry, customer=customer, payload=payload, mutates=mutates
@@ -189,24 +215,64 @@ async def execute_planned_actions(
                     record.result = _run_mock_external(action_type, payload, mutates=mutates)
                     if "error" in record.result:
                         record.status = "failed"
-        else:
-            # manual-only: still surface mutates flag so the UI can render the
-            # right warning ("irreversible — confirm before running"), and
-            # carry integration_kind so the UI knows whether a future manual
-            # run would touch real records or stubs.
-            catalog_entry = action_catalog.get(action_type)
-            record.result = {
-                "mutates": mutates,
-                "mock": (
-                    catalog_entry is None
-                    or catalog_entry.integration_kind == "mock_external"
-                ),
-            }
+            except Exception as exc:  # noqa: BLE001
+                # Mock/internal handler crashed unexpectedly. Translate to
+                # status=failed so the no-raise contract is preserved.
+                logger.warning(
+                    "action_executor: %s handler raised (%s) — recording as failed",
+                    action_type, exc,
+                )
+                record.status = "failed"
+                record.result = {
+                    "error": f"handler_exception: {exc}"[:500],
+                    "mutates": mutates,
+                    "mock": (
+                        catalog_entry is None
+                        or catalog_entry.integration_kind == "mock_external"
+                    ),
+                }
+    else:
+        # manual-only: still surface mutates flag so the UI can render the
+        # right warning ("irreversible — confirm before running"), and
+        # carry integration_kind so the UI knows whether a future manual
+        # run would touch real records or stubs.
+        catalog_entry = action_catalog.get(action_type)
+        record.result = {
+            "mutates": mutates,
+            "mock": (
+                catalog_entry is None
+                or catalog_entry.integration_kind == "mock_external"
+            ),
+        }
 
-        session.add(record)
-        persisted.append(record)
-
+    session.add(record)
     await session.flush()
+    return record
+
+
+async def execute_planned_actions(
+    session: AsyncSession,
+    *,
+    call: Call,
+    customer: Optional[Customer],
+    template: Template,
+    plan: list[dict[str, Any]],
+) -> list[ExecutedAction]:
+    """Batch wrapper around `execute_single_action` — preserved for the legacy
+    callers (and `test_action_executor_validation.py`). The agentic pipeline
+    now calls `execute_single_action` directly from each action tool, one at
+    a time, so this path is only exercised by tests."""
+    persisted: list[ExecutedAction] = []
+    for entry in plan:
+        record = await execute_single_action(
+            session,
+            call=call,
+            customer=customer,
+            template=template,
+            entry=entry,
+        )
+        if record is not None:
+            persisted.append(record)
     return persisted
 
 

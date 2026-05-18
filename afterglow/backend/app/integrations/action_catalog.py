@@ -111,7 +111,7 @@ class ActionCatalogEntry:
 # Default JSONSchema payloads applied at the persistence boundary in
 # `backend/app/api/templates.py` (create_template / update_template) when
 # an action_type arrives without an explicit payload_schema. This guarantees
-# that the action_planner's `_make_tool` builds a typed Pydantic model for
+# that the call_agent's `make_action_tool` builds a typed Pydantic model for
 # Gemini structured-output, rather than falling back to an untyped `dict`
 # annotation that ADK 1.18+ now rejects with "default value None of
 # parameter payload: dict is not compatible". The wizard's
@@ -617,7 +617,7 @@ def mutates(action_key: str) -> bool:
     """True when the action creates / modifies / deletes records in its target.
 
     Used by `action_executor` (audit step + ExecutedAction.result["mutates"])
-    and by `action_planner._format_action_docstring` (Gemini tool docstring).
+    and by `tools/action_tool._format_action_docstring` (Gemini tool docstring).
     Unknown keys default to False — the executor will reject them earlier
     anyway because they are not in the template's `action_types`.
     """

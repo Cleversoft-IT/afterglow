@@ -53,6 +53,13 @@ function statusChipForCall(call: CallListItem, theme: AppTheme): CallStatusLabel
       fg: theme.colors.onSecondaryContainer,
     };
   }
+  if (call.status === 'needs_review' || call.review_flag) {
+    return {
+      label: 'Review',
+      bg: theme.colors.tertiaryContainer,
+      fg: theme.colors.onTertiaryContainer,
+    };
+  }
   const label = call.status
     ? call.status[0].toUpperCase() + call.status.slice(1)
     : '';

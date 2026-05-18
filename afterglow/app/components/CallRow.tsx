@@ -14,7 +14,7 @@ import { formatBookingSlot, formatRelativeTime } from '../lib/dateFormat';
 import { useLocale } from '../lib/LocaleContext';
 import type { BookingListItem, CallListItem } from '../lib/types';
 
-export type CallFilterKey = 'all' | 'missed' | 'bookings' | 'clients' | 'saved' | 'unsaved';
+export type CallFilterKey = 'all' | 'missed' | 'review' | 'bookings' | 'clients' | 'saved' | 'unsaved';
 
 type Props = {
   call: CallListItem;
@@ -35,6 +35,9 @@ function statusIconInfo(call: CallListItem, theme: MD3Theme): StatusIconInfo {
       return { icon: 'alert-circle-outline', color: theme.colors.error };
     }
     return { icon: 'arrow-bottom-left', color: theme.colors.error };
+  }
+  if (call.status === 'needs_review' || call.review_flag) {
+    return { icon: 'alert-circle-outline', color: theme.colors.primary };
   }
   if (call.status === 'transcribing' || call.status === 'analyzing') {
     return { icon: 'progress-clock', color: theme.colors.primary };
