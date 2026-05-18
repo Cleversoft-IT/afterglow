@@ -565,23 +565,35 @@ del round 6).
     `flex-start`. Risolve il troncamento `Cre...` / `app...` su
     viewport 375px.
 
-11. **Seed credibility — busy week densification.** Nuovo helper
-    `_busy_week_specs()` che genera ~43 personal calls (UUID5
+11. **Seed credibility — busy week densification + AI bookings mix.**
+    Nuovo helper `_busy_week_specs()` che genera 43 entries (UUID5
     deterministico da `(phone, created_at.isoformat())`) sparpagliate
     9-17 mag con slot orari realistici (lunch/dinner per weekday,
-    spread più largo per weekend). Status mix: ~70% completed (mock
-    human-handled), ~25% missed (`error="empty_or_noise_audio"`),
-    **esattamente 1 pipeline_error** (`error="action_planner:
-    simulated failure"`) per esercitare il badge "Pipeline error".
-    Customer reuse esplicito: Mark Ross 4×, Andrew Green 2×, Julia
-    White 2×, Laura Bennett 1× — i `customer_id` risolti da phone via
-    query, niente parametro tra moduli. Totale con i 7 base fixtures:
-    **esattamente 50 personal calls**, dentro la `limit=50` di Home.
-    `Customer.total_calls` e `last_call_at` ricomputati per i 4 seed
-    customer dopo l'insert (`func.count + func.max`), altrimenti
-    Contacts ordering e customer detail "N calls" diventerebbero
-    sfasati. **Quando aggiungi customer al seed, aggiungili a
-    `_CUSTOMER_PHONES_BY_NAME`** o il loro recompute non scatta.
+    spread più largo per weekend). Mix:
+    - **9 AI bookings** (Mark×4 restaurant, Julia×2 restaurant, Andrew×2
+      bodyshop, Laura×1 dentist) — kind=`ai_booking` nel plan.
+      `_make_ai_booking_spec()` materializza una spec
+      `_emit_seeded_call_core`-compatibile dai blueprint in
+      `_AI_BOOKING_BLUEPRINTS`; ogni AI call emette
+      `Call+ExtractedFields+ExecutedAction+AuditLog` con
+      `booking.create` (restaurant) o `appointment.create` (dentist/
+      bodyshop). La `booking_date` è `created_at + 2 days` per avere
+      slot future-dated rispetto alla call.
+    - **22 completed personal** (human-handled, niente extracted).
+    - **11 missed** (`error="empty_or_noise_audio"`).
+    - **1 pipeline_error** (`error="action_planner: simulated failure"`).
+    Customer reuse: Mark Ross 4×, Andrew Green 2×, Julia White 2×,
+    Laura Bennett 1× — `customer_id` risolto da phone via query.
+    `Customer.total_calls` e `last_call_at` ricomputati post-insert
+    (`func.count + func.max`).
+    **Estensione `BOOKING_ACTION_TYPES`**: per coprire i verticali
+    non-restaurant senza forzature, il filtro del Bookings endpoint
+    ora include `appointment.create` e `appointment.cancel` oltre a
+    `booking.create` / `booking.cancel`. Una appointment è una
+    prenotazione dal punto di vista operatore — stesso workflow.
+    **Quando aggiungi customer al seed**, aggiungili a
+    `_CUSTOMER_PHONES_BY_NAME` (recompute) **e** opzionalmente a
+    `_AI_BOOKING_BLUEPRINTS` (per generargli AI calls).
 
 12. **Test backend pragmatico per `customer_tags`.** `Customer.tags`
     è `ARRAY(String)` Postgres-only — niente SQLite parity. Test

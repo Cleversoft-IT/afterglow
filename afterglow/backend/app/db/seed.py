@@ -1545,62 +1545,84 @@ def _busy_week_specs() -> list[dict]:
     entries — combined with the 7 base fixtures we land at ~50 personal
     calls, exactly the Home `limit=50` cap. UUIDs are UUID5-derived from
     (phone, created_at) so re-running the seed is idempotent without
-    requiring a separate IDs table."""
+    requiring a separate IDs table.
+
+    Kinds:
+      - `completed` → human-handled personal call (Afterglow not engaged)
+      - `missed`    → empty_or_noise_audio failure (Missed filter)
+      - `pipeline_error` → simulated technical failure (Pipeline error badge)
+      - `ai_booking` → AI-handled work call that yields a booking.create or
+                       appointment.create — feeds the Bookings tab. Pool
+                       must be `customer:<name>`; the helper resolves the
+                       customer's vertical (restaurant / dentist / bodyshop)
+                       to pick the right template + action shape.
+    """
     rng = random.Random(20260518)  # date-of-write seed → stable output
     out: list[dict] = []
 
     # Per-day plan. Each entry: (date, list of (kind, phone_pool)) where
-    # kind is one of completed / missed / pipeline_error, and phone_pool
-    # is "mock" / "unknown" / "customer:<name>". Exactly one pipeline_error
-    # is sprinkled in (11 May) so the failure-kind badge is exercised.
+    # kind is one of completed / missed / pipeline_error / ai_booking, and
+    # phone_pool is "mock" / "unknown" / "customer:<name>". Exactly one
+    # pipeline_error is sprinkled in (11 May) so the failure-kind badge is
+    # exercised. AI booking calls are sprinkled across the week so the
+    # Bookings tab stays populated as the window scrolls forward.
     plan = [
         # 9 May (Friday)
         ("2026-05-09", [
-            ("completed", "mock"), ("completed", "mock"),
-            ("completed", "customer:Andrew Green"), ("missed", "mock"),
+            ("completed", "mock"),
+            ("ai_booking", "customer:Andrew Green"),
+            ("completed", "mock"), ("missed", "mock"),
         ]),
         # 10 May (Saturday, weekend peak)
         ("2026-05-10", [
-            ("completed", "mock"), ("completed", "customer:Julia White"),
-            ("completed", "unknown"), ("completed", "mock"),
+            ("ai_booking", "customer:Julia White"),
+            ("completed", "mock"), ("completed", "unknown"),
+            ("completed", "mock"),
             ("missed", "unknown"), ("missed", "mock"),
         ]),
         # 11 May (Sunday) — pipeline_error lives here
         ("2026-05-11", [
-            ("completed", "customer:Mark Ross"), ("completed", "mock"),
-            ("completed", "mock"), ("completed", "unknown"),
+            ("ai_booking", "customer:Mark Ross"),
+            ("completed", "mock"), ("completed", "mock"),
+            ("completed", "unknown"),
             ("missed", "mock"), ("pipeline_error", "unknown"),
         ]),
         # 12 May (Monday)
         ("2026-05-12", [
-            ("completed", "mock"), ("completed", "mock"),
-            ("completed", "customer:Andrew Green"), ("missed", "mock"),
+            ("completed", "mock"),
+            ("ai_booking", "customer:Andrew Green"),
+            ("completed", "mock"), ("missed", "mock"),
         ]),
         # 13 May (Tuesday)
         ("2026-05-13", [
-            ("completed", "mock"), ("completed", "customer:Laura Bennett"),
+            ("completed", "mock"),
+            ("ai_booking", "customer:Laura Bennett"),
             ("completed", "mock"), ("missed", "unknown"),
         ]),
         # 14 May (Wednesday)
         ("2026-05-14", [
-            ("completed", "customer:Mark Ross"), ("completed", "mock"),
-            ("completed", "mock"), ("missed", "mock"),
+            ("ai_booking", "customer:Mark Ross"),
+            ("completed", "mock"), ("completed", "mock"),
+            ("missed", "mock"),
         ]),
         # 15 May (Thursday)
         ("2026-05-15", [
             ("completed", "mock"), ("completed", "mock"),
-            ("completed", "customer:Mark Ross"), ("missed", "mock"),
+            ("ai_booking", "customer:Mark Ross"),
+            ("missed", "mock"),
         ]),
         # 16 May (Friday)
         ("2026-05-16", [
-            ("completed", "mock"), ("completed", "customer:Julia White"),
+            ("completed", "mock"),
+            ("ai_booking", "customer:Julia White"),
             ("completed", "mock"), ("completed", "unknown"),
             ("missed", "mock"),
         ]),
         # 17 May (Saturday weekend peak)
         ("2026-05-17", [
-            ("completed", "customer:Mark Ross"), ("completed", "mock"),
-            ("completed", "mock"), ("completed", "unknown"),
+            ("ai_booking", "customer:Mark Ross"),
+            ("completed", "mock"), ("completed", "mock"),
+            ("completed", "unknown"),
             ("missed", "mock"), ("missed", "mock"),
         ]),
     ]
@@ -1655,6 +1677,20 @@ def _busy_week_specs() -> list[dict]:
                     "created_at": created,
                     "language": "en",
                 }
+            elif kind == "ai_booking":
+                # Real AI-handled work call. customer_name MUST be set —
+                # the helper resolves the right vertical/template/action
+                # downstream in `_ensure_personal_calls`.
+                if not customer_name:
+                    raise ValueError("ai_booking requires customer pool")
+                fixture = {
+                    "id": fixture_uuid,
+                    "phone_e164": phone,
+                    "status": "completed",
+                    "created_at": created,
+                    "language": "en",
+                    "ai_booking": True,
+                }
             else:
                 raise ValueError(f"unknown kind: {kind}")
 
@@ -1662,6 +1698,225 @@ def _busy_week_specs() -> list[dict]:
                 fixture["customer_name"] = customer_name
             out.append(fixture)
     return out
+
+
+# Per-customer AI booking scripts: short transcript + extracted fields +
+# one action that lands in the Bookings tab. Keep these self-contained
+# (no cross-reference to the big `_seed_call_specs` payloads) so the
+# busy-week generator stays predictable and idempotent.
+_AI_BOOKING_BLUEPRINTS: dict[str, dict] = {
+    "Mark Ross": {
+        "domain": "restaurant",
+        "transcript_template": (
+            "Operator: La Trattoria, how can I help?\n"
+            "Caller: Hi, it's Mark Ross. I'd like to book a table for "
+            "Friday at eight, party of four.\n"
+            "Operator: Of course, any preference?\n"
+            "Caller: A quiet table, please — and remember I'm "
+            "gluten-intolerant. Confirm on WhatsApp."
+        ),
+        "fields": {
+            "party_size": 4,
+            "booking_time": "20:00",
+            "customer_name": "Mark Ross",
+            "allergies": ["gluten"],
+            "seating_preference": "quiet table",
+            "callback_channel": "whatsapp",
+        },
+        "intent": "booking_new",
+        "action": {
+            "type": "booking.create",
+            "title": "Create booking",
+            "summary_template": "Quiet table for 4 on {date} at 20:00, gluten-free menu",
+            "payload_template": {
+                "party_size": 4,
+                "booking_time": "20:00",
+                "customer_name": "Mark Ross",
+                "seating_preference": "quiet table",
+            },
+        },
+        "briefing": (
+            "Mark is gluten-intolerant and prefers quiet tables. "
+            "Always confirm the gluten-free menu."
+        ),
+    },
+    "Julia White": {
+        "domain": "restaurant",
+        "transcript_template": (
+            "Operator: La Trattoria, good evening.\n"
+            "Caller: Hi, it's Julia White. Booking for two on Saturday at "
+            "nine, window table if possible. It's an anniversary.\n"
+            "Operator: Wonderful, we'll prepare the usual surprise dessert.\n"
+            "Caller: Perfect, thank you."
+        ),
+        "fields": {
+            "party_size": 2,
+            "booking_time": "21:00",
+            "customer_name": "Julia White",
+            "seating_preference": "window table",
+            "occasion": "anniversary",
+            "callback_channel": "sms",
+        },
+        "intent": "booking_new",
+        "action": {
+            "type": "booking.create",
+            "title": "Create booking",
+            "summary_template": "Window table for 2 on {date} at 21:00, anniversary dinner",
+            "payload_template": {
+                "party_size": 2,
+                "booking_time": "21:00",
+                "customer_name": "Julia White",
+                "seating_preference": "window table",
+                "occasion": "anniversary",
+            },
+        },
+        "briefing": (
+            "Julia is a VIP, anniversary on 20 May. "
+            "Window table + surprise dessert is the usual."
+        ),
+    },
+    "Laura Bennett": {
+        "domain": "dentist",
+        "transcript_template": (
+            "Operator: Smile Dental, how can I help?\n"
+            "Caller: Hi, Laura Bennett. The crown Dr. Patel fitted last "
+            "month feels a touch loose. Could I come in for a check?\n"
+            "Operator: Sure, Tuesday at three with Dr. Patel?\n"
+            "Caller: Tuesday at three works. Thanks."
+        ),
+        "fields": {
+            "patient_name": "Laura Bennett",
+            "appointment_time": "15:00",
+            "concern": "loose crown",
+            "preferred_doctor": "Dr. Patel",
+            "callback_channel": "phone",
+        },
+        "intent": "appointment_new",
+        "action": {
+            "type": "appointment.create",
+            "title": "Create appointment",
+            "summary_template": "Crown follow-up with Dr. Patel on {date} at 15:00",
+            "payload_template": {
+                "patient_name": "Laura Bennett",
+                "appointment_time": "15:00",
+                "concern": "loose crown",
+                "preferred_doctor": "Dr. Patel",
+            },
+        },
+        "briefing": (
+            "Laura had a porcelain crown fitted on her lower-right molar. "
+            "Reported looseness — flag for Dr. Patel."
+        ),
+    },
+    "Andrew Green": {
+        "domain": "bodyshop",
+        "transcript_template": (
+            "Operator: Greenline Body Shop, how can I help?\n"
+            "Caller: Hi, Andrew Green. The Fiat Panda Bravo Romeo six six "
+            "four Charlie Yankee — clipped a bollard, rear bumper needs "
+            "checking. Pays out of pocket as usual.\n"
+            "Operator: Bring it Thursday morning at ten?\n"
+            "Caller: Thursday at ten, perfect."
+        ),
+        "fields": {
+            "customer_name": "Andrew Green",
+            "vehicle_plate": "BR664CY",
+            "damage_area": "rear bumper",
+            "appointment_time": "10:00",
+            "payment_method": "out_of_pocket",
+            "callback_channel": "sms",
+        },
+        "intent": "appointment_new",
+        "action": {
+            "type": "appointment.create",
+            "title": "Create appointment",
+            "summary_template": "Rear bumper inspection on {date} at 10:00, plate BR664CY",
+            "payload_template": {
+                "customer_name": "Andrew Green",
+                "vehicle_plate": "BR664CY",
+                "damage_area": "rear bumper",
+                "appointment_time": "10:00",
+            },
+        },
+        "briefing": (
+            "Andrew drives a 2019 Fiat Panda (plate BR664CY). "
+            "Pays out of pocket — no insurance claim."
+        ),
+    },
+}
+
+
+def _make_ai_booking_spec(
+    *,
+    fixture_uuid: uuid.UUID,
+    customer_id: uuid.UUID,
+    template_id: uuid.UUID,
+    phone: str,
+    created_at: datetime,
+    customer_name: str,
+) -> dict:
+    """Materialize a `_emit_seeded_call_core`-compatible spec from a busy-
+    week AI booking fixture. Templates are looked up per-customer via
+    `_AI_BOOKING_BLUEPRINTS`; the booking_date is derived as
+    `created_at + 2 days` so the slot looks future-dated relative to the
+    call timestamp (operators usually book a few days out)."""
+    bp = _AI_BOOKING_BLUEPRINTS[customer_name]
+    booking_date = (created_at + timedelta(days=2)).date().isoformat()
+    summary = bp["action"]["summary_template"].format(date=booking_date)
+    action_payload = dict(bp["action"]["payload_template"])
+    # The booking-date / appointment-date key name depends on the vertical.
+    # restaurant booking uses booking_date; appointments use appointment_date.
+    if bp["action"]["type"].startswith("booking"):
+        action_payload["booking_date"] = booking_date
+    else:
+        action_payload["appointment_date"] = booking_date
+
+    extracted_fields = dict(bp["fields"])
+    if bp["action"]["type"].startswith("booking"):
+        extracted_fields["booking_date"] = booking_date
+    else:
+        extracted_fields["appointment_date"] = booking_date
+
+    confidence = {k: 0.92 for k in extracted_fields}
+    evidence = {
+        k: ("see transcript" if not isinstance(v, list) else "see transcript")
+        for k, v in extracted_fields.items()
+    }
+
+    return {
+        "id": fixture_uuid,
+        "customer_id": customer_id,
+        "template_id": template_id,
+        "phone_e164": phone,
+        "language": "en",
+        "created_at": created_at,
+        "transcript": bp["transcript_template"],
+        "fields": extracted_fields,
+        "confidence": confidence,
+        "evidence": evidence,
+        "intent": bp["intent"],
+        "sentiment": "positive",
+        "urgency": "routine",
+        "briefing": bp["briefing"],
+        "actions": [
+            {
+                "action_type": bp["action"]["type"],
+                "title": bp["action"]["title"],
+                "summary": summary,
+                "payload": action_payload,
+                "confidence": 0.91,
+                "evidence": ["see transcript"],
+                "result": {
+                    # Mirror the result shape stamped by the live executor
+                    # so the Call detail's "Simulated" badge + Undo button
+                    # render exactly as they would for a real run.
+                    "status": "confirmed",
+                    "mock": True,
+                    "mutates": True,
+                },
+            }
+        ],
+    }
 
 
 async def _ensure_personal_calls(session) -> None:
@@ -1686,6 +1941,23 @@ async def _ensure_personal_calls(session) -> None:
         print("[seed] no seed template found, skipping personal calls.")
         return
 
+    # Per-domain template lookup so AI booking calls land on the correct
+    # vertical (Mark/Julia → restaurant, Laura → dentist, Andrew →
+    # bodyshop). Falls back to the first seed template if a domain isn't
+    # present (e.g. someone deleted a preset by hand).
+    domain_template_ids: dict[str, uuid.UUID] = {}
+    for dom in ("restaurant", "dentist", "bodyshop"):
+        row = (
+            await session.execute(
+                select(Template.id).where(
+                    Template.is_seed.is_(True),
+                    Template.domain_hint == dom,
+                )
+            )
+        ).scalar_one_or_none()
+        if row is not None:
+            domain_template_ids[dom] = row
+
     # Resolve customer IDs by phone — keeps the helper independent of the
     # random UUIDs assigned in `seed()`. Customers absent from the DB
     # (e.g. running an older seed) silently drop to customer_id=None.
@@ -1705,6 +1977,7 @@ async def _ensure_personal_calls(session) -> None:
     all_fixtures = list(_PERSONAL_CALL_FIXTURES) + _busy_week_specs()
 
     inserted = 0
+    ai_specs: list[dict] = []  # deferred — emitted via _emit_seeded_call_core
     for fx in all_fixtures:
         present = await session.scalar(select(Call.id).where(Call.id == fx["id"]))
         if present is not None:
@@ -1715,6 +1988,49 @@ async def _ensure_personal_calls(session) -> None:
             phone_for_lookup = _CUSTOMER_PHONES_BY_NAME.get(customer_name)
             if phone_for_lookup:
                 customer_id = phone_to_customer_id.get(phone_for_lookup)
+
+        if fx.get("ai_booking"):
+            # AI work call — vertical resolved from the blueprint's domain.
+            blueprint = _AI_BOOKING_BLUEPRINTS.get(customer_name or "")
+            if blueprint is None or customer_id is None:
+                # Defensive: if the customer was renamed or the blueprint
+                # is missing, fall back to a plain completed call instead
+                # of crashing the whole seed. This keeps the demo bootable.
+                session.add(
+                    Call(
+                        id=fx["id"],
+                        template_id=seed_template.id,
+                        customer_id=customer_id,
+                        phone_e164=fx["phone_e164"],
+                        audio_url=None,
+                        detected_language=fx["language"],
+                        raw_transcript=None,
+                        status=fx["status"],
+                        error=fx.get("error"),
+                        started_at=fx["created_at"],
+                        completed_at=fx["created_at"],
+                        is_seed=True,
+                        session_id=None,
+                        created_at=fx["created_at"],
+                    )
+                )
+                inserted += 1
+                continue
+            tpl_id = domain_template_ids.get(
+                blueprint["domain"], seed_template.id
+            )
+            spec = _make_ai_booking_spec(
+                fixture_uuid=fx["id"],
+                customer_id=customer_id,
+                template_id=tpl_id,
+                phone=fx["phone_e164"],
+                created_at=fx["created_at"],
+                customer_name=customer_name or "",
+            )
+            ai_specs.append(spec)
+            inserted += 1
+            continue
+
         session.add(
             Call(
                 id=fx["id"],
@@ -1734,6 +2050,16 @@ async def _ensure_personal_calls(session) -> None:
             )
         )
         inserted += 1
+
+    # Phase two: emit AI specs (Call + ExtractedFields + ExecutedAction +
+    # AuditLog) using the same two-step flush pattern that `seed()` uses
+    # for the original 5 seed calls. Order matters — see the comment in
+    # `seed()` about the audit_log FK ordering.
+    for spec in ai_specs:
+        _emit_seeded_call_core(session, spec)
+        await session.flush()
+        _emit_seeded_call_audit(session, spec)
+        await session.flush()
 
     if inserted:
         await session.flush()
