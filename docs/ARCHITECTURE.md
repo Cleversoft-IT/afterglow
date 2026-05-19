@@ -336,7 +336,7 @@ theme changes.
 
 The public demo site is a Vite/React marketing shell that embeds the real
 Expo web app via `APP_URL` (`VITE_APP_URL`, defaulting to the production
-`app.95-179-245-107.sslip.io` URL). On desktop/tablet widths it renders the
+`app.afterglow.cleversoft.it` URL). On desktop/tablet widths it renders the
 app inside a fixed logical 390×845 phone viewport, wrapped by `.phone-stage`:
 the app keeps a stable viewport while the wrapper applies a viewport-aware
 CSS transform scale (`0.55..1.0`) so the full device fits below the demo
@@ -589,7 +589,7 @@ ordering assumption.
 
 ## Multi-visitor demo isolation
 
-The public iframe at `demo.95-179-245-107.sslip.io` is reachable concurrently
+The public iframe at `demo.afterglow.cleversoft.it` is reachable concurrently
 by judges, hackathon attendees and crawlers. The product itself is
 single-tenant (one installation = one customer); the demo is a sandbox bolted
 on top of the same backend so visitors do not stomp on each other.

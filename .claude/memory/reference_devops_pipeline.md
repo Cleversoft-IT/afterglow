@@ -24,7 +24,7 @@ local dev (Fedora podman)  ──git push origin main──▶  github.com/Cleve
                           │                                   │                                   │
                           └─────────────────────────  Traefik + Let's Encrypt  ───────────────────┘
                           ▼                                   ▼                                   ▼
-       https://api.95-179-245-107.sslip.io   https://app.95-179-245-107.sslip.io   https://demo.95-179-245-107.sslip.io
+       https://api.afterglow.cleversoft.it   https://app.afterglow.cleversoft.it   https://demo.afterglow.cleversoft.it
                           │
                           ▼
           Vultr Managed Postgres 16 (FRA, hobbyist 1GB)
@@ -54,9 +54,9 @@ Le risorse sono in regione FRA per latenza Milano. Free trial $250 (balance `-20
 - Project: `afterglow` (id `rze0mzy6iwv52upsejpsgiw5`)
 - Environment: `production` (id `i9ic0h92aypqqxh8jroi9tw0`)
 - Applications:
-  - `afterglow-backend` (id `lo1010mbgr6s32ag7zy9cngi`) → `https://api.95-179-245-107.sslip.io` · base `/afterglow/backend`
-  - `afterglow-app` (id `liibgrkyxw4x1f4nrz8p91g7`) → `https://app.95-179-245-107.sslip.io` · base `/afterglow/app` (Expo SDK 54 + react-native-web, nginx static)
-  - `afterglow-demo` (id `yh9o1m3ro8dg96rahedk9haq`) → `https://demo.95-179-245-107.sslip.io` · base `/afterglow/demo-site` (Vite + React, nginx static, iframes the app)
+  - `afterglow-backend` (id `lo1010mbgr6s32ag7zy9cngi`) → `https://api.afterglow.cleversoft.it` · base `/afterglow/backend`
+  - `afterglow-app` (id `liibgrkyxw4x1f4nrz8p91g7`) → `https://app.afterglow.cleversoft.it` · base `/afterglow/app` (Expo SDK 54 + react-native-web, nginx static)
+  - `afterglow-demo` (id `yh9o1m3ro8dg96rahedk9haq`) → `https://demo.afterglow.cleversoft.it` · base `/afterglow/demo-site` (Vite + React, nginx static, iframes the app)
 - Build pack: **Dockerfile** per tutte e tre
 - Source: GitHub App `afterglow-coolify` — UUID e server UUID nella tabella risorse sopra
 - Auto-deploy: webhook GitHub App alla push su `main`. Build concorrenti: 2 (limite server settings).
@@ -101,9 +101,9 @@ Note di sicurezza: il repo è MIT public — un push accidentale di credenziali 
 5. Backend nuovo container scrive `alembic upgrade head` (no-op idempotente) e `python -m app.db.seed` (idempotente — short-circuita se i template preset sono già presenti). Poi sostituisce il vecchio container (rolling).
 6. App e demo: container nginx con bundle statici (Expo web export e Vite build); nessuna logica di runtime.
 7. Verifica:
-   - `curl -s https://api.95-179-245-107.sslip.io/health` → `{"status":"ok"}`
-   - `curl -s https://app.95-179-245-107.sslip.io/` → HTML Expo web (200)
-   - `curl -s https://demo.95-179-245-107.sslip.io/` → HTML Vite landing (200)
+   - `curl -s https://api.afterglow.cleversoft.it/health` → `{"status":"ok"}`
+   - `curl -s https://app.afterglow.cleversoft.it/` → HTML Expo web (200)
+   - `curl -s https://demo.afterglow.cleversoft.it/` → HTML Vite landing (200)
 
 Lo stato del DB Managed Vultr è **persistente** e indipendente dai redeploy. Il volume audio del backend per ora è dentro il container (non sopravvive ai redeploy; vedi roadmap per persistent volume).
 
@@ -111,5 +111,5 @@ Lo stato del DB Managed Vultr è **persistente** e indipendente dai redeploy. Il
 
 - [ ] Persistent volume per `/var/data/audio` (oggi il submit audio è ephemeral)
 - [ ] `.github/workflows/ci.yml` con `npm run build` + `pytest` smoke
-- [ ] Dominio custom + cert Let's Encrypt (oggi usiamo sslip.io free)
+- [x] ~~Dominio custom + cert Let's Encrypt~~ — done 2026-05-19. Wildcard A `*.afterglow.cleversoft.it` → `95.179.245.107` (zona SiteGround). Le 3 app hanno ciascuna 2 domini in Coolify (sslip + cleversoft) per zero-downtime; sslip resta come fallback nominale ma cleversoft è il canonical.
 - [ ] Roll API key dopo la demo (Vultr Inference, Google AI Studio, Speechmatics, Coolify token, Postgres `vultradmin`)

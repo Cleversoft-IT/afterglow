@@ -34,9 +34,9 @@ that opens this repo. **Italian for the conversation; English for the code (see
 
 ```
 local edit  →  git push origin main  →  GitHub App webhook  →  Coolify on Vultr VM
-                                                                ├─ afterglow-backend  →  https://api.95-179-245-107.sslip.io
-                                                                ├─ afterglow-app      →  https://app.95-179-245-107.sslip.io   (Expo web)
-                                                                └─ afterglow-demo     →  https://demo.95-179-245-107.sslip.io  (Vite, iframes the app)
+                                                                ├─ afterglow-backend  →  https://api.afterglow.cleversoft.it
+                                                                ├─ afterglow-app      →  https://app.afterglow.cleversoft.it   (Expo web)
+                                                                └─ afterglow-demo     →  https://demo.afterglow.cleversoft.it  (Vite, iframes the app)
                                                                        └─ Vultr Managed Postgres (DB)
 ```
 

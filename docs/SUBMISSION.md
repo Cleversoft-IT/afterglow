@@ -46,9 +46,9 @@ wins** and this document must be updated in the same commit
 | **Tagline (≤8 words, lablab fallback)** | We handle the after |
 | **One-liner (≤25 words)** | A phone app for small businesses. The human stays on the call. An agentic AI loop runs after — extract, execute, remember. |
 | **Repo** | `https://github.com/Cleversoft-IT/afterglow` (public, MIT) |
-| **Backend** | `https://api.95-179-245-107.sslip.io` |
-| **Operator app (Expo web)** | `https://app.95-179-245-107.sslip.io` |
-| **Landing + iframe demo** | `https://demo.95-179-245-107.sslip.io` |
+| **Backend** | `https://api.afterglow.cleversoft.it` |
+| **Operator app (Expo web)** | `https://app.afterglow.cleversoft.it` |
+| **Landing + iframe demo** | `https://demo.afterglow.cleversoft.it` |
 | **Tracks (lablab.ai)** | Intelligent Reasoning · Agentic Workflows · Enterprise Utility · Multimodal Intelligence |
 | **Partner tracks targeted** | **Vultr** · **Google (Gemini)** · **Speechmatics** |
 | **Partner tracks NOT targeted** | Kraken (out-of-domain) · Featherless (we use Gemini, not Featherless catalog) |
@@ -314,7 +314,7 @@ Tag at minimum: **Intelligent Reasoning**, **Agentic Workflows**,
 * Aspect ratio **16:9** (lablab recommendation).
 * Source asset: a screenshot of the call detail with the Agent Reasoning
   Trail expanded on the right, customer card on the left, status chip
-  `completed`. Captured on `https://app.95-179-245-107.sslip.io`.
+  `completed`. Captured on `https://app.afterglow.cleversoft.it`.
 * Add the wordmark "**afterglow**" bottom-left and "AI Agent Olympics
   2026 — Milan AI Week" bottom-right in a thin sans-serif.
 * Export as PNG, target ≤500 KB.
@@ -444,7 +444,7 @@ the right risk-to-reward for what we can ship.
 ### Act II — Live product demo · 0:30–4:30
 
 The whole act is screen capture of the real operator app at
-`https://app.95-179-245-107.sslip.io`. Voice-over starts here.
+`https://app.afterglow.cleversoft.it`. Voice-over starts here.
 
 #### Scene II.A — 0:30–0:55 · The product, in one sentence
 
@@ -721,7 +721,7 @@ the video's two-act shape: hook → antithesis → product → proof → close.
 
 * Wordmark **afterglow** (display).
 * The claim: *"Stay in the moment. We handle the after."*
-* `demo.95-179-245-107.sslip.io` · `github.com/Cleversoft-IT/afterglow` · MIT.
+* `demo.afterglow.cleversoft.it` · `github.com/Cleversoft-IT/afterglow` · MIT.
 * Partner pills row (final time).
 
 > **Why we dropped QR codes from the original outline:** the slide PDF
@@ -738,13 +738,13 @@ the video's two-act shape: hook → antithesis → product → proof → close.
 
 ### Three live URLs
 
-1. **`https://demo.95-179-245-107.sslip.io`** — landing page, the
+1. **`https://demo.afterglow.cleversoft.it`** — landing page, the
    marketing front door. Scroll to the **"Live demo"** section to see
    the operator app in an iframe (390×845 phone frame). On mobile the
    iframe collapses to a CTA — click it to open the app full-screen.
-2. **`https://app.95-179-245-107.sslip.io`** — the operator app
+2. **`https://app.afterglow.cleversoft.it`** — the operator app
    directly (Expo web build). This is where the work happens.
-3. **`https://api.95-179-245-107.sslip.io`** — the API. Open
+3. **`https://api.afterglow.cleversoft.it`** — the API. Open
    `/health`, `/docs`, or `/api/v1/admin/rag-stats` to confirm the
    integration is live (rag-stats returns the actual Vultr Vector Store
    chunk counts).
@@ -792,16 +792,16 @@ edits, and simulated calls are isolated.
 
 Open the API directly and call these:
 
-* `GET https://api.95-179-245-107.sslip.io/api/v1/admin/rag-stats` —
+* `GET https://api.afterglow.cleversoft.it/api/v1/admin/rag-stats` —
   returns `{preseed_chunks: N, runtime_chunks: M, collection: "..."}`.
   Confirms the Vultr Vector Store is live and pre-populated.
-* `GET https://api.95-179-245-107.sslip.io/api/v1/admin/rag-probe?phone=+15552223344`
+* `GET https://api.afterglow.cleversoft.it/api/v1/admin/rag-probe?phone=+15552223344`
   — issues a real RAG query against the Vultr collection for Sophie
   Walker. Returns the RAG response **and** `input_tokens` from the
   Vultr Inference response. Non-zero tokens mean the call was billed
   to our Vultr account — not a stub; `hit=true` proves the preseeded
   memory store is returning customer facts.
-* `GET https://api.95-179-245-107.sslip.io/api/v1/audit?call_id=<id>`
+* `GET https://api.afterglow.cleversoft.it/api/v1/audit?call_id=<id>`
   — full audit trail for any call: every agent turn, every tool call,
   token usage, durations.
 
@@ -936,7 +936,7 @@ Tag each in the lablab form. Be prepared to demo each on screen.
 
 | Surface | Where | Verification |
 |---|---|---|
-| **Cloud Compute + Coolify** | The VM hosting all 3 services. IP `95.179.245.107`. Auto-deploy on push to main. | `https://app.95-179-245-107.sslip.io` loads. |
+| **Cloud Compute + Coolify** | The VM hosting all 3 services. IP `95.179.245.107`. Auto-deploy on push to main. | `https://app.afterglow.cleversoft.it` loads. |
 | **Managed Postgres 16** | System of record. Schema mirrored locally by Alembic in `backend/entrypoint.sh`. | Any call detail renders DB-backed data. |
 | **Vector Store** | `customer_memory_chunks` table mirrors Vultr items. Preseed task populates it at backend boot with `chunk_metadata.preseed=true`. | `GET /api/v1/admin/rag-stats` returns `{preseed_chunks: N, runtime_chunks: M}`. |
 | **Serverless Inference RAG** | `POST /v1/chat/completions/RAG` against `MiniMaxAI/MiniMax-M2.7`. Exposed to the agent as the `lookup_customer_memory` tool. | `GET /api/v1/admin/rag-probe?phone=+15552223344` returns `hit=true`, the RAG response, and `input_tokens > 0`. |
@@ -1235,10 +1235,10 @@ verified.
 
 ### Live infrastructure
 
-* [ ] `https://api.95-179-245-107.sslip.io/health` returns 200.
-* [ ] `https://app.95-179-245-107.sslip.io` loads, Home renders with
+* [ ] `https://api.afterglow.cleversoft.it/health` returns 200.
+* [ ] `https://app.afterglow.cleversoft.it` loads, Home renders with
       the busy-week seed data.
-* [ ] `https://demo.95-179-245-107.sslip.io` loads, iframe shows the
+* [ ] `https://demo.afterglow.cleversoft.it` loads, iframe shows the
       app, "How to get the most out of this demo" modal works.
 * [ ] `GET /api/v1/admin/rag-stats` returns `preseed_chunks > 0`.
 * [ ] `GET /api/v1/admin/rag-probe?phone=+15552223344` returns
@@ -1273,7 +1273,7 @@ verified.
       lablab** (not YouTube/Drive).
 * [ ] Slide Presentation: upload `afterglow-slides.pdf`.
 * [ ] GitHub Repo URL: filled.
-* [ ] Application URL: `https://demo.95-179-245-107.sslip.io`.
+* [ ] Application URL: `https://demo.afterglow.cleversoft.it`.
 * [ ] Demo Application Platform: "Custom — Vultr Cloud Compute via
       Coolify".
 

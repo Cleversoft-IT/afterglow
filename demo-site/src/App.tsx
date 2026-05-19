@@ -24,7 +24,7 @@ function GithubIcon({ className }: { className?: string }) {
 }
 import { useTheme, type ThemeMode } from '@/lib/theme';
 
-const APP_URL = import.meta.env.VITE_APP_URL ?? 'https://app.95-179-245-107.sslip.io';
+const APP_URL = import.meta.env.VITE_APP_URL ?? 'https://app.afterglow.cleversoft.it';
 
 const steps = [
   {

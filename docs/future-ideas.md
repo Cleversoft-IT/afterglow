@@ -7,7 +7,7 @@
 > the build to keep the demo surface small.
 
 The hackathon's "produzione" surface = the public demo URL
-(`https://app.95-179-245-107.sslip.io`). Everything below assumes a real
+(`https://app.afterglow.cleversoft.it`). Everything below assumes a real
 production deployment that does not exist today; see
 [`../../.claude/memory/feedback_production_equals_hackathon.md`](../../.claude/memory/feedback_production_equals_hackathon.md).
 

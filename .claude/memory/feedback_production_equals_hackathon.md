@@ -5,7 +5,7 @@ metadata:
   type: feedback
 ---
 
-In Afterglow "**produzione**" = la demo URL pubblica dell'hackathon (https://app.95-179-245-107.sslip.io e https://demo.95-179-245-107.sslip.io) durante e per la judging window dell'AI Agent Olympics @ Milan AI Week 2026 (deadline 19 maggio 2026 17:00 CEST). **Tutto ciò che è "post-hackathon" è out of scope.**
+In Afterglow "**produzione**" = la demo URL pubblica dell'hackathon (https://app.afterglow.cleversoft.it e https://demo.afterglow.cleversoft.it) durante e per la judging window dell'AI Agent Olympics @ Milan AI Week 2026 (deadline 19 maggio 2026 17:00 CEST). **Tutto ciò che è "post-hackathon" è out of scope.**
 
 **Why:** evitare scope creep travestito da "ma in produzione vera servirà…". Argomenti come "scaling multi-tenant", "audit retention 90 giorni", "Twilio integration vera al posto del MOCK_REGISTRY", "persistent audio volume", "k8s migration" sono **tutti tabù** come motivazione per cambiare codice ora. Sono buone idee, ma valgono **solo** come materiale di pitch ("future work").
 

@@ -149,7 +149,7 @@ System of record: **Vultr Managed Postgres**. Deploy: **Vultr Cloud Compute + Co
 
 #### Demo isolation policy
 
-The public iframe at `demo.95-179-245-107.sslip.io` is a multi-visitor
+The public iframe at `demo.afterglow.cleversoft.it` is a multi-visitor
 sandbox: every browser that loads it is stamped with an opaque
 `X-Demo-Session: <uuid>` and every write (calls, customers, audit log,
 executed actions, wizard-generated templates) is scoped to that uuid.
@@ -241,15 +241,15 @@ the architectural sub-sections above.
    without shelling into the container:
    ```bash
    # Vultr Vector Store stats — preseed vs runtime chunk counts
-   curl -s https://api.95-179-245-107.sslip.io/api/v1/admin/rag-stats | jq
+   curl -s https://api.afterglow.cleversoft.it/api/v1/admin/rag-stats | jq
 
    # Live RAG round-trip for a seed phone — proves the integration is
    # billed (input_tokens > 0)
-   curl -s "https://api.95-179-245-107.sslip.io/api/v1/admin/rag-probe?phone=%2B15551112233" | jq
+   curl -s "https://api.afterglow.cleversoft.it/api/v1/admin/rag-probe?phone=%2B15551112233" | jq
 
    # Dry-run the agentic pipeline with a custom transcript — returns a
    # call_id; poll /api/v1/calls/<id> to watch it land
-   curl -s -X POST https://api.95-179-245-107.sslip.io/api/v1/admin/dry-run-pipeline \
+   curl -s -X POST https://api.afterglow.cleversoft.it/api/v1/admin/dry-run-pipeline \
      -H 'Content-Type: application/json' \
      -d '{"transcript":"Operator: Hi.\nCaller: Hi, this is Mark. Friday eight thirty, party of four please.","phone_e164":"+15551112233"}'
    ```
@@ -485,9 +485,9 @@ endpoint `POST /api/v1/templates/wizard` was removed on 2026-05-17.
 
 | What | Where |
 |---|---|
-| Demo site | https://demo.95-179-245-107.sslip.io |
-| App (Expo web) | https://app.95-179-245-107.sslip.io |
-| Backend API | https://api.95-179-245-107.sslip.io · `/health` returns `{"status":"ok"}` |
+| Demo site | https://demo.afterglow.cleversoft.it |
+| App (Expo web) | https://app.afterglow.cleversoft.it |
+| Backend API | https://api.afterglow.cleversoft.it · `/health` returns `{"status":"ok"}` |
 | Coolify admin | http://95.179.245.107:8000 (plain HTTP; team-only) |
 
 ## Production stack — auto-deploy from `main`
@@ -502,13 +502,13 @@ local podman                git push                   Coolify (Vultr VM, FRA, v
 ─────────────              ─────────▶                  ───────────────────────────────────
  Postgres podman             main branch                 ┌─ afterglow-backend  (Dockerfile)
  .venv uvicorn          GitHub App webhook               │   entrypoint.sh: alembic + seed + uvicorn
- expo web :8081                                          │   :8000 → api.95-179-245-107.sslip.io
+ expo web :8081                                          │   :8000 → api.afterglow.cleversoft.it
  vite :5173                                              │
                                                          ├─ afterglow-app      (Dockerfile, expo export -p web + nginx)
-                                                         │   :3000 → app.95-179-245-107.sslip.io
+                                                         │   :3000 → app.afterglow.cleversoft.it
                                                          │
                                                          └─ afterglow-demo     (Dockerfile, vite build + nginx)
-                                                             :3000 → demo.95-179-245-107.sslip.io
+                                                             :3000 → demo.afterglow.cleversoft.it
                                                                   │
                                                          Vultr Managed Postgres 16 (hobbyist 1GB, FRA)
                                                          trusted-ips: VM /32 + dev IP /32
@@ -520,9 +520,11 @@ see [`reference_devops_pipeline.md`](.claude/memory/reference_devops_pipeline.md
 for the source of truth. User-local credentials (Coolify API token etc.) live
 outside the repo in `~/.config/afterglow/`.
 
-Traefik on Coolify auto-issues a Let's Encrypt cert for each app domain.
-[sslip.io](https://sslip.io) resolves `<ip-with-dashes>.sslip.io` to the
-matching IP, so we get an HTTPS-ready domain with zero DNS setup.
+Traefik on Coolify auto-issues a Let's Encrypt cert for each app domain. DNS
+is a wildcard A record `*.afterglow.cleversoft.it` → `95.179.245.107` on the
+`cleversoft.it` zone, so any future subdomain (e.g. `staging.afterglow…`)
+works without DNS changes. The original `<ip-with-dashes>.sslip.io` hostnames
+are kept as a fallback alias on each Coolify resource during the transition.
 
 ### Per-app `watch_paths` (operational contract)
 
