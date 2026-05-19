@@ -71,7 +71,7 @@ em { font-style: italic; color: var(--ink); }
    Skipped on chrome-heavy slides (title / close / bet) where the footer
    is composed by hand inside the slide markup. */
 .slide:not(.title):not(.close):not(.bet)::before {
-  content: "ClaudiOpuscoli";
+  content: "Claudio Opuscoli";
   position: absolute;
   left: 112px;
   bottom: 40px;
