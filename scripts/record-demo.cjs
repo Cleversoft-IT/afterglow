@@ -27,8 +27,8 @@ const { execFileSync, spawnSync } = require('node:child_process');
 
 // ─── Config ──────────────────────────────────────────────────────────────
 
-const APP_URL = process.env.APP_URL || 'https://app.95-179-245-107.sslip.io';
-const API_URL = process.env.API_URL || 'https://api.95-179-245-107.sslip.io';
+const APP_URL = process.env.APP_URL || 'https://app.afterglow.cleversoft.it';
+const API_URL = process.env.API_URL || 'https://api.afterglow.cleversoft.it';
 
 // 390 × 845 = the viewport we drive the app at. React-native-web's mobile
 // layout has a ~30 px top padding before the search bar (status-bar safe

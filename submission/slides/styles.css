@@ -689,3 +689,137 @@ em { font-style: italic; color: var(--ink); }
   border-color: #334155;
   color: #E2E8F0;
 }
+
+/* ─── Slide 6 — partner hero hierarchy ─────────────────────────── */
+
+.partner-hook {
+  font-size: 30px;
+  font-weight: 700;
+  letter-spacing: -0.015em;
+  line-height: 1.15;
+  color: var(--ink);
+}
+.partner-proof {
+  font-size: 21px;
+  line-height: 1.45;
+  color: var(--ink-2);
+  padding: 14px 16px;
+  background: var(--brand-soft);
+  border-left: 4px solid var(--brand);
+  border-radius: 8px;
+}
+.partner--google .partner-proof { background: #E6F4EC; border-left-color: var(--green); }
+.partner--speechmatics .partner-proof { background: #FBF1DA; border-left-color: var(--amber); }
+.partner-detail {
+  margin-top: auto;
+  padding-top: 14px;
+  border-top: 1px dashed var(--line-2);
+  font-size: 17px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+/* ─── Slide 7 — revenue strip ──────────────────────────────────── */
+
+.revenue-strip {
+  margin-top: 18px;
+  padding: 14px 18px;
+  background: var(--brand-soft);
+  border-radius: 12px;
+  font-size: 19px;
+  line-height: 1.4;
+  color: var(--ink);
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+.revenue-label {
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--brand-deep);
+}
+
+/* ─── Slide 8 — REAL hero proofs + MOCK compact ────────────────── */
+
+.hero-proofs {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  counter-reset: real;
+}
+.hero-proofs li {
+  position: relative;
+  padding-left: 52px;
+  font-size: 22px;
+  line-height: 1.4;
+  counter-increment: real;
+}
+.hero-proofs li::before {
+  content: counter(real);
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: var(--green);
+  color: #fff;
+  font-size: 19px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.proof-head {
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+}
+.proof-body {
+  margin-top: 2px;
+  font-size: 19px;
+  color: var(--ink-2);
+  line-height: 1.45;
+}
+.and-more {
+  margin-top: auto;
+  padding-top: 14px;
+  border-top: 1px dashed var(--line-2);
+  font-size: 17px;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.mock-summary {
+  font-size: 22px !important;
+  line-height: 1.5;
+  color: var(--ink-2);
+  margin: 0 !important;
+}
+.mock-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.mock-tag {
+  display: inline-block;
+  font-size: 17px;
+  padding: 6px 12px;
+  border-radius: 8px;
+  background: var(--amber-soft);
+  color: var(--ink-2);
+  border: 1px solid #EAD9A8;
+}
+.mock-tag code {
+  background: transparent;
+  padding: 0;
+  color: inherit;
+  font-size: 16px;
+}

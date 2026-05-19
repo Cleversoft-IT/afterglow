@@ -185,36 +185,36 @@
 
   <div class="grid grid--3 grow">
     <article class="card card--partner partner--vultr">
-      <div class="partner-head"><span class="dot dot--blue"></span>Vultr · 4 surfaces</div>
-      <ul>
-        <li>Cloud Compute + Coolify auto-deploy</li>
-        <li>Managed Postgres 16 (system of record)</li>
-        <li>Vector Store (preseeded collection)</li>
-        <li>Serverless Inference RAG (MiniMax-M2.7)</li>
-      </ul>
-      <div class="proof">verify: <code>/api/v1/admin/rag-probe</code> — real <code>input_tokens</code></div>
+      <div class="partner-head"><span class="dot dot--blue"></span>Vultr</div>
+      <div class="partner-hook">4 surfaces. <br/>One audit trail.</div>
+      <div class="partner-proof">
+        <code>/admin/rag-probe</code> returns real <code>input_tokens</code> — billed.
+      </div>
+      <div class="partner-detail">
+        Compute + Coolify · Managed Postgres 16 · Vector Store · Serverless Inference RAG (MiniMax-M2.7)
+      </div>
     </article>
 
     <article class="card card--partner partner--google">
-      <div class="partner-head"><span class="dot dot--green"></span>Google · Gemini via ADK</div>
-      <ul>
-        <li>gemini-3.1-flash-lite + ADK 1.18 runner</li>
-        <li>Typed tool surface via function declarations</li>
-        <li>Structured output: dynamic Pydantic ← JSON Schema</li>
-        <li>Also: wizard chat, briefing regen, EN summarizer</li>
-      </ul>
-      <div class="proof">verify: any call's Agent Reasoning Trail</div>
+      <div class="partner-head"><span class="dot dot--green"></span>Google · Gemini</div>
+      <div class="partner-hook">Function-calling agent loop on ADK.</div>
+      <div class="partner-proof">
+        Every call's Agent Reasoning Trail is one Gemini turn per row.
+      </div>
+      <div class="partner-detail">
+        gemini-3.1-flash-lite · ADK 1.18 · typed tools · structured output: dynamic Pydantic ← JSON Schema
+      </div>
     </article>
 
     <article class="card card--partner partner--speechmatics">
       <div class="partner-head"><span class="dot dot--amber"></span>Speechmatics</div>
-      <ul>
-        <li>Batch STT · diarization on · language=auto</li>
-        <li>Speaker-aware transcript tools (S1/S2 search)</li>
-        <li>TTS Preview: 6 bundled MP3s + 2 per wizard template</li>
-        <li>Bonuses: multilingual ✓ · creative diarization ✓</li>
-      </ul>
-      <div class="proof">verify: any call detail — transcript shows S1: / S2:</div>
+      <div class="partner-hook">Diarization fed back into the agent.</div>
+      <div class="partner-proof">
+        Every transcript shows <b>S1:</b> / <b>S2:</b> — and the agent re-reads spans by speaker.
+      </div>
+      <div class="partner-detail">
+        Batch STT · language=auto · TTS Preview for every demo MP3 · bonuses: multilingual ✓ · creative diarization ✓
+      </div>
     </article>
   </div>
 </section>
@@ -255,6 +255,10 @@
         <tr><td>Vertical adaptation</td><td>Reseller config</td><td><b>2-min wizard</b></td></tr>
         <tr><td>Geo model</td><td>Country-specific</td><td><b>Single-tenant per customer · worldwide</b></td></tr>
       </table>
+      <div class="revenue-strip">
+        <span class="revenue-label">Revenue model</span>
+        SaaS per seat · SMB owner/operator buyer · expansion by vertical template
+      </div>
     </article>
   </div>
 </section>
@@ -269,29 +273,43 @@
   <div class="grid grid--2 grow">
     <article class="card card--real">
       <h3><span class="dot dot--green"></span>REAL · billed, not stubbed</h3>
-      <ul>
-        <li>Speechmatics Batch STT on every call</li>
-        <li>Gemini 3.1 Flash Lite + ADK loop on every analyzed call</li>
-        <li>Vultr Serverless Inference RAG (non-zero <code>input_tokens</code>)</li>
-        <li>Vultr Vector Store preseeded at boot</li>
-        <li>Vultr Managed Postgres — system of record</li>
-        <li><code>customer.update_profile</code> mutates the row (undoable)</li>
-        <li>Speechmatics TTS Preview generates every demo MP3</li>
-      </ul>
+      <ol class="hero-proofs">
+        <li>
+          <div class="proof-head">Speechmatics</div>
+          <div class="proof-body">Batch STT on every call · diarization on · language=auto.</div>
+        </li>
+        <li>
+          <div class="proof-head">Gemini · ADK</div>
+          <div class="proof-body">Multi-turn agent loop on every analyzed call. No offline stub.</div>
+        </li>
+        <li>
+          <div class="proof-head">Vultr RAG</div>
+          <div class="proof-body">Non-zero <code>input_tokens</code> per query — verifiable via <code>/admin/rag-probe</code>.</div>
+        </li>
+      </ol>
+      <div class="and-more">
+        Plus Vultr Vector Store · Managed Postgres · <code>customer.update_profile</code> row mutation · TTS Preview for every demo MP3.
+      </div>
     </article>
 
     <article class="card card--mock">
-      <h3><span class="dot dot--amber"></span>MOCKED · honest demo concession</h3>
-      <ul>
-        <li><code>booking.create</code> — no Resy/TheFork account for N judges</li>
-        <li><code>whatsapp.*</code> — per-message billing on a public demo</li>
-        <li><code>email.*</code>, <code>sms.*</code> — verified-domain required</li>
-        <li><code>calendar.*</code> — per-tenant OAuth</li>
-        <li><code>payment.*</code> — never test against a live processor</li>
-        <li><code>crm.*</code>, <code>review.*</code> — customer-specific choice</li>
-        <li>Vector Store <b>write-back</b> in demo (would pollute shared coll.)</li>
-      </ul>
-      <div class="proof">Swap a mock for real = one file in <code>action_catalog.py</code> + env var. Not an architecture migration.</div>
+      <h3><span class="dot dot--amber"></span>MOCKED · by design</h3>
+      <p class="mock-summary">
+        The outbound write-side integrations a multi-judge public demo
+        cannot safely fire.
+      </p>
+      <div class="mock-tags">
+        <span class="mock-tag"><code>booking.*</code></span>
+        <span class="mock-tag"><code>whatsapp.*</code></span>
+        <span class="mock-tag"><code>sms.*</code></span>
+        <span class="mock-tag"><code>email.*</code></span>
+        <span class="mock-tag"><code>calendar.*</code></span>
+        <span class="mock-tag"><code>payment.*</code></span>
+        <span class="mock-tag"><code>crm.*</code></span>
+        <span class="mock-tag"><code>review.*</code></span>
+        <span class="mock-tag">RAG write-back in demo</span>
+      </div>
+      <div class="proof">Swap a mock for real = one entry in <code>action_catalog.py</code> + an env var. Not an architecture migration.</div>
     </article>
   </div>
 </section>
@@ -308,19 +326,19 @@
       <h3>Live URLs</h3>
       <div class="url-row">
         <span class="url-label">Demo (iframe)</span>
-        <a class="url" href="https://demo.95-179-245-107.sslip.io">demo.95-179-245-107.sslip.io</a>
+        <a class="url" href="https://demo.afterglow.cleversoft.it">demo.afterglow.cleversoft.it</a>
       </div>
       <div class="url-row">
         <span class="url-label">Operator app</span>
-        <a class="url" href="https://app.95-179-245-107.sslip.io">app.95-179-245-107.sslip.io</a>
+        <a class="url" href="https://app.afterglow.cleversoft.it">app.afterglow.cleversoft.it</a>
       </div>
       <div class="url-row">
         <span class="url-label">API</span>
-        <a class="url" href="https://api.95-179-245-107.sslip.io">api.95-179-245-107.sslip.io</a>
+        <a class="url" href="https://api.afterglow.cleversoft.it">api.afterglow.cleversoft.it</a>
       </div>
       <div class="url-row">
         <span class="url-label">Repo (MIT)</span>
-        <a class="url" href="https://github.com/sepa85/hackaton-lablab">github.com/sepa85/hackaton-lablab</a>
+        <a class="url" href="https://github.com/Cleversoft-IT/afterglow">github.com/Cleversoft-IT/afterglow</a>
       </div>
     </article>
 
@@ -349,8 +367,8 @@
   </div>
 
   <div class="close__urls">
-    <div class="close-url">demo.95-179-245-107.sslip.io</div>
-    <div class="close-url close-url--muted">github.com/sepa85/hackaton-lablab · MIT</div>
+    <div class="close-url">demo.afterglow.cleversoft.it</div>
+    <div class="close-url close-url--muted">github.com/Cleversoft-IT/afterglow · MIT</div>
   </div>
 
   <div class="close__partners">
