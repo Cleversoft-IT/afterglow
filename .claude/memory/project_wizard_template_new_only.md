@@ -20,7 +20,7 @@ const hasTwoScenarios =
 **Why.** `agents/simulation_script.build_simulation_script` now emits
 BOTH scenarios with two distinct caller identities (since 2026-05-18),
 and the audio pipeline renders one MP3 per scenario via Speechmatics +
-ffmpeg. BUT the existing-caller phone is fabricated by Gemini ("never a
+`lame`. BUT the existing-caller phone is fabricated by Gemini ("never a
 real number" — explicit prompt rule in `simulation_script.py`), and
 the seeded `Customer` table only covers restaurant / dentist /
 bodyshop. So `getCustomerByPhone(scenario.existing.caller_phone_e164)`

@@ -752,7 +752,7 @@ Tag each in the lablab form. Be prepared to demo each on screen.
 * **TTS Preview:** `https://preview.tts.speechmatics.com/generate`
   with voices Sarah/Theo/Megan/Jack (UK/US). Used to produce:
     - the **6 bundled demo MP3s** (`app/assets/audio/{restaurant,dentist,bodyshop}_{existing,new}.mp3`)
-    - **2 MP3s per wizard-generated template** (`<template_id>_{existing,new}.mp3`), concatenated PCM via Python `wave` and transcoded to mono 48 kbps MP3 via ffmpeg.
+    - **2 MP3s per wizard-generated template** (`<template_id>_{existing,new}.mp3`), concatenated PCM via Python `wave` and transcoded to mono 48 kbps MP3 via the `lame` CLI (chosen over ffmpeg because ffmpeg's apt-install OOM-kills the 4 GB Coolify build VM on cache miss).
 
 **Code:** `afterglow/backend/app/integrations/speechmatics.py`,
 `afterglow/backend/app/integrations/speechmatics_tts.py`,

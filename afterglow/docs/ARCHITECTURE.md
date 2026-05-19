@@ -93,7 +93,9 @@ phone, so both Simulator buttons resolve cleanly. Wizard-generated
 templates produce both scenarios via the backend's simulation endpoints
 (`simulation_script.py` writes two script_turns lists; Speechmatics TTS
 preview returns 16kHz mono PCM WAV per turn, we concat with Python's
-`wave` stdlib and transcode the final file to mono 48kbps MP3 via ffmpeg
+`wave` stdlib and transcode the final file to mono 48kbps MP3 via the
+`lame` CLI (`-m m -b 48 -q 7`; ffmpeg deliberately not used because its
+apt install OOM-kills the 4 GB Coolify build VM on cache miss)
 → `<template_id>_{existing,new}.mp3` under `AUDIO_STORAGE_DIR/templates/`).
 **But** the Simulator hides the "Call from existing customer" button for
 non-seed templates: the existing-caller phone is fabricated by Gemini

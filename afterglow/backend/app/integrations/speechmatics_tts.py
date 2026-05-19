@@ -3,15 +3,18 @@
 Used by the Simulator screen when a custom template has no bundled audio.
 The script is rendered turn-by-turn against the `preview.tts.speechmatics.com`
 endpoint (16kHz mono PCM WAV), concatenated with a short silence using
-Python's `wave` stdlib, then transcoded to MP3 (mono, 48 kbps, libmp3lame
-`-compression_level 9` = fastest) via ffmpeg so the volume stays sane when
-many demo visitors generate audio in parallel.
+Python's `wave` stdlib, then transcoded to MP3 (mono, 48 kbps) via the
+`lame` CLI so the volume stays sane when many demo visitors generate
+audio in parallel. We use `lame` instead of `ffmpeg` because ffmpeg's
+Debian trixie install OOM-kills the 4 GB Coolify build VM on cache miss
+(see `.claude/memory/project_coolify_oom_silent_deploys.md`); lame is
+the single-purpose tool that does exactly WAV → MP3 mono encoding.
 
 Voice picks: `sarah` and `theo` for restaurant-style EN US/UK conversations.
 The Wizard / API caller can override per-turn.
 
 Fail-fast: missing `SPEECHMATICS_API_KEY`, an HTTP error from the TTS
-service, a WAV with a non-16kHz mono header, or a failed ffmpeg transcode
+service, a WAV with a non-16kHz mono header, or a failed `lame` transcode
 → raises `TtsError`. The caller persists the failure on
 `simulation_config.audio_status="failed"`.
 """
@@ -86,24 +89,24 @@ def _write_wav(out_path: Path, pcm_frames: bytes) -> None:
 
 
 async def _transcode_wav_to_mp3(wav_path: Path, mp3_path: Path) -> None:
-    """Invoke ffmpeg to encode the WAV into a small mono MP3.
+    """Invoke `lame` to encode the WAV into a small mono MP3.
 
-    `-compression_level 9` picks the fastest libmp3lame quality preset; at
-    48 kbps mono on 16 kHz speech the result is ~10x smaller than the WAV
-    while still intelligible. `-y` lets us overwrite a previous render.
+    Flags: `-m m` forces mono (input is already mono — explicit for
+    safety against a future stereo WAV slipping through), `-b 48` is
+    CBR 48 kbps (speech at 16 kHz is intelligible well below 64 kbps),
+    `-q 7` picks the faster encoding preset on the LAME quality scale
+    (0=best/slow, 9=worst/fastest — 7 is a good speed/quality knee for
+    spoken demo audio), `--quiet` suppresses progress on stderr.
+    Output is ~10x smaller than the WAV.
     """
     mp3_path.parent.mkdir(parents=True, exist_ok=True)
     cmd = [
-        "ffmpeg",
-        "-hide_banner",
-        "-loglevel", "error",
-        "-y",
-        "-i", str(wav_path),
-        "-codec:a", "libmp3lame",
-        "-ac", "1",
-        "-ar", str(SAMPLE_RATE_HZ),
-        "-b:a", "48k",
-        "-compression_level", "9",
+        "lame",
+        "-m", "m",
+        "-b", "48",
+        "-q", "7",
+        "--quiet",
+        str(wav_path),
         str(mp3_path),
     ]
     try:
@@ -114,10 +117,10 @@ async def _transcode_wav_to_mp3(wav_path: Path, mp3_path: Path) -> None:
         )
         _, stderr = await proc.communicate()
     except FileNotFoundError as exc:
-        raise TtsError("ffmpeg is not installed on the backend image") from exc
+        raise TtsError("lame is not installed on the backend image") from exc
     if proc.returncode != 0:
         snippet = (stderr or b"").decode("utf-8", "replace")[:200].replace("\n", " ")
-        raise TtsError(f"ffmpeg transcode failed (rc={proc.returncode}): {snippet}")
+        raise TtsError(f"lame transcode failed (rc={proc.returncode}): {snippet}")
 
 
 async def render_script_to_mp3(

@@ -380,9 +380,10 @@ scenario, same shape as the seed templates) via
 `POST /templates/{id}/simulation/{script,generate-audio,upload-audio}`.
 Each TTS turn comes back from `preview.tts.speechmatics.com` as 16kHz
 mono PCM WAV; we concat the turns with Python's `wave` stdlib and
-transcode the final file to mono 48kbps MP3 (`libmp3lame
--compression_level 9` for fastest encode) so per-template storage stays
-~10x smaller than the raw WAV would. The MP3 is served from a
+transcode the final file to mono 48kbps MP3 via the `lame` CLI
+(`-m m -b 48 -q 7 --quiet`) so per-template storage stays ~10x smaller
+than the raw WAV would. We use `lame` instead of `ffmpeg` because the
+ffmpeg apt install OOM-kills the 4 GB Coolify build VM on cache miss. The MP3 is served from a
 session-scoped endpoint — `<audio src=URL>` cannot carry the
 `X-Demo-Session` header cross-origin, so the app fetches the bytes as a
 `Blob` and feeds the audio element an `URL.createObjectURL(blob)`.
