@@ -19,6 +19,7 @@ Fail-fast on missing GOOGLE_API_KEY or empty Gemini output via
 from __future__ import annotations
 
 import logging
+import re
 from typing import Any, Literal, Optional
 
 from pydantic import BaseModel, Field
@@ -35,6 +36,62 @@ class ScriptBuilderError(RuntimeError):
 
 
 _ALLOWED_VOICES = ("sarah", "theo", "megan", "jack")
+
+# Stop-words that uniquely flag the dialogue as non-English. We trust the
+# system prompt for the happy path, but Gemini sometimes drops back into
+# the template's own language (e.g. "buongiorno" / "salve" when the
+# template name is Italian) and the Speechmatics EN voices then render
+# the audio as gibberish. This list is the safety net: any whole-word
+# match (case-insensitive) raises ScriptBuilderError so the API returns
+# 502 and the operator can retry the generation. Cognates that happen
+# to appear in English ("via", "a", "no", "si") are deliberately
+# excluded; only words that have no neutral English meaning are listed.
+_NON_ENGLISH_STOPWORDS = frozenset(
+    {
+        # Italian
+        "ciao", "salve", "buongiorno", "buonasera", "buonanotte",
+        "prego", "grazie", "scusi", "scusa", "perché", "perche",
+        "sono", "siamo", "siete",
+        "vorrei", "vorremmo",
+        "anche", "molto", "questa", "questo", "quella", "quello",
+        "quindi", "allora", "comunque", "purtroppo", "soltanto", "soprattutto",
+        # Spanish
+        "hola", "buenos", "días", "tardes", "noches", "gracias",
+        "señor", "señora", "señorita", "ustedes",
+        # French
+        "bonjour", "bonsoir", "merci", "voilà", "très", "monsieur", "madame", "mademoiselle",
+        # German
+        "guten", "danke", "bitte", "herr", "frau", "morgen",
+    }
+)
+_WORD_RE = re.compile(r"[a-zà-ÿ']+", re.IGNORECASE)
+
+
+def _validate_english_or_raise(parsed: "_ScriptResponse") -> None:
+    """Reject scripts that contain whole-word non-English markers.
+
+    See `_NON_ENGLISH_STOPWORDS` for the rationale — the system prompt
+    forbids non-English output but Gemini drifts back to the template's
+    declared language whenever the business name is in that language,
+    and Speechmatics EN voices then produce unintelligible audio.
+    """
+    flagged: list[str] = []
+    for scenario_name, scenario in (
+        ("existing", parsed.scenarios_existing),
+        ("new", parsed.scenarios_new),
+    ):
+        for idx, turn in enumerate(scenario.turns):
+            for match in _WORD_RE.findall(turn.text):
+                if match.lower() in _NON_ENGLISH_STOPWORDS:
+                    flagged.append(f"{scenario_name}#{idx} '{turn.text[:60]}…': {match}")
+                    break
+    if flagged:
+        sample = "; ".join(flagged[:3])
+        raise ScriptBuilderError(
+            f"generated script is not English (markers: {sample}). "
+            "Speechmatics TTS preview only exposes EN voices — retry "
+            "the generation."
+        )
 
 CallerMode = Literal["existing", "new"]
 
@@ -94,7 +151,19 @@ SYSTEM_INSTRUCTION = (
     "embarrass anyone if played live.\n\n"
     "Hard rules:\n"
     "- ENGLISH only (UK or US, pick one and stay consistent within a "
-    "scenario). Speechmatics TTS preview only exposes EN voices.\n"
+    "scenario). Speechmatics TTS preview only exposes EN voices, and "
+    "feeding them non-English text produces garbled audio that the ASR "
+    "then transcribes as gibberish, breaking the entire demo.\n"
+    "- This applies even when the template name, description, or domain "
+    "is in another language. Examples: a template called \"Trattoria "
+    "Bella Vita\" or \"Cabinet Dentaire Lumière\" still gets an "
+    "ENGLISH dialogue. Translate the business label into a natural "
+    "English phrasing (\"Bella Vita restaurant\", \"Lumière dental "
+    "office\") or keep the proper noun as-is but switch to English "
+    "immediately. Never write a full operator or caller turn in "
+    "Italian, Spanish, French, German, or any non-English language. No "
+    "\"buongiorno\", \"hola\", \"bonjour\", \"guten tag\" — write "
+    "\"good morning\" or \"hello\" instead.\n"
     "- 6–12 turns per scenario, alternating operator / caller.\n"
     "- Pick two voices per scenario: one for operator, one for caller. "
     f"Allowed voices: {', '.join(_ALLOWED_VOICES)}. Use the SAME operator "
@@ -225,6 +294,7 @@ async def build_simulation_script(template: Template) -> _ScriptResponse:
         raise ScriptBuilderError(f"schema validation failed: {exc}") from exc
     if not parsed.scenarios_new.turns or not parsed.scenarios_existing.turns:
         raise ScriptBuilderError("at least one scenario has no turns")
+    _validate_english_or_raise(parsed)
     return parsed
 
 
