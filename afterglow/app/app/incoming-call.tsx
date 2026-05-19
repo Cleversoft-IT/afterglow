@@ -16,6 +16,7 @@ import {
 } from 'react-native-paper';
 import { api, ApiError } from '../lib/api';
 import { initialsFromName } from '../lib/avatar';
+import { flagFromE164 } from '../lib/flagFromE164';
 import type { AudioDomain } from '../lib/audio';
 import { callGreen, callRed } from '../lib/paperTheme';
 import { setPipelineToast } from '../lib/pipelineToast';
@@ -516,8 +517,8 @@ function CallerContext({
           {`${customer.total_calls} ${customer.total_calls === 1 ? 'call' : 'calls'}`}
         </Chip>
         {customer.preferred_language ? (
-          <Chip compact mode="outlined" icon="translate">
-            {customer.preferred_language.toUpperCase()}
+          <Chip compact mode="outlined">
+            {`${flagFromE164(customer.phone_e164)} ${customer.preferred_language.toUpperCase()}`}
           </Chip>
         ) : null}
         {lastCall ? (
@@ -539,12 +540,7 @@ function CallerContext({
 
       {customer.memory_summary ? (
         <Card mode="elevated" style={{ backgroundColor: theme.colors.elevation.level2 }}>
-          <Card.Title
-            title="Next-call briefing"
-            titleVariant="labelLarge"
-            left={(p) => <Avatar.Icon {...p} icon="lightbulb-on-outline" size={32} />}
-          />
-          <Card.Content>
+          <Card.Content style={{ paddingVertical: 12 }}>
             <Text variant="bodyMedium" numberOfLines={3} style={{ lineHeight: 20 }}>
               {customer.memory_summary}
             </Text>
