@@ -589,7 +589,7 @@ ordering assumption.
 
 ## Multi-visitor demo isolation
 
-The public iframe at `demo.afterglow.cleversoft.it` is reachable concurrently
+The public iframe at `afterglow.cleversoft.it` is reachable concurrently
 by judges, hackathon attendees and crawlers. The product itself is
 single-tenant (one installation = one customer); the demo is a sandbox bolted
 on top of the same backend so visitors do not stomp on each other.

@@ -48,7 +48,7 @@ wins** and this document must be updated in the same commit
 | **Repo** | `https://github.com/Cleversoft-IT/afterglow` (public, MIT) |
 | **Backend** | `https://api.afterglow.cleversoft.it` |
 | **Operator app (Expo web)** | `https://app.afterglow.cleversoft.it` |
-| **Landing + iframe demo** | `https://demo.afterglow.cleversoft.it` |
+| **Landing + iframe demo** | `https://afterglow.cleversoft.it` |
 | **Tracks (lablab.ai)** | Intelligent Reasoning · Agentic Workflows · Enterprise Utility · Multimodal Intelligence |
 | **Partner tracks targeted** | **Vultr** · **Google (Gemini)** · **Speechmatics** |
 | **Partner tracks NOT targeted** | Kraken (out-of-domain) · Featherless (we use Gemini, not Featherless catalog) |
@@ -721,7 +721,7 @@ the video's two-act shape: hook → antithesis → product → proof → close.
 
 * Wordmark **afterglow** (display).
 * The claim: *"Stay in the moment. We handle the after."*
-* `demo.afterglow.cleversoft.it` · `github.com/Cleversoft-IT/afterglow` · MIT.
+* `afterglow.cleversoft.it` · `github.com/Cleversoft-IT/afterglow` · MIT.
 * Partner pills row (final time).
 
 > **Why we dropped QR codes from the original outline:** the slide PDF
@@ -738,7 +738,7 @@ the video's two-act shape: hook → antithesis → product → proof → close.
 
 ### Three live URLs
 
-1. **`https://demo.afterglow.cleversoft.it`** — landing page, the
+1. **`https://afterglow.cleversoft.it`** — landing page, the
    marketing front door. Scroll to the **"Live demo"** section to see
    the operator app in an iframe (390×845 phone frame). On mobile the
    iframe collapses to a CTA — click it to open the app full-screen.
@@ -1238,7 +1238,7 @@ verified.
 * [ ] `https://api.afterglow.cleversoft.it/health` returns 200.
 * [ ] `https://app.afterglow.cleversoft.it` loads, Home renders with
       the busy-week seed data.
-* [ ] `https://demo.afterglow.cleversoft.it` loads, iframe shows the
+* [ ] `https://afterglow.cleversoft.it` loads, iframe shows the
       app, "How to get the most out of this demo" modal works.
 * [ ] `GET /api/v1/admin/rag-stats` returns `preseed_chunks > 0`.
 * [ ] `GET /api/v1/admin/rag-probe?phone=+15552223344` returns
@@ -1273,7 +1273,7 @@ verified.
       lablab** (not YouTube/Drive).
 * [ ] Slide Presentation: upload `afterglow-slides.pdf`.
 * [ ] GitHub Repo URL: filled.
-* [ ] Application URL: `https://demo.afterglow.cleversoft.it`.
+* [ ] Application URL: `https://afterglow.cleversoft.it`.
 * [ ] Demo Application Platform: "Custom — Vultr Cloud Compute via
       Coolify".
 

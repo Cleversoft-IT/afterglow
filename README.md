@@ -149,7 +149,7 @@ System of record: **Vultr Managed Postgres**. Deploy: **Vultr Cloud Compute + Co
 
 #### Demo isolation policy
 
-The public iframe at `demo.afterglow.cleversoft.it` is a multi-visitor
+The public iframe at `afterglow.cleversoft.it` is a multi-visitor
 sandbox: every browser that loads it is stamped with an opaque
 `X-Demo-Session: <uuid>` and every write (calls, customers, audit log,
 executed actions, wizard-generated templates) is scoped to that uuid.
@@ -485,7 +485,7 @@ endpoint `POST /api/v1/templates/wizard` was removed on 2026-05-17.
 
 | What | Where |
 |---|---|
-| Demo site | https://demo.afterglow.cleversoft.it |
+| Demo site | https://afterglow.cleversoft.it |
 | App (Expo web) | https://app.afterglow.cleversoft.it |
 | Backend API | https://api.afterglow.cleversoft.it · `/health` returns `{"status":"ok"}` |
 | Coolify admin | http://95.179.245.107:8000 (plain HTTP; team-only) |
@@ -508,7 +508,7 @@ local podman                git push                   Coolify (Vultr VM, FRA, v
                                                          │   :3000 → app.afterglow.cleversoft.it
                                                          │
                                                          └─ afterglow-demo     (Dockerfile, vite build + nginx)
-                                                             :3000 → demo.afterglow.cleversoft.it
+                                                             :3000 → afterglow.cleversoft.it
                                                                   │
                                                          Vultr Managed Postgres 16 (hobbyist 1GB, FRA)
                                                          trusted-ips: VM /32 + dev IP /32

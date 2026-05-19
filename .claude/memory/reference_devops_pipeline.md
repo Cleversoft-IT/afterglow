@@ -24,7 +24,7 @@ local dev (Fedora podman)  ──git push origin main──▶  github.com/Cleve
                           │                                   │                                   │
                           └─────────────────────────  Traefik + Let's Encrypt  ───────────────────┘
                           ▼                                   ▼                                   ▼
-       https://api.afterglow.cleversoft.it   https://app.afterglow.cleversoft.it   https://demo.afterglow.cleversoft.it
+       https://api.afterglow.cleversoft.it   https://app.afterglow.cleversoft.it   https://afterglow.cleversoft.it
                           │
                           ▼
           Vultr Managed Postgres 16 (FRA, hobbyist 1GB)
@@ -56,7 +56,7 @@ Le risorse sono in regione FRA per latenza Milano. Free trial $250 (balance `-20
 - Applications:
   - `afterglow-backend` (id `lo1010mbgr6s32ag7zy9cngi`) → `https://api.afterglow.cleversoft.it` · base `/backend`
   - `afterglow-app` (id `liibgrkyxw4x1f4nrz8p91g7`) → `https://app.afterglow.cleversoft.it` · base `/app` (Expo SDK 54 + react-native-web, nginx static)
-  - `afterglow-demo` (id `yh9o1m3ro8dg96rahedk9haq`) → `https://demo.afterglow.cleversoft.it` · base `/demo-site` (Vite + React, nginx static, iframes the app)
+  - `afterglow-demo` (id `yh9o1m3ro8dg96rahedk9haq`) → `https://afterglow.cleversoft.it` · base `/demo-site` (Vite + React, nginx static, iframes the app; `demo.afterglow.cleversoft.it` is an alias only)
 - Build pack: **Dockerfile** per tutte e tre
 - Source: GitHub App `afterglow-coolify` — UUID e server UUID nella tabella risorse sopra
 - Auto-deploy: webhook GitHub App alla push su `main`. Build concorrenti: 2 (limite server settings).
@@ -103,7 +103,7 @@ Note di sicurezza: il repo è MIT public — un push accidentale di credenziali 
 7. Verifica:
    - `curl -s https://api.afterglow.cleversoft.it/health` → `{"status":"ok"}`
    - `curl -s https://app.afterglow.cleversoft.it/` → HTML Expo web (200)
-   - `curl -s https://demo.afterglow.cleversoft.it/` → HTML Vite landing (200)
+   - `curl -s https://afterglow.cleversoft.it/` → HTML Vite landing (200)
 
 Lo stato del DB Managed Vultr è **persistente** e indipendente dai redeploy. Il volume audio del backend per ora è dentro il container (non sopravvive ai redeploy; vedi roadmap per persistent volume).
 
@@ -111,5 +111,5 @@ Lo stato del DB Managed Vultr è **persistente** e indipendente dai redeploy. Il
 
 - [ ] Persistent volume per `/var/data/audio` (oggi il submit audio è ephemeral)
 - [ ] `.github/workflows/ci.yml` con `npm run build` + `pytest` smoke
-- [x] ~~Dominio custom + cert Let's Encrypt~~ — done 2026-05-19. Wildcard A `*.afterglow.cleversoft.it` → `95.179.245.107` (zona SiteGround). Le 3 app hanno ciascuna 2 domini in Coolify (sslip + cleversoft) per zero-downtime; sslip resta come fallback nominale ma cleversoft è il canonical.
+- [x] ~~Dominio custom + cert Let's Encrypt~~ — done 2026-05-19. Wildcard A `*.afterglow.cleversoft.it` → `95.179.245.107` (zona SiteGround). Public demo canonical is `afterglow.cleversoft.it`; `demo.afterglow.cleversoft.it` remains an alias only. sslip resta come fallback nominale ma cleversoft è il canonical.
 - [ ] Roll API key dopo la demo (Vultr Inference, Google AI Studio, Speechmatics, Coolify token, Postgres `vultradmin`)
