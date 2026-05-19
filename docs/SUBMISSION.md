@@ -34,6 +34,8 @@ wins** and this document must be updated in the same commit
 13. [Pre-flight submission checklist](#13-pre-flight-submission-checklist)
 14. [Future work — what we are deliberately NOT shipping](#14-future-work--what-we-are-deliberately-not-shipping)
 15. [Source-file reference index](#15-source-file-reference-index)
+16. [Live form schema — verified on lablab.ai](#16-live-form-schema--verified-on-lablabai)
+17. [Decisions — final values to paste into the form](#17-decisions--final-values-to-paste-into-the-form)
 
 ---
 
@@ -201,8 +203,12 @@ the wizard (e.g. a dog groomer template) to show domain adaptability
 
 > Copy each block verbatim into the lablab.ai submission form. Character
 > counts already verified.
+> **Live form constraints verified 2026-05-19** — see §16 for the full
+> page-by-page schema and the option catalogs for Categories /
+> Event Tracks / Technologies. The numbers below come from the live
+> form (Step 1, character counters at the bottom of each textarea).
 
-### Project title (max 50 characters)
+### Project title (min 5, max 50 characters)
 
 ```
 Afterglow — we handle the after
@@ -210,7 +216,11 @@ Afterglow — we handle the after
 
 (31 chars, within the 50-char limit.)
 
-### Short description (max 255 characters)
+> **Current draft on lablab:** `Afterglow` (9 chars). Decide if we
+> keep the bare wordmark or extend to the tagline — both pass the
+> minimum.
+
+### Short description (min 50, max 255 characters)
 
 ```
 A drop-in phone for small businesses. The human stays on the call — the moat. After they hang up, an agentic AI loop extracts the booking, runs the follow-ups (WhatsApp, CRM), writes the next-call briefing. Stay in the moment. We handle the after.
@@ -218,7 +228,15 @@ A drop-in phone for small businesses. The human stays on the call — the moat. 
 
 (247 chars.)
 
-### Long description (min 100 words)
+### Long description (min 600, max 2000 characters)
+
+> ⚠️ **The draft below is 2542 chars** — over the 2000-char cap by
+> ~27%. Must be trimmed before paste-in. The previous "min 100 words"
+> note was wrong (the form measures characters, not words, and
+> enforces a hard ceiling). Suggested cuts: collapse the market-sizing
+> paragraph into one sentence and drop the "Single-tenant" paragraph
+> (already covered in slide 4 + the video). Target ~1900 chars to
+> leave room for tweaks.
 
 ```
 A call ends. Something else begins. A booking to enter, a confirmation to send, an allergy to remember, a briefing for the next call. Today, every small business handles that after with post-its, short-term memory, and a second tab "just in case". The current AI answer is to replace the human with a voice agent. That solves the wrong problem. The reason a customer dials a small business instead of clicking a form is the human. Replace the human, kill the moat.
@@ -290,24 +308,54 @@ slots, emergencies and rescheduling.
 
 ### Technology tags (must tag every partner you want to be judged by)
 
-* `Google Gemini`
-* `Google ADK`
-* `Vultr`
-* `Vultr Serverless Inference`
-* `Vultr Vector Store`
-* `Speechmatics`
-* `PostgreSQL`
-* `Python`
-* `FastAPI`
-* `React Native`
-* `Expo`
-* `TypeScript`
-* `MIT License`
+> The lablab catalog is an **AI-tech curated list** (185 entries — see
+> §16 for the full inventory). Generic stack labels like Python /
+> FastAPI / React Native / TypeScript / PostgreSQL / MIT do **not
+> exist** in the catalog and cannot be tagged. Don't try to add them
+> as free-text — the picker is `isMultiple + isSearchable` over the
+> fixed list.
+
+Tag exactly these (all confirmed present in the live catalog):
+
+* `Vultr` — covers every Vultr surface (no separate Vector Store /
+  Serverless Inference entries exist).
+* `Speechmatics api` — covers batch STT and TTS Preview. (There is
+  also a `Speechmatics flow` entry, but we don't use Flow.)
+* `Gemini 3 Flash` — closest match for "Gemini 3.1 Flash Lite". The
+  catalog also has `Gemini 3 pro` and `Gemini AI`; pick `Gemini 3
+  Flash` as the primary, and we may add `Gemini AI` as a secondary
+  to be sure we get bucketed into the Google judging pool.
+* `AI Studio` — represents the Google AI Studio + ADK surface. The
+  catalog has **no** `Google ADK` entry; `AI Studio` is the closest
+  publicly Google-branded option (alternative: `Generative AI
+  Studio`).
+
+**Current draft on lablab has only `Vultr` + `Speechmatics api`** —
+the Gemini / AI Studio tags are MISSING and must be added before
+Submit or we lose Google-prize eligibility (cf. Joan's Q&A: untagged
+tech is not judged).
 
 ### Tracks
 
-Tag at minimum: **Intelligent Reasoning**, **Agentic Workflows**,
-**Enterprise Utility**, **Multimodal Intelligence** (we ingest audio).
+Tag at minimum the partner tracks we are competing for:
+
+* **Intelligent Reasoning**
+* **Agentic Workflows**
+* **Enterprise Utility**
+* **Vultr** (partner track)
+* **Google Track** (partner track)
+* **Speechmatics** (partner track)
+
+`Multimodal Intelligence` was in our previous wishlist but is **not
+yet selected** in the draft — debatable whether to add it (we ingest
+audio, but the call itself is the only modality and the agent
+operates on transcript text). Decision: **skip for now**, the three
+content tracks above already place us in the "Application of
+Technology" pool, and adding multimodal-without-vision risks looking
+overreaching.
+
+**Current draft on lablab has all 6 of the above already selected.**
+✓ No change needed here.
 
 ### Cover image spec
 
@@ -321,7 +369,13 @@ Tag at minimum: **Intelligent Reasoning**, **Agentic Workflows**,
 
 ### Participation type
 
-* **Online** (no team member on-site at Fiera Milano Rho).
+* The live form exposes only `Online` and `Onsite` radios — there is
+  **no `Hybrid` option** (the docs/hackathon-reference page is wrong
+  on this; the event itself is HYBRID per `formConfig.eventType`,
+  but each team picks one).
+* Pick **`Onsite`** — the team is in Milan today (2026-05-19).
+* **Current draft on lablab already has `ONSITE` selected.** ✓ No
+  change needed.
 
 ---
 
@@ -1228,7 +1282,7 @@ verified.
 
 * [ ] **Video pitch MP4** — ≤5:00, ≤300 MB, 1080p min. Filename:
       `afterglow-pitch.mp4`. Recorded per the §4 script.
-* [ ] **Slide PDF** — ~9 slides per §5. Filename: `afterglow-slides.pdf`.
+* [ ] **Slide PDF** — 10 slides per §5. Filename: `afterglow-slides.pdf`.
       Max 5 MB.
 * [ ] **Cover image** — 16:9 PNG, per §3 spec. Filename:
       `afterglow-cover.png`. Max 500 KB.
@@ -1267,7 +1321,7 @@ verified.
       counter).
 * [ ] Tracks: tag all 4 from §1.
 * [ ] Technology tags: tag every entry in §3.
-* [ ] Participation Type: **Online**.
+* [ ] Participation Type: **Onsite** (team is at Fiera Milano Rho on 2026-05-19).
 * [ ] Cover Image: upload `afterglow-cover.png`.
 * [ ] Video Presentation: upload `afterglow-pitch.mp4` **directly to
       lablab** (not YouTube/Drive).
@@ -1277,11 +1331,18 @@ verified.
 * [ ] Demo Application Platform: "Custom — Vultr Cloud Compute via
       Coolify".
 
-### Submit ≥24h before deadline
+### Submit ASAP — the 24h safety window has lapsed
 
-* [ ] First **Submit** clicked by **2026-05-18 17:00 CEST**.
-* [ ] Sanity-check the public submission page renders correctly.
-* [ ] Edit until 2026-05-19 17:00 CEST as needed.
+The original target ("first Submit by 2026-05-18 17:00 CEST") was
+missed. We are now on the deadline day (2026-05-19, deadline 17:00
+CEST). Operational priority is therefore:
+
+* [ ] First **Submit** clicked **today, as soon as the MP4 video is
+      ready** — even if the deck/copy still need a polish pass. The
+      lablab form is editable after first Submit until the deadline.
+* [ ] Sanity-check the public submission page renders correctly
+      (cover loads, PDF opens, video plays inline, all URLs clickable).
+* [ ] Final edit pass before 2026-05-19 17:00 CEST.
 
 ### Day-of (2026-05-19)
 
@@ -1407,6 +1468,470 @@ authoritative source for each topic.
 * `07-judging-criteria.md` — the 4 criteria.
 * `12-vultr-deep-dive.md` — Vultr award playbook.
 * `13-gemini-deep-dive.md` — Gemini award playbook.
+
+---
+
+## 16. Live form schema — verified on lablab.ai
+
+> Captured **2026-05-19** by inspecting the React state of the live
+> form at
+> `https://lablab.ai/ai-hackathons/milan-ai-week-hackathon/claudio-opuscoli/submission`.
+> Everything in this section comes from `formConfig` and the
+> server-side draft snapshot (`data`) attached to the page React
+> tree. The
+> [`docs/hackathon-reference/06-what-to-submit.md`](hackathon-reference/06-what-to-submit.md)
+> notes were partially out of date — when this section disagrees
+> with that file, **this section wins**.
+
+### 16.1 The form has 3 pages
+
+`formConfig.layout.pages`:
+
+| # | Page title | Description | Fields |
+|---|---|---|---|
+| 1 | Basic Information | Tell us about your project | `title`, `shortDescription`, `description`, `submissionType`, `categories`, `tracks`, `technologies`, `social_media_post_link_1..5` |
+| 2 | Media | Upload your demo video, cover image, and pitch deck | `imageLink`, `videoLink`, `presentationLink` |
+| 3 | Application | Share your code and live demo | `repoLink`, `demoPlatform`, `demoUrl`, `kraken_api_key_read_only` *(optional)*, `kraken_account_id_username` *(optional)*, `additionalInfo` |
+
+`formConfig.standardOverrides` for this event:
+
+* `submissionType` — options: `Online`, `Onsite` (no Hybrid).
+* `tracks` — NOT required.
+* `repoLink` — NOT required (we will set it anyway).
+* `demoPlatform` — NOT required (we will set it anyway).
+
+`eventName: "AI Agent Olympics Hackathon"`,
+`eventType: "HYBRID"` (the event is hybrid; per-team participation
+is still Online or Onsite).
+
+### 16.2 Page 1 — character limits and required fields
+
+| Field | Min | Max | Required? | Notes |
+|---|---|---|---|---|
+| `title` | 5 | 50 | ✅ | Plain text. |
+| `shortDescription` | 50 | 255 | ✅ | One-liner. |
+| `description` | **600** | **2000** | ✅ | Characters, **not words**. Cap is hard. |
+| `submissionType` | — | — | (validation: see overrides) | Radio: `Online` \| `Onsite`. |
+| `categories` | 1 | (no cap visible) | ✅ | Multi-select over 119 entries — see §16.5. |
+| `tracks` | 0 | (no cap) | ❌ | Multi-select over 10 entries — see §16.6. |
+| `technologies` | 1 | (no cap) | ✅ | Multi-select over 185 entries — see §16.7. |
+| `social_media_post_link_1..5` | — | — | ❌ | URL fields, optional, type=URL. |
+
+### 16.3 Page 2 — Media
+
+Three upload fields: `imageLink`, `videoLink`, `presentationLink`.
+The form is gated by Page 1 validation — we couldn't reach Page 2
+during the readonly inspection without filling the required fields,
+so the exact `accept` / `maxSizeMB` constraints aren't visible from
+the page-1 React state. Use the canonical lablab limits from
+`docs/hackathon-reference/06-what-to-submit.md` as authoritative:
+
+* Cover image: PNG/JPG, 16:9, ≤500 KB recommended.
+* Video: MP4, ≤5:00, ≤300 MB, **direct upload** (no YouTube/Drive).
+* Presentation: PDF, sintetico.
+
+We will verify the page-2 hard limits the moment Page 1 is filled
+in.
+
+### 16.4 Page 3 — Application
+
+| Field | Type | Required? | Notes |
+|---|---|---|---|
+| `repoLink` | URL | ❌ (we set it) | `https://github.com/Cleversoft-IT/afterglow` |
+| `demoPlatform` | text/select | ❌ (we set it) | "Custom — Vultr Cloud Compute via Coolify" (or the closest select option). |
+| `demoUrl` | URL | ✅ (implied) | `https://afterglow.cleversoft.it` |
+| `kraken_api_key_read_only` | text | ❌ | Leave empty — we don't compete in the Kraken challenge. |
+| `kraken_account_id_username` | text | ❌ | Leave empty — same reason. |
+| `additionalInfo` | text | ❌ | Free-form. Good place to drop the market-sizing notes (§3) and the "submit ≥24h" apology if needed. |
+
+### 16.5 Categories — the full 119-option list
+
+> Multi-select, searchable. **Currently 0 selected on the draft —
+> required, must pick at least one.** The list mixes Afterglow-
+> applicable industry categories with category-shaped tags reserved
+> for other partner sub-tracks (e.g. `Qubic Track - Raise`,
+> `Prosus Track - Raise`, `Blackbox AI Track - Raise`, `Vultr Track
+> - Raise`) — those Raise-namespace entries belong to a different
+> hackathon series; **do not pick them**.
+
+**Recommended picks for Afterglow** (5–6 is enough, more dilutes
+the signal):
+
+* `Customer Support` — primary fit (post-call follow-ups for SMBs).
+* `Business` — generic, helps discoverability.
+* `Voice Assistant` — we ingest voice (close fit to the audio
+  pipeline).
+* `Communication` — call workflows.
+* `Productivity` — the operator UX is a productivity surface.
+* *(optional)* `Healthcare` — dentist preset; pick only if we lean
+  on the dental demo.
+* *(optional)* `Food` — restaurant preset; pick only if we lean on
+  Mark Ross / restaurant demo.
+
+Full alphabetical inventory of the 119 options (verbatim labels —
+case and punctuation matter when searching the picker):
+
+`Advertising`, `Agent Builder track - The INTERNET OF AGENTS`,
+`App Builder track - The INTERNET OF AGENTS`, `Art`, `Assistant`,
+`Augmented Reality`, `Automotive`, `Beauty`,
+`Blackbox AI Track - Raise`, `Book and eBook Reading`,
+`Browser Extension`, `Business`, `Career Development`, `Chatbot`,
+`Climate`, `Cloud Application`, `Code Generation`, `Coding`,
+`Coding excellence`, `Communication`,
+`Conduct(or) X Raise Track - Raise`, `Connectivity`, `Content`,
+`Cooking`, `Copywriting`, `Customer Support`, `Data Mastery`,
+`Dating`, `Design`, `Designer Tool Plugin`, `Desktop Application`,
+`Developer Tools`, `Documents`, `Drink`, `Ecommerce`, `Education`,
+`Email`, `Entertainment`, `Environmental`, `Events`, `Family`,
+`Fashion`, `Finance`, `Fitness`, `Food`, `Game Developement` (sic),
+`Game Engine Extension`, `Games`, `Healthcare`, `Home`,
+`Home Automation`, `Humor`, `IDE Extension`,
+`Innovation Network Design & Strategic Planning`, `Investment`,
+`Job Search`, `Knowledge Base`, `Language and Translation`,
+`Language Learning`, `Late submission`, `Legal`, `Lifestyle`,
+`Marketing`, `Marketplaces`, `Mental Health`, `Mobile Application`,
+`Music and Audio`, `Network Decommissioning and Transition`,
+`Network Implementation and Deployment`,
+`Network Operations and Maintenance`,
+`Network Optimization and Upgrades`,
+`Network Planning and Design`, `News and Information`,
+`Next Generation Telecommunications Solutions`, `Non-Profit`,
+`Online`, `Onsite`, `Open-ended Agent Protocol`,
+`Operating System (OS) Utility`, `Optimizing Resource Allocation`,
+`Parenting`, `Personal Finance`, `Pet and Animal Care`,
+`Photography`, `Planning`, `PreExistingProject`,
+`Procurement & Policy`, `Productivity`, `ProjectFromScratch`,
+`Project Management`, `Prosus Track - Raise`,
+`Qualcomm Track - Raise`, `Qubic EasyConnect Integrations`,
+`Qubic Nostromo Launchpad`, `Qubic Track - Raise`, `Real Estate`,
+`Recruitment`, `Relaxation`,
+`Returning Project - Giga Hackathon 1`, `Scrape and Synthesize`,
+`Security`, `Seo`, `Shopping`, `Social Media`, `Sports`,
+`Summarization`, `Sustainability`,
+`Transportation and Delivery`, `Travel`, `Utility and Tools`,
+`Video`, `Virtual Assistant`, `Virtual Reality`, `Voice Assistant`,
+`Vultr Track - Raise`, `Weather Forecasting`, `Web Application`,
+`Web Scraping & Data Extraction`, `Writing`.
+
+### 16.6 Event Tracks — the full 10-option list
+
+> Multi-select, not required. Currently **6 selected on the draft
+> ✓** (Intelligent Reasoning, Agentic Workflows, Enterprise Utility,
+> Vultr, Google Track, Speechmatics).
+
+| Option | In draft? | Comment |
+|---|---|---|
+| `Agentic Workflows` | ✅ | Core fit. |
+| `Collaborative Systems` | ❌ | Not us — single agent loop, not multi-agent collaboration. |
+| `Enterprise Utility` | ✅ | SMB operations product. |
+| `Featherless AI` | ❌ | We don't use Featherless. |
+| `Google Track` | ✅ | Partner prize (Gemini). |
+| `Intelligent Reasoning` | ✅ | Loop self-corrects, RAG-on-demand. |
+| `Kraken` | ❌ | Out of domain. |
+| `Multimodal Intelligence` | ❌ | Borderline (audio in → text reasoning); skip for now. |
+| `Speechmatics` | ✅ | Partner prize (batch STT + TTS Preview). |
+| `Vultr` | ✅ | Partner prize (4 surfaces). |
+
+### 16.7 Technologies Used — the full 185-option list
+
+> Multi-select, searchable, **required**. Currently 2 selected:
+> `Vultr`, `Speechmatics api`. **Must add Gemini + AI Studio** to
+> unlock Google judging.
+
+Recommended final tag set (4 entries):
+
+1. `Vultr`
+2. `Speechmatics api`
+3. `Gemini 3 Flash` (primary Gemini tag — closest to "Gemini 3.1 Flash Lite")
+4. `AI Studio` (closest publicly Google-branded surface for ADK; no `Google ADK` entry exists)
+
+Optional secondaries to consider:
+
+* `Gemini AI` — adding it alongside `Gemini 3 Flash` widens the
+  Google-bucket match.
+* `Generative AI Studio` — alternative to `AI Studio`.
+
+Full alphabetical inventory of all 185 catalog entries (verbatim
+labels):
+
+`AgentOps`, `AI21 Labs`, `Ai71`, `AI/ML API`, `AI Studio`,
+`Alpaca`, `AMD Developer Cloud`, `AMD ROCm`, `Anthropic Claude`,
+`Antigravity`, `Arc`, `Arize`, `Assistants API`, `AudioCraft`,
+`AutoGen`, `Auto-GPT`, `Aws`, `AWS SageMaker`, `BabyAGI`, `Bert`,
+`Camel`, `CAMEL-AI`, `ChatGPT`, `Chirp`, `Chroma`, `Circle`,
+`Clarifai`, `Claude Code`, `Cloudflare Workers AI`, `Codex`,
+`Codey`, `Codium`, `Cohere Classify`, `Cohere Coral`,
+`Cohere Embed`, `Cohere Generate`, `Cohere Neural Search`,
+`Cohere Rerank`, `complete`, `Composio`, `Coral Protocol`,
+`CrewAI`, `Crossmint`, `Cursor`, `Custom GPTs`, `DALL-E-2`,
+`DALL·E Image Generation API`, `Dall-e Mini`, `Databutton`,
+`Deepmind`, `DeepSeek R1`, `DeepSeek V3`, `EasyOCR`, `ElevenLabs`,
+`Falcon`, `Falcon 2 11B`, `Falcon 2 11B VLM`, `Featherless`,
+`Fetch.ai`, `FineTuner.ai`, `Fuyu-8B`, `Gan`, `Gemini 3 Flash`,
+`Gemini 3 pro`, `Gemini AI`, `Gemma`, `Gemma 2`,
+`Generative Agents`, `Generative AI Studio`, `Get3d`, `Godmode AI`,
+`Gorilla`, `GPT-3`, `GPT-3.5`, `GPT-4`, `gpt4all`, `GPT 4o`,
+`GPT-4 Vision`, `GPT-5`, `Grok`, `Groq`,
+`Grounded-Segment-Anything`, `HuggingFace Hub`,
+`HuggingFace Spaces`, `Ibm`, `IBM Granite`,
+`IBM watsonx Assistant`, `Imagen`, `kiro`, `Kraken cli`,
+`Kraken Ink`, `Kraken Websocket api`, `LangChain`, `langflow`,
+`LLaMA`, `Llama 2`, `Llama 3`, `Llama 3.1`, `Llama 3.2`, `Llama 4`,
+`LlamaIndex`, `LLavA`, `Lobster Trap`, `LTM-2-mini`, `MetaGPT`,
+`MindsDB Knowledge Base`, `Mistral AI`, `Model Garden`,
+`Monday AI Assistant`, `Monday.com`, `MongoDB`, `MultiOn`, `n8n`,
+`Nebius`, `Novita`, `Nvidia`, `o1`, `OpenAI`, `OpenAI gym`,
+`openclaw`, `OpenELM`, `OpenGPTs`, `open-interpreter`, `Opus`,
+`PaLM`, `Phi-3`, `Pinecone`, `Point-E`, `Portkey`, `privateGPT`,
+`Qdrant`, `Qubic`, `Qwen3`, `Qwen3-Coder`, `Qwen3-MT`,
+`Qwen3-VL`, `Qwen-Image-2.0`, `Redis`, `Reinforcement Learning`,
+`Replit`, `Restack`, `rest api`, `Rhymes.ai`, `SambaNova`,
+`SDXL Turbo`, `SeamlessM4T`, `Shap-E`, `Snowflake`,
+`Solar Pro Preview`, `Solo Tech`, `Speechmatics api`,
+`Speechmatics flow`, `StableCode`, `Stable Diffusion`,
+`Stable Dreamfusion`, `Stable LM`, `Stable Video`, `Streamlit`,
+`SuperAGI`, `Text Generation Web UI`, `TinyLlama`, `Together AI`,
+`Tonic.ai`, `Toolhouse`, `Trae IDE`, `TruLens`, `Twelve Labs`,
+`Unstructured IO`, `Upstage`, `Vectara`, `Vectorboard 💛`,
+`Vercel`, `Vultr`, `watsonx.ai`, `Weaviate`, `WebGPU`, `Webots`,
+`Whisper`, `x402`, `Yi-LLMS`, `YOLOv5`, `YOLOv6`, `YOLOv7`,
+`YOLOv8`, `Zilliz`.
+
+### 16.8 Server-side draft snapshot (as of 2026-05-19, edit version 5)
+
+For reference — what the lablab server thinks our draft looks like
+right now (before we touch it):
+
+| Field | Server state | Action needed |
+|---|---|---|
+| `title` | `"Afterglow"` (9 chars) | Optional: extend to `Afterglow — we handle the after` |
+| `shortDescription` | `null` | **Fill** with §3 short description |
+| `description` | `""` | **Fill** with §3 long description, **trimmed to ≤2000 chars** |
+| `submissionType` | `"ONSITE"` | ✓ correct — team is in Milan today |
+| `categories` | `[]` | **Add 5–6** from §16.5 recommendation |
+| `eventTracks` | 6 entries (Intelligent Reasoning, Agentic Workflows, Enterprise Utility, Vultr, Google Track, Speechmatics) | ✓ no change |
+| `techIn` | `[Vultr, Speechmatics api]` | **Add** `Gemini 3 Flash`, `AI Studio` |
+| `social_media_post_link_*` | all empty | Leave empty unless we post on Twitter/LinkedIn for the Speechmatics social bonus |
+| `imageLink` | `null` | Upload `submission/afterglow-cover.png` |
+| `videoLink` | `null` | Upload `submission/afterglow-pitch.mp4` (in regeneration) |
+| `presentationLink` | `""` | Upload `submission/afterglow-slides.pdf` |
+| `repoLink` | `null` | `https://github.com/Cleversoft-IT/afterglow` |
+| `demoPlatform` | `null` | "Custom — Vultr Cloud Compute via Coolify" (or closest select option) |
+| `demoUrl` | `null` | `https://afterglow.cleversoft.it` |
+| `additionalInfo` | `null` | Optional — drop the §3 market-sizing notes here. |
+| `isDraft` | `true` | Will flip to `false` when we click Submit. |
+
+Team identity (from the draft): team slug `claudio-opuscoli`,
+team picture / Discord channel already set. Draft was first created
+on **2026-05-15 13:25 UTC** and last touched on
+**2026-05-18 21:36 UTC** (edit version 5).
+
+---
+
+## 17. Decisions — final values to paste into the form
+
+> Living checklist written **2026-05-19** while inspecting the live
+> form together. Each row is one of:
+>
+> * **[DECIDED]** — value is locked, paste verbatim.
+> * **[PROPOSED]** — value drafted, awaiting team sign-off before
+>   paste-in.
+> * **[OPEN]** — still needs discussion.
+>
+> When a row flips to DECIDED, do not silently revise it later —
+> open a new discussion. The point of this section is to stop the
+> "I changed my mind in the form and forgot to update the doc"
+> failure mode.
+
+### 17.1 `title` — [DECIDED]
+
+```
+Afterglow — Stay in the moment
+```
+
+* 30 / 50 chars.
+* Why over `Afterglow — we handle the after`: the half-claim is more
+  evocative (Apple/Linear-flavored) and pairs cleanly with the
+  short description which already says "we handle the after" — no
+  need to duplicate.
+* Why over the bare `Afterglow` (9 chars): the listing card on
+  lablab is a sea of single-word project names; a half-line of
+  poetic copy makes us scan-stop without spelling out the product
+  (the short description does that).
+* Server currently has `Afterglow` — update on Page 1.
+
+### 17.2 `shortDescription` — [DECIDED]
+
+```
+A drop-in phone for small businesses. The human stays on the call — the moat. After they hang up, an agentic AI loop extracts the booking, runs the follow-ups (WhatsApp, CRM), writes the next-call briefing. Stay in the moment. We handle the after.
+```
+
+* 247 / 255 chars, well over the 50-char minimum.
+* Same copy as §3. Server currently empty — fill on Page 1.
+
+### 17.3 `description` — [DECIDED]
+
+> 1783 / 2000 chars (headroom 217). Hybrid structure: pitch paragraph
+> → use-case paragraph → technical loop paragraph → stack/license
+> line → USP + claim. Decided with the team on 2026-05-19 after
+> rejecting (a) a longer narrative-only variant and (b) a
+> tech-first variant.
+
+```
+A call ends. Something else begins. A booking to enter, a confirmation to send, an allergy to remember, a briefing for the next call. The current AI answer is to replace the human with a voice agent — but the reason a customer dials a small business is the human. Replace the human, kill the moat. We don't replace the call. We replace the after.
+
+Afterglow is a drop-in phone app for booking-driven SMBs — restaurants, dental clinics, body shops, hair salons, dog groomers, garages, tutoring studios. The operator picks up live. The moment they hang up, an agentic loop runs in the background and lands a structured extraction + a one-sentence next-call briefing on the customer's record. The next time the same number calls, the operator's screen already knows the context — gluten-free, anniversary, Bichon Frisé, previous diagnosis — without anyone typing.
+
+Under the hood: Speechmatics transcribes with diarization on; a Gemini 3 Flash agent in Google ADK runs up to 12 turns over the transcript, calling typed tools — re-read a segment, query the customer's prior-call memory through Vultr's Vector Store via Serverless Inference RAG, execute booking / WhatsApp / calendar / payment / CRM / review action tools whose payloads are validated against a per-template JSON Schema, flag for review, or finalize. Each action result feeds back into the next turn so the model can self-correct, capped at two attempts. The full reasoning trail is a first-class UI surface, auditable turn by turn.
+
+Single-tenant. Deployed on Vultr (Cloud Compute + Managed Postgres + Vector Store + Serverless Inference) through Coolify, auto-deploy on push to main. MIT.
+
+USP vs CallRail / Aircall / Dialpad AI: we don't replace the human. We replace the after. Stay in the moment. We handle the after.
+```
+
+Sign-off check before paste: re-count chars after any tweak, target
+≤ 1990 so the form validator doesn't bite on a stray space.
+
+### 17.4 `submissionType` — [DECIDED]
+
+* **`Onsite`** — the team (4 people) is at Fiera Milano Rho today,
+  2026-05-19.
+* Server already has `ONSITE`. ✓ no change.
+
+### 17.5 `categories` — [DECIDED]
+
+> Multi-select, required (1+). All 7 entries below are verified
+> verbatim against the 119-option catalog in §16.5.
+> Decided 2026-05-19: functional-five plus the two seed verticals
+> with the largest catalog match (dentist → Healthcare, restaurant
+> → Food). Body shop has no direct match (`Automotive` would skew
+> the read toward car-tech, not auto-repair SMBs) so we skip it.
+
+| Pick | Why |
+|---|---|
+| `Customer Support` | Most accurate single label — post-call extract + follow-ups is exactly the customer-support workflow. |
+| `Voice Assistant` | We ingest voice; the agent is invoked by a phone call. Different from "Assistant" because we are explicitly voice-led. |
+| `Communication` | The phone is the communication channel; covers WhatsApp / email follow-ups too. |
+| `Productivity` | The operator UX is a productivity surface (zero-typing, briefing-already-there). |
+| `Business` | Generic SMB tag — helps discoverability on the lablab apps directory after the event. |
+| `Healthcare` | Covers the dentist preset (one of the 3 seed templates). |
+| `Food` | Covers the restaurant preset (one of the 3 seed templates). |
+
+Deliberately **not picked**:
+
+* `Automotive` — body shop preset would map here, but the label
+  reads as "car-tech / self-driving" in this catalog and skews the
+  read away from "SMB auto-repair".
+* `Chatbot`, `Assistant` — Afterglow is not a chatbot; the
+  operator-Customer conversation is a real human phone call.
+* `*-Raise` / `Internet of Agents` / `Qubic*` / `Kraken*` — those
+  are reserved for partner sub-tracks we don't compete in.
+
+### 17.6 `tracks` — [DECIDED]
+
+* Keep the 6 already selected: `Intelligent Reasoning`,
+  `Agentic Workflows`, `Enterprise Utility`, `Vultr`, `Google Track`,
+  `Speechmatics`.
+* Do **not** add `Multimodal Intelligence` (we ingest audio but the
+  agent operates on transcript text — overreach).
+* Do **not** add `Collaborative Systems` (single agent, not
+  multi-agent collaboration).
+
+### 17.7 `technologies` — [DECIDED]
+
+Final tag set (5 entries):
+
+1. `Vultr` — already in server draft. ✓
+2. `Speechmatics api` — already in server draft. ✓
+3. **`Gemini 3 Flash`** — ADD. Primary Gemini tag, closest available
+   label to the production model `Gemini 3.1 Flash Lite`.
+4. **`Gemini AI`** — ADD. Secondary, generic-Gemini bucket — in case
+   the Google judging filter looks for the umbrella label rather
+   than the specific model.
+5. **`AI Studio`** — ADD. Closest publicly Google-branded label for
+   the ADK surface (no `Google ADK` exists in the catalog).
+
+Rationale for the triple-Google approach: per Joan's Q&A on 2026-05-13,
+untagged tech is not judged. Each of the three Google labels covers
+a different judging-filter shape (specific model, family, surface)
+so we maximize coverage at zero cost. Risk of "keyword stuffing"
+read is low — three Google labels for a project that genuinely uses
+Gemini-via-ADK is honest, not spammy.
+
+Drop from previous wishlist (they are NOT in the lablab catalog and
+cannot be tagged): `Google ADK`, `Vultr Vector Store`,
+`Vultr Serverless Inference`, `PostgreSQL`, `Python`, `FastAPI`,
+`React Native`, `Expo`, `TypeScript`, `MIT License`.
+
+### 17.8 `imageLink` / `videoLink` / `presentationLink` — [DECIDED]
+
+| Field | File | Status |
+|---|---|---|
+| `imageLink` | `submission/afterglow-cover.png` (1920×1080 PNG, 286 KB) | ready |
+| `videoLink` | `submission/afterglow-pitch.mp4` | **in regeneration** — wait |
+| `presentationLink` | `submission/afterglow-slides.pdf` (10 pages, 1.40 MB) | ready |
+
+### 17.9 `repoLink` — [DECIDED]
+
+```
+https://github.com/Cleversoft-IT/afterglow
+```
+
+* Verified public + MIT + `main` is default branch + pushed today.
+
+### 17.10 `demoPlatform` — [OPEN — depends on whether field is a free-text or a select]
+
+* Preferred value (free-text):
+  `Custom — Vultr Cloud Compute via Coolify`
+* If the form forces a select (we'll see on Page 3): pick `Vultr`
+  if present; otherwise `Custom` / `Other`.
+* Server is currently `null`.
+
+### 17.11 `demoUrl` — [DECIDED]
+
+```
+https://afterglow.cleversoft.it
+```
+
+* The landing page that iframes the operator app. Single canonical
+  URL for judges.
+
+### 17.12 `additionalInfo` — [DECIDED]
+
+> Hybrid format: 2 lines of market sizing (Business Value criterion,
+> 25%) + 2 lines of agentic proof-points (Application of Technology
+> criterion, another 25%). Each half is one paragraph the judge can
+> verify in 60 seconds without leaving the form.
+
+```
+Market: ~478k Italian booking-led SMBs, ~185k phone-led, €50/seat/mo → ~€110M Italian SAM/year baseline. Expansion: FR · DE · UK · ES · US service economy.
+
+Agentic, verifiable in 60s: /admin/rag-probe returns non-zero input_tokens (Vultr billing); any completed-call audit log shows a validation_failed → re-emit → finalize turn chain; each ExecutedAction carries payload.agent_turn for deterministic correlation.
+```
+
+(414 chars.)
+
+### 17.13 `social_media_post_link_1..5` — [DECIDED]
+
+* Leave **all 5 empty.** We aren't competing in the Kraken Social
+  Engagement track and we don't have a public X / LinkedIn launch
+  thread that benefits us in the judging. (If a teammate posts a
+  launch tweet later, we can paste the URL on Page 1 before the
+  17:00 cut-off.)
+
+### 17.14 `kraken_api_key_read_only` + `kraken_account_id_username` — [DECIDED]
+
+* Leave **both empty.** We are not in the Kraken track.
+
+### 17.15 Submit timing — [DECIDED]
+
+1. Fill Pages 1 + 3 ASAP today **without waiting for the video**.
+   The form supports `save draft` per Joan, so we get a green
+   "submission visible" state on the public page even before the
+   MP4 lands.
+2. As soon as `afterglow-pitch.mp4` is ready, return to Page 2,
+   upload, click Submit.
+3. Sanity-check the public submission page before 16:50 CEST.
 
 ---
 
