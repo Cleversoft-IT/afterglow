@@ -15,37 +15,59 @@ const fs = require('fs');
 const path = require('path');
 
 const ROOT = path.resolve(__dirname, '..', '..');
-const SVG_PATH = path.join(ROOT, 'demo-site', 'public', 'icon-source.svg');
 const OUT_DIR = path.join(ROOT, 'demo-site', 'public');
 
+// Two icon sources:
+//
+//  - icon-source.svg   — rounded-rect badge with transparent background.
+//                        Used for the browser-tab favicon, where the
+//                        rounded corner is part of the visual.
+//
+//  - icon-maskable.svg — full-bleed (no rounded corners, no transparency)
+//                        with the glyph inside the 80% safe-zone. Used
+//                        for everything an OS will mask or place on its
+//                        own background: PWA install icons (Android +
+//                        Chrome desktop install) and Apple Touch icons
+//                        (iOS draws its own rounded-square over a fill).
+const SVG_BADGE     = fs.readFileSync(path.join(OUT_DIR, 'icon-source.svg'),   'utf8');
+const SVG_MASKABLE  = fs.readFileSync(path.join(OUT_DIR, 'icon-maskable.svg'), 'utf8');
+
 const targets = [
-  { size: 16,  out: 'favicon-16.png' },
-  { size: 32,  out: 'favicon-32.png' },
-  { size: 180, out: 'apple-touch-icon.png' },
-  { size: 192, out: 'icon-192.png' },
-  { size: 512, out: 'icon-512.png' },
+  { source: SVG_BADGE,    size: 16,  out: 'favicon-16.png',         omitBg: true  },
+  { source: SVG_BADGE,    size: 32,  out: 'favicon-32.png',         omitBg: true  },
+  // Apple Touch icon: iOS adds its own rounded mask on top of an
+  // opaque tile. A transparent png leaves "holes" where iOS expected
+  // a fill — so render from the maskable source.
+  { source: SVG_MASKABLE, size: 180, out: 'apple-touch-icon.png',   omitBg: false },
+  // Standard PWA icons — `purpose: "any"` in the manifest.
+  { source: SVG_BADGE,    size: 192, out: 'icon-192.png',           omitBg: true  },
+  { source: SVG_BADGE,    size: 512, out: 'icon-512.png',           omitBg: true  },
+  // Maskable PWA icons — `purpose: "maskable"` in the manifest.
+  // Android shrinks/clips these to fit launcher shape (circle, squircle,
+  // square), so the glyph must sit inside the 80% safe-zone.
+  { source: SVG_MASKABLE, size: 192, out: 'icon-maskable-192.png',  omitBg: false },
+  { source: SVG_MASKABLE, size: 512, out: 'icon-maskable-512.png',  omitBg: false },
 ];
 
-async function renderOne(page, svg, size, outPath) {
+async function renderOne(page, svg, size, outPath, omitBg) {
   const html = `<!doctype html><meta charset="utf-8"><style>
-    html,body{margin:0;padding:0;background:transparent}
+    html,body{margin:0;padding:0;background:${omitBg ? 'transparent' : '#ffffff'}}
     .stage{width:${size}px;height:${size}px}
     .stage svg{width:100%;height:100%;display:block}
   </style><div class="stage">${svg}</div>`;
   await page.setViewportSize({ width: size, height: size });
   await page.setContent(html, { waitUntil: 'load' });
   const handle = await page.$('.stage');
-  await handle.screenshot({ path: outPath, omitBackground: true });
+  await handle.screenshot({ path: outPath, omitBackground: omitBg });
   console.log(`✓ ${path.relative(ROOT, outPath)} (${size}×${size})`);
 }
 
 (async () => {
-  const svg = fs.readFileSync(SVG_PATH, 'utf8');
   const browser = await chromium.launch();
   const ctx = await browser.newContext({ deviceScaleFactor: 1 });
   const page = await ctx.newPage();
   for (const t of targets) {
-    await renderOne(page, svg, t.size, path.join(OUT_DIR, t.out));
+    await renderOne(page, t.source, t.size, path.join(OUT_DIR, t.out), t.omitBg);
   }
   await browser.close();
 

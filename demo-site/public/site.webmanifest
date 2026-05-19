@@ -1,13 +1,38 @@
 {
+  "id": "/",
   "name": "Afterglow",
   "short_name": "Afterglow",
   "description": "AI for what happens after the call.",
-  "icons": [
-    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
-    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" }
-  ],
-  "theme_color": "#6366f1",
-  "background_color": "#ffffff",
+  "scope": "/",
+  "start_url": "/",
   "display": "standalone",
-  "start_url": "/"
+  "orientation": "portrait",
+  "theme_color": "#6366f1",
+  "background_color": "#6366f1",
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-maskable-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
 }
