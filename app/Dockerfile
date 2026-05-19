@@ -11,7 +11,7 @@ RUN --mount=type=cache,target=/root/.npm \
     npm ci --no-audit --no-fund --prefer-offline
 
 # Build-time arg → injected into the bundle as process.env.EXPO_PUBLIC_API_BASE.
-ARG EXPO_PUBLIC_API_BASE=https://api.95-179-245-107.sslip.io
+ARG EXPO_PUBLIC_API_BASE=https://api.afterglow.cleversoft.it
 ENV EXPO_PUBLIC_API_BASE=${EXPO_PUBLIC_API_BASE}
 
 COPY . .

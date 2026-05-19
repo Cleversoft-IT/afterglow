@@ -9,7 +9,7 @@ COPY package.json package-lock.json ./
 RUN --mount=type=cache,target=/root/.npm \
     npm ci --no-audit --no-fund --prefer-offline
 
-ARG VITE_APP_URL=https://app.95-179-245-107.sslip.io
+ARG VITE_APP_URL=https://app.afterglow.cleversoft.it
 ENV VITE_APP_URL=${VITE_APP_URL}
 
 # Cap Node heap to keep `vite build` from getting OOM-killed on

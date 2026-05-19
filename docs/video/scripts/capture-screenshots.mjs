@@ -8,8 +8,8 @@ import { fileURLToPath } from 'url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const OUT_DIR = path.join(__dirname, '..', 'public', 'screenshots');
-const APP = 'https://app.95-179-245-107.sslip.io';
-const API = 'https://api.95-179-245-107.sslip.io';
+const APP = 'https://app.afterglow.cleversoft.it';
+const API = 'https://api.afterglow.cleversoft.it';
 
 fs.mkdirSync(OUT_DIR, { recursive: true });
 

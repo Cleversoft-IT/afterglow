@@ -54,9 +54,9 @@ Le risorse sono in regione FRA per latenza Milano. Free trial $250 (balance `-20
 - Project: `afterglow` (id `rze0mzy6iwv52upsejpsgiw5`)
 - Environment: `production` (id `i9ic0h92aypqqxh8jroi9tw0`)
 - Applications:
-  - `afterglow-backend` (id `lo1010mbgr6s32ag7zy9cngi`) → `https://api.afterglow.cleversoft.it` · base `/afterglow/backend`
-  - `afterglow-app` (id `liibgrkyxw4x1f4nrz8p91g7`) → `https://app.afterglow.cleversoft.it` · base `/afterglow/app` (Expo SDK 54 + react-native-web, nginx static)
-  - `afterglow-demo` (id `yh9o1m3ro8dg96rahedk9haq`) → `https://demo.afterglow.cleversoft.it` · base `/afterglow/demo-site` (Vite + React, nginx static, iframes the app)
+  - `afterglow-backend` (id `lo1010mbgr6s32ag7zy9cngi`) → `https://api.afterglow.cleversoft.it` · base `/backend`
+  - `afterglow-app` (id `liibgrkyxw4x1f4nrz8p91g7`) → `https://app.afterglow.cleversoft.it` · base `/app` (Expo SDK 54 + react-native-web, nginx static)
+  - `afterglow-demo` (id `yh9o1m3ro8dg96rahedk9haq`) → `https://demo.afterglow.cleversoft.it` · base `/demo-site` (Vite + React, nginx static, iframes the app)
 - Build pack: **Dockerfile** per tutte e tre
 - Source: GitHub App `afterglow-coolify` — UUID e server UUID nella tabella risorse sopra
 - Auto-deploy: webhook GitHub App alla push su `main`. Build concorrenti: 2 (limite server settings).

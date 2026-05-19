@@ -7,7 +7,7 @@ import { fileURLToPath } from 'url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const OUT = path.join(__dirname, '..', 'public', 'screenshots');
-const APP = 'https://app.95-179-245-107.sslip.io';
+const APP = 'https://app.afterglow.cleversoft.it';
 
 fs.mkdirSync(OUT, { recursive: true });
 
