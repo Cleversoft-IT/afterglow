@@ -50,10 +50,10 @@ Helper `action_catalog.mutates(action_key) -> bool` è la single source of truth
 - Backend: `schemas/templates.py`, `db/models.py`, `db/seed.py`, `executors/action_executor.py`, `agents/{action_planner,call_analyzer,orchestrator,template_builder,template_validator,wizard_chat}.py`, `agents/prompts/{template_builder,template_validator}.md`, `api/{templates,calls}.py`, `schemas/calls.py`, `integrations/{action_catalog,speechmatics}.py`, `integrations/internal/customer_profile.py`
 - Migration: `alembic/versions/0012_drop_template_custom_dictionary.py`
 - Frontend: `app/lib/{types,auditLabels}.ts`, `app/app/templates/[id].tsx`
-- Docs: `CLAUDE.md`, `afterglow/README.md`, `afterglow/docs/ARCHITECTURE.md`, `afterglow/docs/future-ideas.md`
+- Docs: `CLAUDE.md`, `README.md`, `docs/ARCHITECTURE.md`, `docs/future-ideas.md`
 - Memory: [[project-afterglow-decisions]] (sezione 1.nove), [[feedback-code-language]] (rimossa menzione custom_dictionary)
 
-**Why:** ticket "simplify template model and template editor surface" — il template editor era un wizard tecnico (PII + ASR + mock routing); il valore di hackathon è la pipeline post-call + esecuzione tipata. PII gating è esplicitamente "future work" per `afterglow/docs/future-ideas.md`.
+**Why:** ticket "simplify template model and template editor surface" — il template editor era un wizard tecnico (PII + ASR + mock routing); il valore di hackathon è la pipeline post-call + esecuzione tipata. PII gating è esplicitamente "future work" per `docs/future-ideas.md`.
 
 **How to apply:**
 

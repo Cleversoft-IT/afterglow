@@ -36,7 +36,7 @@ Then choose **format** based on where it ships:
 
 ## Approach A — Scripted Playwright recording (recommended)
 
-The shape, adapted from `afterglow/scripts/record-demo.cjs`:
+The shape, adapted from `scripts/record-demo.cjs`:
 
 ```js
 const { chromium } = require('playwright');
@@ -307,7 +307,7 @@ ffmpeg -framerate 15 -pattern_type glob -i 'frames/*.png' \
 
 ## Reference implementation in this repo
 
-[`afterglow/scripts/record-demo.cjs`](../../afterglow/scripts/record-demo.cjs) — drives the live app at 390×845 with Playwright, takes 9 PNGs with hand-tuned centisecond delays, stitches with `magick`. Output: 180 KB for a 21.7s loop with no jitter and no compression blur. Read it before writing a new recorder for a different screen.
+[`scripts/record-demo.cjs`](../../scripts/record-demo.cjs) — drives the live app at 390×845 with Playwright, takes 9 PNGs with hand-tuned centisecond delays, stitches with `magick`. Output: 180 KB for a 21.7s loop with no jitter and no compression blur. Read it before writing a new recorder for a different screen.
 
 ## Hidden gems
 

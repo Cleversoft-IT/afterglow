@@ -5,7 +5,7 @@ metadata:
   type: feedback
 ---
 
-Il Template Wizard (`afterglow/backend/app/agents/wizard_chat.py`) deve comportarsi come un agente, non come un form a slot né come uno script con singola domanda hard-coded:
+Il Template Wizard (`backend/app/agents/wizard_chat.py`) deve comportarsi come un agente, non come un form a slot né come uno script con singola domanda hard-coded:
 
 - **Draft-first per i campi neutri**: business type, fields_schema, prompt_hints, action keys non-canale. Se il primo messaggio utente è già ricco, il modello può proporre subito i campi/azioni "safe" e farlo presente.
 - **Integration discovery HARD RULE (2026-05-17 round 5)**: prima di committare azioni che dipendono da canali esterni (`whatsapp.*`, `sms.*`, `email.*`, `case.open_insurance`), il wizard DEVE confermare quali canali l'utente usa. Se il primo messaggio non li menziona esplicitamente, il turno 1 è una domanda di clarification (`"Do you reach customers via WhatsApp, SMS, email, or only on the phone?"`) e `ready=False`. Mai default a WhatsApp / SMS / email. Se BUDGET_EXHAUSTED e canali ancora ignoti → drafta omettendo le azioni canale-dipendenti.

@@ -51,5 +51,5 @@ can return, and the incoming-call screen will resolve a real customer
 display name instead of a generic chip.
 
 See [[feedback-audio-blob-url-for-session-endpoints]] for how the
-audio reaches the player and `afterglow/docs/future-ideas.md` for the
+audio reaches the player and `docs/future-ideas.md` for the
 post-hackathon roadmap.

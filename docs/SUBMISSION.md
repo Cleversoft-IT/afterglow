@@ -45,14 +45,14 @@ wins** and this document must be updated in the same commit
 | **Claim (hero copy, 9 words)** | **Stay in the moment. We handle the after.** |
 | **Tagline (≤8 words, lablab fallback)** | We handle the after |
 | **One-liner (≤25 words)** | A phone app for small businesses. The human stays on the call. An agentic AI loop runs after — extract, execute, remember. |
-| **Repo** | `https://github.com/sepa85/hackaton-lablab` (public, MIT) |
+| **Repo** | `https://github.com/Cleversoft-IT/afterglow` (public, MIT) |
 | **Backend** | `https://api.95-179-245-107.sslip.io` |
 | **Operator app (Expo web)** | `https://app.95-179-245-107.sslip.io` |
 | **Landing + iframe demo** | `https://demo.95-179-245-107.sslip.io` |
 | **Tracks (lablab.ai)** | Intelligent Reasoning · Agentic Workflows · Enterprise Utility · Multimodal Intelligence |
 | **Partner tracks targeted** | **Vultr** · **Google (Gemini)** · **Speechmatics** |
 | **Partner tracks NOT targeted** | Kraken (out-of-domain) · Featherless (we use Gemini, not Featherless catalog) |
-| **License** | MIT (`afterglow/LICENSE`) |
+| **License** | MIT (`LICENSE`) |
 | **Team size** | 4 |
 
 The three live URLs above are the only "production" we have, and the
@@ -327,7 +327,7 @@ Tag at minimum: **Intelligent Reasoning**, **Agentic Workflows**,
 
 ## 4. Video pitch script — 5 minutes scene-by-scene
 
-**Constraints from lablab** (`hackathon-docs/06-what-to-submit.md`):
+**Constraints from lablab** (`docs/hackathon-reference/06-what-to-submit.md`):
 
 * MP4, ≤5 min, ≤300 MB. Upload **direct** on lablab (no YouTube, no
   Drive). Problem→solution must land in the first 60 seconds.
@@ -607,7 +607,7 @@ GitHub link. Same composition as the title card in Act I.
   or library) + a low pad. Total render: a few minutes once the
   beats are timed.
 * **Act II is screen capture** of the real product on the demo URL.
-  Use `afterglow/scripts/record-demo.cjs` (Playwright) as the base
+  Use `scripts/record-demo.cjs` (Playwright) as the base
   for scripted scenes; voice-over dubbed in post.
 * Pre-warm the backend right before recording: hit
   `/api/v1/admin/rag-stats` to confirm preseed chunks, then load Home
@@ -624,7 +624,7 @@ GitHub link. Same composition as the title card in Act I.
 ## 5. Slide deck outline
 
 **Constraint:** PDF, 16:9, 2–3 sentences per slide max
-(`hackathon-docs/06-what-to-submit.md`). 10 slides — the deck mirrors
+(`docs/hackathon-reference/06-what-to-submit.md`). 10 slides — the deck mirrors
 the video's two-act shape: hook → antithesis → product → proof → close.
 
 > The **claim** "Stay in the moment. We handle the after." is the spine
@@ -721,7 +721,7 @@ the video's two-act shape: hook → antithesis → product → proof → close.
 
 * Wordmark **afterglow** (display).
 * The claim: *"Stay in the moment. We handle the after."*
-* `demo.95-179-245-107.sslip.io` · `github.com/sepa85/hackaton-lablab` · MIT.
+* `demo.95-179-245-107.sslip.io` · `github.com/Cleversoft-IT/afterglow` · MIT.
 * Partner pills row (final time).
 
 > **Why we dropped QR codes from the original outline:** the slide PDF
@@ -823,7 +823,7 @@ Open the API directly and call these:
 
 ## 7. Architecture summary
 
-> Compact version. Full architecture lives in `afterglow/docs/ARCHITECTURE.md`
+> Compact version. Full architecture lives in `docs/ARCHITECTURE.md`
 > (916 lines). This section is what you put on a slide and in the
 > README.
 
@@ -941,14 +941,14 @@ Tag each in the lablab form. Be prepared to demo each on screen.
 | **Vector Store** | `customer_memory_chunks` table mirrors Vultr items. Preseed task populates it at backend boot with `chunk_metadata.preseed=true`. | `GET /api/v1/admin/rag-stats` returns `{preseed_chunks: N, runtime_chunks: M}`. |
 | **Serverless Inference RAG** | `POST /v1/chat/completions/RAG` against `MiniMaxAI/MiniMax-M2.7`. Exposed to the agent as the `lookup_customer_memory` tool. | `GET /api/v1/admin/rag-probe?phone=+15552223344` returns `hit=true`, the RAG response, and `input_tokens > 0`. |
 
-**Code:** `afterglow/backend/app/integrations/vultr_inference.py`,
-`afterglow/backend/app/tasks/vector_preseed.py`,
-`afterglow/backend/app/agents/tools/memory_tool.py`.
+**Code:** `backend/app/integrations/vultr_inference.py`,
+`backend/app/tasks/vector_preseed.py`,
+`backend/app/agents/tools/memory_tool.py`.
 
 ### Google — **Gemini via ADK**
 
 * **Model:** `gemini-3.1-flash-lite` (pinned in
-  `afterglow/backend/app/config.py:34-35`).
+  `backend/app/config.py:34-35`).
 * **ADK:** `google.adk.runners.InMemoryRunner`, ADK 1.18.
 * **Tool surface:** declared as typed Python callables; ADK introspects
   `__annotations__` and `__doc__` to auto-generate the Gemini
@@ -960,10 +960,10 @@ Tag each in the lablab form. Be prepared to demo each on screen.
   briefing regenerator (one-shot direct API), bilingual EN
   summarizer for the RAG chunk (one-shot direct API).
 
-**Code:** `afterglow/backend/app/integrations/gemini_adk.py`,
-`afterglow/backend/app/agents/call_agent.py`,
-`afterglow/backend/app/agents/wizard_chat.py`,
-`afterglow/backend/app/agents/briefing_regenerator.py`.
+**Code:** `backend/app/integrations/gemini_adk.py`,
+`backend/app/agents/call_agent.py`,
+`backend/app/agents/wizard_chat.py`,
+`backend/app/agents/briefing_regenerator.py`.
 
 ### Speechmatics — **batch STT + TTS Preview**
 
@@ -977,9 +977,9 @@ Tag each in the lablab form. Be prepared to demo each on screen.
     - the **6 bundled demo MP3s** (`app/assets/audio/{restaurant,dentist,bodyshop}_{existing,new}.mp3`)
     - **2 MP3s per wizard-generated template** (`<template_id>_{existing,new}.mp3`), concatenated PCM via Python `wave` and transcoded to mono 48 kbps MP3 via the `lame` CLI (chosen over ffmpeg because ffmpeg's apt-install OOM-kills the 4 GB Coolify build VM on cache miss).
 
-**Code:** `afterglow/backend/app/integrations/speechmatics.py`,
-`afterglow/backend/app/integrations/speechmatics_tts.py`,
-`afterglow/scripts/generate_demo_audio.py`.
+**Code:** `backend/app/integrations/speechmatics.py`,
+`backend/app/integrations/speechmatics_tts.py`,
+`scripts/generate_demo_audio.py`.
 
 ### The three "bonus love" claims for the Speechmatics award
 
@@ -1082,7 +1082,7 @@ and the video Q&A. Each one is backed by code.
 
 ## 10. Judging criteria — coverage matrix
 
-The four criteria from `hackathon-docs/07-judging-criteria.md` weight
+The four criteria from `docs/hackathon-reference/07-judging-criteria.md` weight
 equally (25% each). For each, this is our explicit evidence plus the
 video timestamp where it lands.
 
@@ -1104,8 +1104,8 @@ video timestamp where it lands.
 |---|---|---|
 | Counter-bet thesis: keep the human, replace the after | product design | Act I (0:00–0:30) + Act II.A (0:30–0:55) |
 | Typographic cold open — type, silence, one ring, the claim | video script §4 | Act I (0:00–0:30) |
-| Drop-in Pixel-style phone app aesthetic for an AI product | `afterglow/app/` Expo build | Act II.B + II.D |
-| Agent reasoning trail as a first-class UI surface, not a buried log | `afterglow/app/components/AgentReasoningTrail.tsx` | Act II.B |
+| Drop-in Pixel-style phone app aesthetic for an AI product | `app/` Expo build | Act II.B + II.D |
+| Agent reasoning trail as a first-class UI surface, not a buried log | `app/components/AgentReasoningTrail.tsx` | Act II.B |
 | `needs_review` as terminal status, not silent fallback | `agents/orchestrator.py:397-411` | Cheat-sheet demonstration |
 | Template wizard as a Gemini-driven 2-to-5-question interview | `agents/wizard_chat.py` | Act II.E (2:55–3:30) |
 | Per-template Speechmatics TTS dual-scenario MP3 generation | `integrations/speechmatics_tts.py` | Act II.E |
@@ -1130,10 +1130,10 @@ video timestamp where it lands.
 | Problem → solution lands in the first 60 seconds (lablab tip) | Scene 1 (0:00–0:15) → Scene 2 (0:15–0:45) |
 | Video ≤5 min, MP4, ≤300 MB, **uploaded directly to lablab** (not YouTube/Drive) | Submission checklist §13 |
 | Slide PDF with 2–3 sentences per slide (lablab tip) | §5 outline |
-| README reproducible from `afterglow/README.md` | repo root |
+| README reproducible from `README.md` | repo root |
 | Architecture diagram in the README and in the slides | §7 + Slide 4 |
 | Live demo URL that works (cheat-sheet click path) | §6 |
-| Public GitHub repo, MIT-licensed | repo root + `afterglow/LICENSE` |
+| Public GitHub repo, MIT-licensed | repo root + `LICENSE` |
 
 ### Speechmatics bonuses (non-quantified, but stated by Edgars)
 
@@ -1192,11 +1192,11 @@ demo concessions, not architectural debt.
 
 | Requirement | Status |
 |---|---|
-| Original work | ✅ All code written by the team during the build week. Single fork acknowledgement: the project structure was informed by the lablab official tutorial baseline (`hackathon-docs/14-tutorial-gemini-vultr-document-agent.md`) but no code is copied verbatim. |
+| Original work | ✅ All code written by the team during the build week. Single fork acknowledgement: the project structure was informed by the lablab official tutorial baseline (`docs/hackathon-reference/14-tutorial-gemini-vultr-document-agent.md`) but no code is copied verbatim. |
 | Open source | ✅ Public GitHub repo. |
-| MIT License | ✅ `afterglow/LICENSE` from day 1. |
+| MIT License | ✅ `LICENSE` from day 1. |
 | No GPL/AGPL dependencies | ✅ Audited. Three notable frontend deps: `react-native-paper` (MIT), `@material/material-color-utilities` (Apache-2.0), `@react-navigation/drawer` (MIT). Backend: FastAPI (MIT), SQLAlchemy (MIT), `speechmatics-batch` (MIT), `google-genai` (Apache-2.0), `httpx` (BSD), `pydantic` (MIT). All permissive. |
-| AI usage disclosure | Not required by lablab terms (`hackathon-docs/08-hackathon-details.md`). The repo contains AI-assistant config files openly. |
+| AI usage disclosure | Not required by lablab terms (`docs/hackathon-reference/08-hackathon-details.md`). The repo contains AI-assistant config files openly. |
 | Team size 1–6 | ✅ 4. |
 | Age ≥18 | ✅. |
 | Eligible jurisdiction | ✅. |
@@ -1213,7 +1213,7 @@ demo concessions, not architectural debt.
 ### Submission editing
 
 The lablab form is editable until the deadline even after first
-"Submit" (`hackathon-docs/06-what-to-submit.md` lines 60–67).
+"Submit" (`docs/hackathon-reference/06-what-to-submit.md` lines 60–67).
 **Submit a complete draft ≥24h before the deadline** to insure
 against last-second upload failures, then refine.
 
@@ -1250,8 +1250,8 @@ verified.
 ### Repo hygiene
 
 * [ ] Repo is **public** on GitHub.
-* [ ] `afterglow/LICENSE` is MIT.
-* [ ] `afterglow/README.md` includes the architecture diagram, the
+* [ ] `LICENSE` is MIT.
+* [ ] `README.md` includes the architecture diagram, the
       three live URLs, and the partner integration matrix.
 * [ ] No secrets in the repo (verify: `git grep -E "(API_KEY|TOKEN|SECRET).*=.*['\"][A-Za-z0-9]"`
       returns nothing real).
@@ -1309,12 +1309,12 @@ they're in the demo.
   for the hackathon because it would muddy the "AI is post-call"
   message.
 * **Template lineage and versioning** (already designed in
-  `afterglow/docs/future-ideas.md`).
+  `docs/future-ideas.md`).
 * **Multi-tenant SaaS shell** — explicitly out of scope (`CLAUDE.md`
   constraint #1 keeps single-tenant).
 * **PII redaction** — designed and then deliberately removed
   2026-05-17 because it harms operator usefulness ("the customer is
-  celiac" is the point, not a leak); see `afterglow/docs/future-ideas.md`
+  celiac" is the point, not a leak); see `docs/future-ideas.md`
   §4 for the archived design.
 * **Real-time Speechmatics Voice SDK** — only useful when we add
   on-call assistance; deferred until then.
@@ -1328,37 +1328,37 @@ authoritative source for each topic.
 
 ### Architecture & pipeline
 
-* `afterglow/docs/ARCHITECTURE.md` — 916 lines, the canonical
+* `docs/ARCHITECTURE.md` — 916 lines, the canonical
   architecture document.
-* `afterglow/backend/app/agents/orchestrator.py` — the pipeline glue.
-* `afterglow/backend/app/agents/call_agent.py` — the agent loop entry.
-* `afterglow/backend/app/agents/tools/` — the typed tool surface
+* `backend/app/agents/orchestrator.py` — the pipeline glue.
+* `backend/app/agents/call_agent.py` — the agent loop entry.
+* `backend/app/agents/tools/` — the typed tool surface
   (action_tool, control_tool, memory_tool, transcript_tool, turn).
-* `afterglow/backend/app/executors/action_executor.py` — deterministic
+* `backend/app/executors/action_executor.py` — deterministic
   validator + MOCK/INTERNAL dispatcher.
-* `afterglow/backend/app/integrations/gemini_adk.py` — ADK runner
+* `backend/app/integrations/gemini_adk.py` — ADK runner
   wrapper.
-* `afterglow/backend/app/integrations/jsonschema_to_pydantic.py` —
+* `backend/app/integrations/jsonschema_to_pydantic.py` —
   dynamic Pydantic from JSON Schema.
 
 ### Integrations
 
-* `afterglow/backend/app/integrations/vultr_inference.py` — RAG +
+* `backend/app/integrations/vultr_inference.py` — RAG +
   Vector Store.
-* `afterglow/backend/app/integrations/speechmatics.py` — batch STT.
-* `afterglow/backend/app/integrations/speechmatics_tts.py` — TTS preview.
-* `afterglow/backend/app/integrations/action_catalog.py` — the
+* `backend/app/integrations/speechmatics.py` — batch STT.
+* `backend/app/integrations/speechmatics_tts.py` — TTS preview.
+* `backend/app/integrations/action_catalog.py` — the
   authoritative catalog of 25 action keys across 8 mock buckets +
   1 internal real bucket.
 
 ### Data model + tasks
 
-* `afterglow/backend/app/db/models.py` — SQLAlchemy models.
-* `afterglow/backend/app/db/seed.py` — seed data (12 customers, 3
+* `backend/app/db/models.py` — SQLAlchemy models.
+* `backend/app/db/seed.py` — seed data (12 customers, 3
   templates, ~43 busy-week calls).
-* `afterglow/backend/app/tasks/vector_preseed.py` — RAG preseed at
+* `backend/app/tasks/vector_preseed.py` — RAG preseed at
   boot.
-* `afterglow/backend/app/tasks/seed_date_refresh.py` — anchor-date
+* `backend/app/tasks/seed_date_refresh.py` — anchor-date
   drift refresh.
 
 ### Market sizing
@@ -1369,24 +1369,24 @@ authoritative source for each topic.
 
 ### API + config + admin
 
-* `afterglow/backend/app/api/calls.py` — `POST /calls` ingest +
+* `backend/app/api/calls.py` — `POST /calls` ingest +
   detail view.
-* `afterglow/backend/app/api/admin.py` — `rag-stats`, `rag-probe`,
+* `backend/app/api/admin.py` — `rag-stats`, `rag-probe`,
   `dry-run-pipeline`.
-* `afterglow/backend/app/api/session_context.py` — demo session
+* `backend/app/api/session_context.py` — demo session
   middleware.
-* `afterglow/backend/app/config.py` — env-driven configuration.
+* `backend/app/config.py` — env-driven configuration.
 
 ### Frontend (the parts that matter for the pitch)
 
-* `afterglow/app/components/AgentReasoningTrail.tsx` — the reasoning
+* `app/components/AgentReasoningTrail.tsx` — the reasoning
   trail UI.
-* `afterglow/app/app/(drawer)/(tabs)/index.tsx` — Home (Pixel Recents
+* `app/app/(drawer)/(tabs)/index.tsx` — Home (Pixel Recents
   clone).
-* `afterglow/app/app/call/[id].tsx` — call detail.
-* `afterglow/app/app/(drawer)/simulator.tsx` — the demo simulator.
-* `afterglow/app/app/templates/wizard.tsx` — wizard chat UI.
-* `afterglow/demo-site/src/App.tsx` — the marketing landing.
+* `app/app/call/[id].tsx` — call detail.
+* `app/app/(drawer)/simulator.tsx` — the demo simulator.
+* `app/app/templates/wizard.tsx` — wizard chat UI.
+* `demo-site/src/App.tsx` — the marketing landing.
 
 ### Memory (team-shared, in `.claude/memory/`)
 
@@ -1400,7 +1400,7 @@ authoritative source for each topic.
 * `feedback_docs_freshness.md` — the docs-must-stay-in-sync policy
   that produced this document.
 
-### Hackathon reference (external, in `hackathon-docs/`)
+### Hackathon reference (external, in `docs/hackathon-reference/`)
 
 * `02-challenge.md` — challenge thesis + 5 tracks.
 * `06-what-to-submit.md` — submission form spec + MP4 rules.

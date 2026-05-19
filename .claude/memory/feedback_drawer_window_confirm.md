@@ -13,9 +13,9 @@ label stays on its "in progress" string forever, because `setBusy(false)`
 is only called in the catch branch and the await neither resolves nor
 rejects.
 
-**Why:** observed bug in `afterglow/app/app/(drawer)/_layout.tsx` — "Reset
+**Why:** observed bug in `app/app/(drawer)/_layout.tsx` — "Reset
 demo" stayed on "Resetting…" while the identical flow in
-`afterglow/app/app/(drawer)/settings.tsx` (which uses a Paper Dialog)
+`app/app/(drawer)/settings.tsx` (which uses a Paper Dialog)
 worked. Fixed in commit `d155c52` by reusing the Settings dialog pattern.
 
 **How to apply:** for any destructive or async action triggered from a

@@ -21,7 +21,7 @@ La tabella `Business` è stata **droppata** (migration `alembic/versions/0002_dr
 
 Lo show "3 verticali su 3 URL" continua nella demo, ma è il visitatore a scegliere il template attivo dalla tab Templates (`PUT /templates/active`); l'incoming-call dialer (`app/app/incoming-call.tsx`) parte dal template attivo, non da una lista di business.
 
-**Why:** l'hackathon premia *Enterprise Utility verticale + autonomia decisionale*, non SaaS multi-tenant (vedi `hackathon-docs/07-judging-criteria.md` e `02-challenge.md`).
+**Why:** l'hackathon premia *Enterprise Utility verticale + autonomia decisionale*, non SaaS multi-tenant (vedi `docs/hackathon-reference/07-judging-criteria.md` e `02-challenge.md`).
 
 **How to apply:** se rivedi una sezione di codice o doc e trovi `business`, `business_id`, `getCurrentBusiness`, `listBusinesses`, `/businesses/current`, è un retaggio: va rimosso. Per il "template attivo" usa gli endpoint `/templates/active` e (in demo) lo state della `DemoSession`.
 
@@ -37,7 +37,7 @@ L'app è caricata in iframe da `demo.95...` durante la judging window; più giud
 
 **Why:** la decisione 1.bis (single-tenant in produzione) resta vincolata. La sandbox è layer opzionale che si attiva solo quando l'header è presente; production senza header = comportamento single-tenant immutato. Aderiscere al vincolo di prodotto + non bruciare Presentation per concorrenza demo.
 
-**How to apply:** ogni nuovo endpoint deve aggiungere `ctx: SessionContext = Depends(get_session_context)` e usare `visibility_filter(Model.session_id, ctx)` per le letture, e impostare `session_id=ctx.session_id` sulle scritture. Ogni `audit_step(...)` deve ricevere `session_id=call.session_id` (o l'equivalente). Schema/migration: `0003_demo_sandbox_session.py`. Coordinate vive: `afterglow/backend/app/api/session_context.py`, `afterglow/backend/app/tasks/session_cleanup.py`.
+**How to apply:** ogni nuovo endpoint deve aggiungere `ctx: SessionContext = Depends(get_session_context)` e usare `visibility_filter(Model.session_id, ctx)` per le letture, e impostare `session_id=ctx.session_id` sulle scritture. Ogni `audit_step(...)` deve ricevere `session_id=call.session_id` (o l'equivalente). Schema/migration: `0003_demo_sandbox_session.py`. Coordinate vive: `backend/app/api/session_context.py`, `backend/app/tasks/session_cleanup.py`.
 
 ### 1.ter. Pipeline post-call: Gemini analyzer + ADK action planner — **SUPERSEDED 2026-05-18 dal round-10 agentic single-agent (vedi sezione 1.quindici sotto)**
 > ⚠️ Storico — la descrizione qui sotto del flusso a 3 step `call_analyzer` → `action_planner` → `action_executor` non è più la pipeline live. Il round-10 (2026-05-18) ha collassato tutto in un singolo agente ADK multi-turn (`agents/call_agent.py`), `action_planner.py` è stato eliminato, `call_analyzer.py` ridotto a soli schemi. Cerca **sezione 1.quindici** e [[project-agentic-pipeline]] per la forma attuale. Il testo qui sotto è preservato per archeologia (audit_log/storia commit).
@@ -49,7 +49,7 @@ L'app è caricata in iframe da `demo.95...` durante la judging window; più giud
 1. **`agents/call_analyzer.py`** — singolo Gemini structured-output call. Lo schema Pydantic `CallAnalysis` produce in un colpo: fields/confidence/evidence, intent/sentiment/language/urgency, `planned_actions[]` (con `payload: dict[str, Any]` tipato, niente più `payload_json: str`) e `next_call_briefing` (paragrafo in linguaggio naturale per l'operatore della prossima call). Il prompt cita i `depends_on` per-field, e le `preconditions` / `confidence_threshold` / `evidence_required` per-action. Le `prompt_hints` (struttura `list[{when, then}]` dopo migration 0006) vengono valutate deterministicamente in Python contro `memory_retrieval.retrieve_structured_facts` PRIMA di costruire il prompt e prependute al system instruction quando matchano.
 2. **`agents/action_planner.py`** — agentic loop via Google ADK (`integrations/gemini_adk.py`) che rilegge l'analisi del passo 1 e emette le tool call per le sole azioni `execution_mode=auto`. Ogni tool ha un parametro `payload` con annotation Pydantic dinamica costruita da `ActionDefinition.payload_schema` via `integrations/jsonschema_to_pydantic.py` (FunctionDeclaration tipizzata per Gemini). L'`executors/action_executor.py` ri-valida il payload con `jsonschema.validate` prima di MOCK_REGISTRY, rifiuta azioni con `evidence_required=True` ed evidence vuota, e legge `mutates` dal `action_catalog` propagandolo nell'audit + `ExecutedAction.result`. `_summarize_to_english` è un piccolo Gemini call extra (~120 token, dentro `orchestrator._persist_memory`) che genera l'EN summary del briefing quando la lingua detected non è EN (solo in prod), poi il chunk del Vector Store contiene native + EN.
 
-PII/privacy classification e sanitizer sono **out of scope** (vedi `afterglow/docs/future-ideas.md` §4 + sezione 1.nove qui sotto).
+PII/privacy classification e sanitizer sono **out of scope** (vedi `docs/future-ideas.md` §4 + sezione 1.nove qui sotto).
 
 **Fail-fast esplicito, niente fallback silenziosi (deciso 2026-05-16):** se manca `GOOGLE_API_KEY`, se Gemini fa raise/empty/JSON malformato, se l'ADK runner fallisce, la `Call` va in stato `failed` con `failure_reason` leggibile + audit row con `status="error"`. La UI mostra un banner rosso con la ragione. **Nessun stub deterministico, nessun "_fallback_planner".** Un demo che inventa "Marco in 4 alle 20:30" per ogni MP3 è una bugia che inquina la judging window; meglio mostrare l'errore vero e dimostrare che la pipeline è davvero AI-driven.
 
@@ -76,11 +76,11 @@ Estensione completa del `Template` landata con migration `0006_templates_v2.py`.
 
 **Wizard conversazionale (revisione 2026-05-17):** `POST /api/v1/templates/wizard/chat` (`agents/wizard_chat.py`) gestisce un dialogo stateless multi-turn. Il client tiene history + `slots_filled` + `draft_partial`; il server ritorna il prossimo turno + draft aggiornato + `ValidationReport` (deterministico — `agents/template_validator.py`, vedi [[project_template_validator_deterministic]]). Action keys allucinate vengono droppate dal draft direttamente in `wizard_chat.run_wizard_chat` e restituite via `proposed_actions_from_catalog`. Quando `ready=true`, UI Expo `app/templates/wizard.tsx` espone "Save draft / Save & activate" → `POST /api/v1/templates` (scrive con `session_id=ctx.session_id` in demo o `NULL` in prod, `set_active` opzionale nella stessa transazione). Il vecchio endpoint one-shot `POST /api/v1/templates/wizard` + `template_builder.py` sono stati **rimossi il 2026-05-17**.
 
-**PII/privacy gating:** rimosso 2026-05-17 — vedi 1.nove + `afterglow/docs/future-ideas.md` §4.
+**PII/privacy gating:** rimosso 2026-05-17 — vedi 1.nove + `docs/future-ideas.md` §4.
 
 **Bilingual briefing:** in prod, se `transcript.language != "en"`, `_summarize_to_english` produce un EN summary del briefing; il chunk del Vector Store contiene `native\n\n[EN] <en>` + metadata `language` + `briefing_en`. In demo è skipped.
 
-**Why:** la sfida judging "Application of Technology" + "Agentic Workflows" premia template tipati end-to-end (FunctionDeclaration → executor validation) + un wizard che si valida da sé più di quanto premi un'UI di tuning. Le 3 idee scartate (parent_id lineage, status tri-state, learning loop) sono documentate in [`afterglow/docs/future-ideas.md`](../../afterglow/docs/future-ideas.md) come material per la slide "future work".
+**Why:** la sfida judging "Application of Technology" + "Agentic Workflows" premia template tipati end-to-end (FunctionDeclaration → executor validation) + un wizard che si valida da sé più di quanto premi un'UI di tuning. Le 3 idee scartate (parent_id lineage, status tri-state, learning loop) sono documentate in [`docs/future-ideas.md`](../../docs/future-ideas.md) come material per la slide "future work".
 
 **How to apply:** quando un nuovo `FieldDefinition` / `ActionDefinition` arriva (seed o wizard), assume tutti i campi v2 abbiano un default — non patchare codice consumer per "tollerare" shape v1. Quando aggiungi un nuovo `mock_target` a `MOCK_REGISTRY`, ricordati che `available_keys()` è letto dal validator (un'action key sconosciuta viene segnata come warning automaticamente).
 
@@ -91,7 +91,7 @@ Non puntiamo al cash Award Speechmatics (sfida ridefinita kick-off = voice-in→
 
 **How to apply:**
 - STT runtime: `speechmatics-batch` SDK wirato live (`AsyncClient.transcribe` con `diarization=speaker`, `language=auto`, `additional_vocab` dal `custom_dictionary` del template). **Nessun fallback offline**: missing key o audio illeggibile sollevano e fanno fallire la call (vedi `backend/app/integrations/speechmatics.py`). Niente più `_FAKE_TRANSCRIPTS`, niente più flag `DEMO_MODE` (rimosso il 2026-05-15).
-- TTS offline: dal 2026-05-16 sono **6 MP3 demo** — uno per ogni combinazione `(domain, caller_mode)`: `{restaurant,dentist,bodyshop}_{existing,new}.mp3` in `afterglow/app/assets/audio/` e mirror in `backend/sample_audio/`. Esistono per evitare che il caller "new" si presenti col nome del cliente seedato o che il caller "existing" rifaccia tutta la presentazione a un operatore che lo conosce già dal numero. Voce **operator costante per dominio** (sarah/jack/megan), voce **caller diversa fra existing e new** così suonano persone distinte. Generati da Speechmatics TTS preview (`https://preview.tts.speechmatics.com/generate/<voice>`) via `afterglow/scripts/generate_demo_audio.py`. Le voci preview supportano solo EN UK/US (`sarah`/`theo`/`megan`/`jack`), quindi i copioni demo sono in inglese. **Anche il resto del seed (nomi business, customer profiles, transcript stubs) è in inglese** dal 2026-05-16 — vedi [[feedback-code-language]]. Per rigenerare gli audio: `python afterglow/scripts/generate_demo_audio.py`. Stessa cartella contiene anche `ringtone.mp3` (synth ITU-T 425Hz · 1 s on / 4 s off) usato dall'incoming-call screen — non parte della pipeline AI.
+- TTS offline: dal 2026-05-16 sono **6 MP3 demo** — uno per ogni combinazione `(domain, caller_mode)`: `{restaurant,dentist,bodyshop}_{existing,new}.mp3` in `app/assets/audio/` e mirror in `backend/sample_audio/`. Esistono per evitare che il caller "new" si presenti col nome del cliente seedato o che il caller "existing" rifaccia tutta la presentazione a un operatore che lo conosce già dal numero. Voce **operator costante per dominio** (sarah/jack/megan), voce **caller diversa fra existing e new** così suonano persone distinte. Generati da Speechmatics TTS preview (`https://preview.tts.speechmatics.com/generate/<voice>`) via `scripts/generate_demo_audio.py`. Le voci preview supportano solo EN UK/US (`sarah`/`theo`/`megan`/`jack`), quindi i copioni demo sono in inglese. **Anche il resto del seed (nomi business, customer profiles, transcript stubs) è in inglese** dal 2026-05-16 — vedi [[feedback-code-language]]. Per rigenerare gli audio: `python scripts/generate_demo_audio.py`. Stessa cartella contiene anche `ringtone.mp3` (synth ITU-T 425Hz · 1 s on / 4 s off) usato dall'incoming-call screen — non parte della pipeline AI.
 
 ### 3. Forma mobile — PWA, non APK
 Web app responsive mobile-style installabile come PWA da URL pubblica. Niente APK distribuito, niente vero dialer Android.
@@ -136,7 +136,7 @@ Non basta deployare. Vultr deve essere usato in profondità per il "Best use of 
 
 **How to apply:** se devi scegliere tra "feature in più nella UI" e "uso Vultr più profondo", scegli il secondo nelle prime fasi.
 
-⚠️ **Trappola key Vultr:** la `VULTR_API_KEY` di account (Settings → API) non vale come `INFERENCE_API_KEY`. L'endpoint inference risponde `"Invalid API key"` o 422 finché non usi una chiave generata dal pannello *Serverless → Inference → <subscription> → API keys*. Documentato in `hackathon-docs/12-vultr-deep-dive.md` warning box.
+⚠️ **Trappola key Vultr:** la `VULTR_API_KEY` di account (Settings → API) non vale come `INFERENCE_API_KEY`. L'endpoint inference risponde `"Invalid API key"` o 422 finché non usi una chiave generata dal pannello *Serverless → Inference → <subscription> → API keys*. Documentato in `docs/hackathon-reference/12-vultr-deep-dive.md` warning box.
 
 ### 7. Licenza MIT day-1
 File `LICENSE` MIT nel repo dal primo commit.
@@ -146,7 +146,7 @@ File `LICENSE` MIT nel repo dal primo commit.
 **How to apply:** non aggiungere mai dipendenze GPL/AGPL nel progetto.
 
 ### 8.bis. Pipeline DevOps — local → GitHub → Coolify autodeploy (2026-05-15)
-**Una sola via verso produzione:** `git push origin main` su `Cleversoft-IT/hackaton-lablab` → webhook GitHub App → Coolify ricostruisce le due Application e fa rolling update. NESSUN deploy manuale via SSH; nessun `docker-compose up` sulla VM; nessun upload di artifact a mano.
+**Una sola via verso produzione:** `git push origin main` su `Cleversoft-IT/afterglow` → webhook GitHub App → Coolify ricostruisce le due Application e fa rolling update. NESSUN deploy manuale via SSH; nessun `docker-compose up` sulla VM; nessun upload di artifact a mano.
 
 **Why:** garantisce che la demo URL pubblica rifletta sempre `main`, evita drift fra workstation. Riduce il "blast radius" del service user IAM (è limitato + audit trail GitHub).
 
@@ -166,7 +166,7 @@ Default esplicito per backend e wizard: `GEMINI_DEFAULT_MODEL=gemini-3.1-flash-l
 
 Dopo il primo giro di test su installazione fresh (Mark Ross / Julia White) sono emerse 7 famiglie di problemi che alterano la forma del prodotto. Decisioni bloccate qui per non ridiscuterle:
 
-**A. PII redaction → out of scope** (decisa qui, completata 2026-05-17 con la cancellazione di `pii_sanitizer.py` / `pii_policy.py`). Motivo originale: l'operatore deve sapere che il cliente è celiaco; redazioni `[redacted: health]` sono inutili. Vedi sezione 1.nove + `afterglow/docs/future-ideas.md` §4 per il design archiviato.
+**A. PII redaction → out of scope** (decisa qui, completata 2026-05-17 con la cancellazione di `pii_sanitizer.py` / `pii_policy.py`). Motivo originale: l'operatore deve sapere che il cliente è celiaco; redazioni `[redacted: health]` sono inutili. Vedi sezione 1.nove + `docs/future-ideas.md` §4 per il design archiviato.
 
 **B. Dialer fire-and-forget.** `app/app/incoming-call.tsx` non polla più la pipeline: dopo che l'audio finisce, submit + `router.replace('/(tabs)')` + toast pubblicato via `app/lib/pipelineToast.ts`. La tab Calls (`app/app/(tabs)/index.tsx`) ha un banner "Analysis in progress" e auto-refresh ogni 2s finché ci sono call non-terminali. NESSUN auto-redirect a Card Detail quando la call completa: l'utente può cliccare quando vuole. Sostituisce la vecchia logica `phase='analyzing'` con polling bloccante (rimossa).
 
@@ -293,7 +293,7 @@ Secondo giro di test su `app.95-179-245-107.sslip.io` post-rewrite ha esposto bu
 
 **A. Drawer ha SEMPRE una voce "Calls" in cima.** `app/app/(drawer)/_layout.tsx` espone manualmente la rotta `(tabs)` come `<DrawerItem label="Calls" icon="phone-outline">` (con `focused ? primary : onSurface` per il colore), mentre `<Drawer.Screen name="(tabs)">` resta nascosta via `drawerItemStyle: { display: 'none' }`. Senza questa voce, una volta navigato a Contacts/Templates/Settings non c'era percorso UI per tornare alla Home — l'utente doveva editare l'URL. **Non rimuovere mai questa voce.** Se aggiungi screen sotto al drawer, segui lo stesso pattern `focused ? primary : (color ?? onSurface)` per le icone così l'highlight active resta e dark mode non perde leggibilità.
 
-**B. Drawer wordmark `afterglow`.** L'header del DrawerContent è il `<Text>` styled `<Text>after</Text><Text color=primary>glow</Text>` (font weight 800, letter-spacing -0.3, size 22) replicando il markup demo (`afterglow/demo-site/src/App.tsx:129-130`). Sostituisce il vecchio `<Text variant="headlineSmall">Afterglow</Text>` plain. **Non passare a un asset/logo image** — è solo tipografia.
+**B. Drawer wordmark `afterglow`.** L'header del DrawerContent è il `<Text>` styled `<Text>after</Text><Text color=primary>glow</Text>` (font weight 800, letter-spacing -0.3, size 22) replicando il markup demo (`demo-site/src/App.tsx:129-130`). Sostituisce il vecchio `<Text variant="headlineSmall">Afterglow</Text>` plain. **Non passare a un asset/logo image** — è solo tipografia.
 
 **C. Drawer Reset demo via Paper Dialog (non `window.confirm`).** `window.confirm` dentro un DrawerItem fa race con l'auto-close del drawer: il `setBusy(true)` parte ma il `await api.resetDemo()` non risolve mai (modal blur), e il bottone resta bloccato su "Resetting…". Dal round 3, `DrawerContent` usa lo stesso `<Portal><Dialog>` pattern di `(drawer)/settings.tsx` — `setResetDialogVisible(true)` apre il dialog, `runReset()` esegue + reload. **Non re-introdurre `window.confirm` in nessun DrawerItem.** Vedi [[feedback-drawer-window-confirm]].
 
@@ -509,7 +509,7 @@ del round 6).
    `CallRow` è `undefined` quando `call.customer_id == null`. La row
    diventa inerte (Paper TouchableRipple skippa il ripple). Niente
    "expand inline" né "save as contact" — è scope post-hackathon,
-   vive in `afterglow/docs/future-ideas.md`. `CallRow.onPress` è ora
+   vive in `docs/future-ideas.md`. `CallRow.onPress` è ora
    `optional`; rilassare la signature di altri call site se servirà.
 
 3. **`CallListItem.customer_tags` esposto dal backend.** Query in
@@ -741,7 +741,7 @@ centered su altro asse); inoltre `appointment.*` come doppione di
   `backend/tests/test_seed_templates.py` (new).
 - Docs: `.claude/memory/project_afterglow_decisions.md`,
   `.claude/memory/feedback_real_on_device_whitelist.md`,
-  `afterglow/README.md`.
+  `README.md`.
 
 ### 1.quattordici. Round 9 — Pixel CallRow pattern + seed varietà (2026-05-18 sera)
 Round 9 polish — non aggiunge funzionalità, allinea la list view al pattern Pixel system-dialer e spezza la monotonia del busy-week seed.
@@ -763,7 +763,7 @@ Sia `_AI_BOOKING_BLUEPRINTS` che `_CUSTOMER_PHONES_BY_NAME` estesi ai 6 nomi (tr
 **Why:** l'audit visivo round 9 ha trovato 3 cluster (CallRow trailing rumoroso, status come testo poco Pixel-ish, Mark Ross 4× di fila nel sort Bookings desc). Il pattern Pixel dialer come reference è esplicito (utente ha fornito screenshot reale). Il fix con upsert idempotente — invece di un secondo wipe-migration — è motivato da [[feedback-db-disposable]] applicato con criterio: il DB è disposable, ma se posso evitare di wipe-are due volte in due round, lo evito.
 
 **How to apply:**
-- Quando tocchi `CallRow.tsx` non re-introdurre `statusLabel()` o testi tipo "Incoming"/"Missed" nella description — sono ricoperti dai test? No, ma `rg "'Incoming'|'Missed'|status\.text" afterglow/app/components/CallRow.tsx` deve restare zero. Le label testuali in Call Detail (`app/app/call/[id].tsx`) sono OK — la decision Pixel-icon-only riguarda solo la list view.
+- Quando tocchi `CallRow.tsx` non re-introdurre `statusLabel()` o testi tipo "Incoming"/"Missed" nella description — sono ricoperti dai test? No, ma `rg "'Incoming'|'Missed'|status\.text" app/components/CallRow.tsx` deve restare zero. Le label testuali in Call Detail (`app/app/call/[id].tsx`) sono OK — la decision Pixel-icon-only riguarda solo la list view.
 - Quando aggiungi un nuovo seed customer modifica `SEED_CUSTOMERS` (è la sola fonte di verità), poi aggiungi anche entry in `_AI_BOOKING_BLUEPRINTS` + `_CUSTOMER_PHONES_BY_NAME`. I test `test_ai_booking_blueprints_cover_six_customers`, `test_customer_phones_by_name_matches_blueprints`, `test_seed_customers_constant_matches_blueprints` falliscono se i tre dict divergono.
 - Quando il busy-week tocca lo schema dei `kind` (es. nuovo `ai_cancel`), aggiorna anche il fixture `ai_booking=True` in `_ensure_personal_calls` per il ramo legacy-cleanup; il pattern UUID5 namespace evita le collisioni.
 
@@ -771,7 +771,7 @@ Sia `_AI_BOOKING_BLUEPRINTS` che `_CUSTOMER_PHONES_BY_NAME` estesi ai 6 nomi (tr
 - FE: `app/components/CallRow.tsx`, `app/app/(drawer)/(tabs)/index.tsx`.
 - BE: `backend/app/db/seed.py`.
 - Tests: `backend/tests/test_seed_templates.py` (+5 contract test).
-- Docs: `.claude/memory/project_afterglow_decisions.md`, `afterglow/README.md`.
+- Docs: `.claude/memory/project_afterglow_decisions.md`, `README.md`.
 
 ### 1.quindici. Round 9 (parte 2) — Seed expansion + RAG demo read-only + Audit overview + Regenerate briefing + Always-fresh dates (2026-05-18)
 Round 9 secondo passaggio — alza il segnale Vultr Award + Agentic Workflow per i giudici (deadline 19 mag 2026) attraverso cinque cambi correlati senza toccare i 6 invarianti hard di [[project-afterglow-hackathon]].
@@ -819,7 +819,7 @@ Nuovo modulo dedicato `backend/app/agents/briefing_regenerator.py` (NON riusa `c
 - BE audit: `backend/app/api/audit.py` + `backend/app/schemas/audit.py` (LEFT JOIN Customer, 3 campi optional).
 - FE types + api: `app/lib/types.ts` (`briefing` su `CallExtractedView`, 3 campi su `AuditLogEntry`), `app/lib/api.ts` (`listAudit({limit})`, `regenerateSummary`), `app/lib/auditLabels.ts` (`briefing_regenerator → Briefing regenerator`).
 - FE UI: `app/app/call/[id].tsx` (Surface briefing + IconButton refresh + Dialog + Snackbar), `app/app/(drawer)/audit.tsx` (rewrite ScrollView + Accordion).
-- Docs: questo file, `CLAUDE.md`, `afterglow/README.md`, `afterglow/docs/ARCHITECTURE.md`, `afterglow/demo-site/src/App.tsx`, `.claude/memory/MEMORY.md`, due nuove memory `project_rag_demo_read_only.md` + `feedback_audit_collapse_pattern.md`.
+- Docs: questo file, `CLAUDE.md`, `README.md`, `docs/ARCHITECTURE.md`, `demo-site/src/App.tsx`, `.claude/memory/MEMORY.md`, due nuove memory `project_rag_demo_read_only.md` + `feedback_audit_collapse_pattern.md`.
 
 ### 1.sedici. Round 10 — Agentic post-call pipeline (2026-05-18, single multi-turn Gemini/ADK agent)
 
@@ -873,7 +873,7 @@ Questo contratto è ciò che mantiene visibili gli `ExecutedAction` già flushed
 - Test esistenti aggiornati: `test_action_planner_typed.py` eliminato (modulo rimosso), `test_pipeline_smoke.py` continua a passare, `test_action_executor_validation.py` invariato grazie al wrapper batch.
 - Risultato: **113 backend test verdi** dopo il refactor.
 
-**Hackathon alignment** (`hackathon-docs/07-judging-criteria.md`):
+**Hackathon alignment** (`docs/hackathon-reference/07-judging-criteria.md`):
 - **Application of Technology (25%)** — agentic architecture, multi-step reasoning, tool use, self-correction su `validation_failed`/`evidence_missing`, RAG come tool (Vultr) anziché prompt prefix. Bonus combo multi-tech: Gemini + Speechmatics + Vultr nello stesso audit trail.
 - **Originality (25%)** — behaviour emergente: l'agente può cercare nel transcript ("search_transcript('Saturday')") o ri-interrogare la memoria con query specifiche, e si autocorregge su errori dell'executor. Visibile a colpo d'occhio nella "Agent reasoning" pane.
 - **Business Value (25%)** — operatore vede ogni decisione + retry + perché l'azione è stata flaggata. Auditabile, undo-able.
@@ -885,7 +885,7 @@ Questo contratto è ciò che mantiene visibili gli `ExecutedAction` già flushed
 - Backend cleanup: `backend/app/integrations/action_catalog.py` (commenti), `backend/app/api/templates.py` (commento), `backend/app/db/seed.py` (audit rows: `action_planner` → `call_agent` agent_loop_start/end).
 - Backend tests: nuovi 6 file `test_*.py`, eliminato `test_action_planner_typed.py`.
 - Frontend: `app/lib/types.ts` (ReviewFlag + DTO fields + status union), `app/lib/api.ts` (listAudit agent_name), `app/components/AgentReasoningTrail.tsx` (NEW), `app/components/CallRow.tsx` (chip + filter key), `app/app/call/[id].tsx` (banner + trail + placeholder Extracted), `app/app/(drawer)/(tabs)/index.tsx` (filter review), `app/app/customer/[id].tsx` (Review chip).
-- Docs: questo file (1.ter SUPERSEDED + 1.sedici nuova), `CLAUDE.md` (hard constraint #2 riscritto), `.claude/memory/MEMORY.md` + nuovo `project_agentic_pipeline.md`, `afterglow/README.md`, `afterglow/docs/ARCHITECTURE.md`.
+- Docs: questo file (1.ter SUPERSEDED + 1.sedici nuova), `CLAUDE.md` (hard constraint #2 riscritto), `.claude/memory/MEMORY.md` + nuovo `project_agentic_pipeline.md`, `README.md`, `docs/ARCHITECTURE.md`.
 
 **Why:** entrare nei criteri agentic dell'hackathon non come etichetta ma come architettura. La pipeline pre-round-10 era "3 chiamate Gemini con tool calling spruzzato sopra" — descrivibile come agentic nel pitch ma non riconoscibile come tale nel codice o nell'audit. Ora ogni turno è una decisione del modello con feedback osservato; ogni azione fallita può essere corretta dal modello stesso; ogni look-up di memoria è scelto. La Trail UI lo rende leggibile in 5 secondi a un giudice.
 
@@ -915,7 +915,7 @@ Cluster di fix post-audit pre-submission. Non tocca pipeline agentic (round-10 s
 - FE: `app/lib/dateFormat.ts`, `app/lib/avatar.ts`, `app/app/templates/wizard.tsx`.
 - BE: `backend/app/db/seed.py` (+ `backend/app/api/admin.py` docstring).
 - Tests: `backend/tests/test_seed_templates.py` (+1 test).
-- Docs: `afterglow/README.md` (sub-section), `afterglow/docs/ARCHITECTURE.md` (mezza-riga su `formatRelativeTime`), questo file (sub-decisione 1.diciassette + appendix round-10-polish a §R).
+- Docs: `README.md` (sub-section), `docs/ARCHITECTURE.md` (mezza-riga su `formatRelativeTime`), questo file (sub-decisione 1.diciassette + appendix round-10-polish a §R).
 
 **Why:** chiudere i 4 finding visivi più visibili pre-submission e dare ai giudici una sub-section README "dove cliccare" che racconta il prodotto in 7 bullet senza dover dedurre architettura. Il refactor agentic single-loop (sub-decisione 1.sedici) c'era già; mancavano polish + pitch surface.
 

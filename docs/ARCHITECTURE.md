@@ -13,7 +13,7 @@ single-shot calls. This was rebuilt in round-10 (2026-05-18) to make the
 agentic architecture explicit at the code level, not just in the pitch.
 
 Mapping to lablab's judging criteria
-([`hackathon-docs/07-judging-criteria.md`](../../hackathon-docs/07-judging-criteria.md)):
+([`docs/hackathon-reference/07-judging-criteria.md`](../docs/hackathon-reference/07-judging-criteria.md)):
 
 - **Application of Technology (25%)** — agent loops up to 12 turns over
   a typed tool surface, observes each tool's response, and self-corrects
@@ -729,7 +729,7 @@ PII/privacy classification is **out of scope for the hackathon demo** —
 `FieldDefinition` carries no privacy metadata and the post-call pipeline
 runs through the single agentic loop in `agents/call_agent.py` with no
 sanitizer or redaction step. The original design and the rationale for
-removal live in `afterglow/docs/future-ideas.md` §4.
+removal live in `docs/future-ideas.md` §4.
 
 `FieldDefinition.confidence_threshold` (per-field, 0.0–1.0) is kept and
 gates `depends_on` propagation in `orchestrator._coerce_extractions`.

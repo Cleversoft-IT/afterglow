@@ -78,5 +78,5 @@ per-call evita duplicati, e il valore è dimostrato dal primo squillo.
 
 **Pitch coverage:** [[project-afterglow-decisions]] §1.quater (rewrite)
 + §1.quindici (round-9 parte 2). README `Best use of Vultr` + Demo
-isolation policy. `afterglow/docs/ARCHITECTURE.md` "Vultr Vector Store
+isolation policy. `docs/ARCHITECTURE.md` "Vultr Vector Store
 — read-only on pre-seeded collection in demo".

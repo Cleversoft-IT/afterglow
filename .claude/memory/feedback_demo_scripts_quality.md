@@ -26,8 +26,8 @@ Ogni script demo che finisce in front del giudice — sia i 6 seed in `scripts/g
 7. **Channel actions solo se confermate dal contesto.** Le action channel-dependent (`whatsapp.*`, `sms.*`, `email.*`, `calendar.*`, `payment.*`, `review.*`) compaiono solo se il contesto del business le giustifica. Non default sistematico a WhatsApp.
 
 **Where to check:**
-- Seed scripts: `afterglow/scripts/generate_demo_audio.py:75-160` (e mirror in `afterglow/backend/app/db/seed.py::_bundled_simulation_configs`).
-- Wizard generator: `afterglow/backend/app/agents/simulation_script.py:SYSTEM_INSTRUCTION` + `_build_user_prompt`.
+- Seed scripts: `scripts/generate_demo_audio.py:75-160` (e mirror in `backend/app/db/seed.py::_bundled_simulation_configs`).
+- Wizard generator: `backend/app/agents/simulation_script.py:SYSTEM_INSTRUCTION` + `_build_user_prompt`.
 - Template ↔ script alignment lock: TBD test `test_seed_script_action_alignment.py` (issue noto, da scrivere).
 
 Related: [[project-afterglow-decisions]] §E "Marketplace expansion 2026-05-18".

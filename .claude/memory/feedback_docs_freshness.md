@@ -5,7 +5,7 @@ metadata:
   type: feedback
 ---
 
-In Afterglow lavorano più persone (umani + sessioni Claude indipendenti). Tutto ciò che vive sotto `.claude/memory/`, `.claude/plans/`, `afterglow/README.md`, `afterglow/docs/**` e i prompt agent in `afterglow/backend/app/agents/prompts/` è **onboarding surface condiviso**: chiunque (umano o agente) lo legge per costruirsi il modello mentale del progetto. Se un MD è obsoleto, ogni decisione presa a valle parte da una mappa sbagliata.
+In Afterglow lavorano più persone (umani + sessioni Claude indipendenti). Tutto ciò che vive sotto `.claude/memory/`, `.claude/plans/`, `README.md`, `docs/**` e i prompt agent in `backend/app/agents/prompts/` è **onboarding surface condiviso**: chiunque (umano o agente) lo legge per costruirsi il modello mentale del progetto. Se un MD è obsoleto, ogni decisione presa a valle parte da una mappa sbagliata.
 
 **Why:** un audit del 2026-05-16 ha trovato decine di affermazioni obsolete (tabella `Business` "ancora presente" mentre era stata droppata da `0002_drop_business.py`, "single Gemini call" mentre `action_planner.py` con ADK era già rientrato, `afterglow/frontend/` citato come path mentre era stato spaccato in `app/` + `demo-site/`, env var `DEMO_MODE` citata mentre era stata rimossa, ecc.). La causa-radice è una: cambiamenti landed sul codice senza un parallelo update ai documenti che ne parlavano.
 
@@ -23,7 +23,7 @@ In Afterglow lavorano più persone (umani + sessioni Claude indipendenti). Tutto
   - `reference` — pointer a sistemi esterni (Coolify, Vultr, GitHub). Aggiorna solo quando i coordinati cambiano.
   - `user` — info sulla persona con cui collabori. Aggiorna man mano che impari.
   Aggiungere un memory nuovo → crea file con frontmatter + slug, aggiungi una riga ≤150 chars in [[MEMORY]] index. Mai mettere contenuto direttamente in `MEMORY.md`.
-- **Doc del prodotto (non memory).** `afterglow/README.md` e `afterglow/docs/**` sono lette anche dai giudici dell'hackathon — ogni claim concreto (path, comando, env, partner, score) deve essere verificato contro il codice prima di mergiare. Le `Award alignment` sections sono particolarmente sensibili: una linea obsoleta lì può costare punti.
+- **Doc del prodotto (non memory).** `README.md` e `docs/**` sono lette anche dai giudici dell'hackathon — ogni claim concreto (path, comando, env, partner, score) deve essere verificato contro il codice prima di mergiare. Le `Award alignment` sections sono particolarmente sensibili: una linea obsoleta lì può costare punti.
 - **Prompt degli agenti.** Quando modifichi un prompt agent in `backend/app/agents/*.py`, controlla se esiste un `.md` "documentazione" parallelo in `backend/app/agents/prompts/` e tienilo allineato (oggi il `.md` è doc-only, il runtime usa la stringa Python — è esplicito nel file).
 
 Related: [[project-afterglow-decisions]], [[feedback-code-language]], [[feedback-plan-files-location]], [[feedback-plans-no-timing]].

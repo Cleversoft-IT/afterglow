@@ -2,7 +2,7 @@
 
 Built deliverables for the AI Agent Olympics (Milan AI Week 2026) lablab.ai
 submission form. All copy and structure are sourced from
-[`afterglow/docs/SUBMISSION.md`](../docs/SUBMISSION.md) — that is the
+[`docs/SUBMISSION.md`](../docs/SUBMISSION.md) — that is the
 single source of truth; this directory is the rendered output.
 
 ## Files
@@ -23,13 +23,13 @@ script in [`SUBMISSION.md §4`](../docs/SUBMISSION.md#4-video-pitch-script--5-mi
 
 Requires `playwright` installed globally (`sudo npm install -g playwright`
 + `playwright install chromium`) — same toolchain as
-[`afterglow/scripts/record-demo.cjs`](../scripts/record-demo.cjs).
+[`scripts/record-demo.cjs`](../scripts/record-demo.cjs).
 
 ```bash
 # from repo root
-NODE_PATH=$(npm root -g) node afterglow/submission/slides/build.cjs    # → afterglow-slides.pdf
-NODE_PATH=$(npm root -g) node afterglow/submission/slides/cover.cjs    # → afterglow-cover.png
-NODE_PATH=$(npm root -g) node afterglow/submission/slides/preview.cjs  # → slides/_preview/slide-NN.png
+NODE_PATH=$(npm root -g) node submission/slides/build.cjs    # → afterglow-slides.pdf
+NODE_PATH=$(npm root -g) node submission/slides/cover.cjs    # → afterglow-cover.png
+NODE_PATH=$(npm root -g) node submission/slides/preview.cjs  # → slides/_preview/slide-NN.png
 ```
 
 Current build sizes: PDF ~1.9 MB · cover ~320 KB (both well under lablab caps).

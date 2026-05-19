@@ -14,7 +14,7 @@ asked to skip the gender randomization entirely and pick photos by
 hand. The fix:
 
 ```ts
-// afterglow/app/lib/mockContacts.ts
+// app/lib/mockContacts.ts
 const W = (n: number) => `https://randomuser.me/api/portraits/women/${n}.jpg`;
 const M = (n: number) => `https://randomuser.me/api/portraits/men/${n}.jpg`;
 // then per contact:

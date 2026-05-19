@@ -82,11 +82,11 @@ ScrollView
 
 **Coordinate del primo applicazione:**
 
-- `afterglow/app/app/(drawer)/audit.tsx` (rewrite ScrollView +
+- `app/app/(drawer)/audit.tsx` (rewrite ScrollView +
   List.Accordion, default collassato, IconButton open-in-new per call).
-- `afterglow/app/lib/api.ts.listAudit({ limit: 500 })` default lato
+- `app/lib/api.ts.listAudit({ limit: 500 })` default lato
   client.
-- `afterglow/backend/app/schemas/audit.py` + `backend/app/api/audit.py`
+- `backend/app/schemas/audit.py` + `backend/app/api/audit.py`
   — LEFT JOIN Customer (NON solo Call: `display_name` è su Customer)
   per popolare `call_phone_e164` / `call_display_name` / `call_status`.
 

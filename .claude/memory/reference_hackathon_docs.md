@@ -7,7 +7,7 @@ metadata:
 
 Knowledge base completa dell'hackathon (~22.900 parole, 14 file MD):
 
-**Path:** `/home/sepa/cleversoft/hackaton/hackaton-lablab/hackathon-docs/`
+**Path:** `docs/hackathon-reference/` (relativo alla root del repo)
 
 | File | Quando aprirlo |
 |---|---|

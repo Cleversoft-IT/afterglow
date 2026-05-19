@@ -25,3 +25,4 @@
 - [Agentic post-call pipeline](project_agentic_pipeline.md) — round-10: un unico Gemini/ADK multi-turn agent fonde analyzer+planner+executor; tool surface, no-raise contract, `needs_review` status, audit correlation via `payload.agent_turn`.
 - [Audit collapse pattern](feedback_audit_collapse_pattern.md) — pattern UI overview-first per pagine list-heavy (call → agent → step → payload).
 - [Session lock for concurrent tools](feedback_session_lock_concurrent_tools.md) — round-11: `run_call_agent` richiede un `asyncio.Lock` per-run; serializza `session.flush()` dei tool paralleli (Gemini parallel function calling) altrimenti SQLAlchemy alza "Session is already flushing".
+- [Coolify OOM = silent stale deploy](project_coolify_oom_silent_deploys.md) — VM 4 GB, build muore SIGKILL e Coolify tiene il container vecchio: "il codice non si vede in prod" senza errori GH.

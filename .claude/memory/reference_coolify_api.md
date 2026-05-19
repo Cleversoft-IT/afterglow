@@ -78,7 +78,7 @@ GET /api/v1/deployments/applications/{uuid}     # storico deploy + logs (JSON in
 
 ## Creare app da repo privato — SOLO `private-github-app`
 
-`POST /api/v1/applications/public` accetta il payload ma poi il git clone fallisce con `fatal: could not read Username for github.com` perché non ha credenziali. Per repo private (compreso il nostro Cleversoft-IT/hackaton-lablab) usa l'endpoint `private-github-app` passando l'UUID del GitHub App source (Coolify side, non App ID GitHub):
+`POST /api/v1/applications/public` accetta il payload ma poi il git clone fallisce con `fatal: could not read Username for github.com` perché non ha credenziali. Per repo private (compreso il nostro Cleversoft-IT/afterglow) usa l'endpoint `private-github-app` passando l'UUID del GitHub App source (Coolify side, non App ID GitHub):
 
 ```bash
 curl -X POST -H "Authorization: Bearer $COOLIFY_TOKEN" -H "Content-Type: application/json" \
@@ -87,7 +87,7 @@ curl -X POST -H "Authorization: Bearer $COOLIFY_TOKEN" -H "Content-Type: applica
     "environment_name": "production",
     "server_uuid": "'$SERVER_UUID'",
     "github_app_uuid": "'$GITHUB_APP_UUID'",
-    "git_repository": "Cleversoft-IT/hackaton-lablab",
+    "git_repository": "Cleversoft-IT/afterglow",
     "git_branch": "main",
     "build_pack": "dockerfile",
     "base_directory": "/path/inside/repo",
@@ -154,9 +154,9 @@ patch_paths() {
     "$COOLIFY_URL/api/v1/applications/$1" \
     -d "$(jq -n --arg p "$2" '{watch_paths:$p}')"
 }
-patch_paths $BACKEND_UUID 'afterglow/backend/**'
-patch_paths $APP_UUID     'afterglow/app/**'
-patch_paths $DEMO_UUID    'afterglow/demo-site/**'
+patch_paths $BACKEND_UUID 'backend/**'
+patch_paths $APP_UUID     'app/**'
+patch_paths $DEMO_UUID    'demo-site/**'
 
 # Verifica
 for u in $BACKEND_UUID $APP_UUID $DEMO_UUID; do

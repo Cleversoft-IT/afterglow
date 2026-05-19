@@ -17,7 +17,7 @@ once and registering them in state), and a deterministic batch
 of an action, never iterated, never asked for context on demand.
 
 The hackathon's "Application of Technology" and "Originality" criteria
-(`hackathon-docs/07-judging-criteria.md`) reward exactly what was missing:
+(`docs/hackathon-reference/07-judging-criteria.md`) reward exactly what was missing:
 **multi-step reasoning, tool use, self-correction, emergent behaviour**. The
 Vultr "Web-Based Enterprise Agent" track explicitly demands *multi-step
 agentic workflows*. Three glued stages did not qualify.
