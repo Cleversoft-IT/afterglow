@@ -20,7 +20,7 @@ import uuid
 from datetime import date, datetime, time, timedelta, timezone
 from pathlib import Path
 
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, select, update
 
 from app.db.engine import SessionLocal
 from app.db.models import (
@@ -3019,6 +3019,17 @@ async def _ensure_personal_calls(session, anchor: date) -> None:
     for fx in all_fixtures:
         present = await session.scalar(select(Call.id).where(Call.id == fx["id"]))
         if present is not None:
+            # Round-12 backfill: round-11 seed rows pre-date the
+            # `is_anchor_day` flag, so on a same-DB redeploy the day_offset=0
+            # slots exist but are not flagged → `_reposition_anchor_day_calls`
+            # ignores them and they keep floating in the future. Stamp the
+            # flag on the live row so the next refresh task sees them.
+            if fx.get("is_anchor_day"):
+                await session.execute(
+                    update(Call)
+                    .where(Call.id == fx["id"], Call.is_anchor_day.is_(False))
+                    .values(is_anchor_day=True)
+                )
             continue
         customer_name = fx.get("customer_name")
         customer_id: uuid.UUID | None = None
