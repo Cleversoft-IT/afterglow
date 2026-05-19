@@ -1,5 +1,5 @@
 import React from 'react';
-import { AbsoluteFill, staticFile, useCurrentFrame, interpolate, Easing } from 'remotion';
+import { AbsoluteFill, Img, staticFile, useCurrentFrame, interpolate, Easing } from 'remotion';
 import { COLORS, AGENT_TURNS, DEMO_CALL } from '../data/videoScript';
 import { GlowOrb } from '../components/GlowOrb';
 import { useSceneFade } from '../components/useSceneFade';
@@ -49,50 +49,57 @@ export const EndToEndRunScene: React.FC<{ durationInFrames: number }> = ({ durat
           position: 'absolute',
           inset: 0,
           display: 'grid',
-          gridTemplateColumns: '380px 1fr',
+          gridTemplateColumns: '480px 1fr',
           alignItems: 'center',
-          padding: '60px 80px',
+          padding: '40px 60px',
           gap: 60,
         }}
       >
         {/* LEFT — phone */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 24, alignItems: 'center' }}>
+          {/*
+             Inner screen aspect 932/430 = 2.167; wrapper 480 + 10 border + 8
+             padding on each side → inner 444, inner height 444×2.167 = 962
+             → wrapper height 962 + 18×2 = 998.
+           */}
           <div
             style={{
               position: 'relative',
-              width: 380,
-              height: 820,
-              borderRadius: 56,
-              border: `8px solid ${COLORS.border}`,
+              width: 480,
+              height: 998,
+              borderRadius: 64,
+              border: `10px solid ${COLORS.border}`,
               background: '#000',
-              padding: 6,
+              padding: 8,
               boxShadow: '0 30px 80px rgba(0,0,0,0.6)',
               overflow: 'hidden',
             }}
           >
-            <img
+            <Img
               src={staticFile('screenshots/incoming-call.png')}
               alt="Incoming call"
               style={{
                 position: 'absolute',
-                inset: 6,
-                width: 'calc(100% - 12px)',
-                height: 'calc(100% - 12px)',
-                borderRadius: 48,
-                objectFit: 'cover',
+                inset: 8,
+                width: 'calc(100% - 16px)',
+                height: 'calc(100% - 16px)',
+                borderRadius: 54,
+                objectFit: 'contain',
+                objectPosition: 'center',
                 opacity: incomingOpacity,
               }}
             />
-            <img
+            <Img
               src={staticFile('screenshots/call-detail-fields.png')}
               alt="Call detail"
               style={{
                 position: 'absolute',
-                inset: 6,
-                width: 'calc(100% - 12px)',
-                height: 'calc(100% - 12px)',
-                borderRadius: 48,
-                objectFit: 'cover',
+                inset: 8,
+                width: 'calc(100% - 16px)',
+                height: 'calc(100% - 16px)',
+                borderRadius: 54,
+                objectFit: 'contain',
+                objectPosition: 'center',
                 opacity: detailOpacity,
               }}
             />

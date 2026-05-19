@@ -32,18 +32,18 @@ export const CodaScene: React.FC<{ durationInFrames: number }> = ({ durationInFr
           padding: '0 120px',
         }}
       >
-        {/* Wordmark */}
+        {/* Wordmark — split-color, mirrors the demo-site home logo */}
         <AnimatedText delay={10} duration={30} direction="up" distance={20}>
           <div
             style={{
               fontSize: 132,
               fontWeight: 800,
               letterSpacing: '-0.055em',
-              color: COLORS.white,
               lineHeight: 1,
             }}
           >
-            {CLAIM.wordmark}
+            <span style={{ color: COLORS.white }}>{CLAIM.wordmark.after}</span>
+            <span style={{ color: COLORS.primary }}>{CLAIM.wordmark.glow}</span>
           </div>
         </AnimatedText>
 

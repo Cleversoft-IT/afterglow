@@ -1,5 +1,5 @@
 import React from 'react';
-import { AbsoluteFill, staticFile, useCurrentFrame, interpolate, Easing } from 'remotion';
+import { AbsoluteFill, Img, staticFile, useCurrentFrame, interpolate, Easing } from 'remotion';
 import { COLORS, CLAIM } from '../data/videoScript';
 import { GlowOrb } from '../components/GlowOrb';
 import { useSceneFade } from '../components/useSceneFade';
@@ -34,10 +34,10 @@ export const ProductIntroScene: React.FC<{ durationInFrames: number }> = ({ dura
           position: 'absolute',
           inset: 0,
           display: 'grid',
-          gridTemplateColumns: '1fr 1fr',
+          gridTemplateColumns: '1.1fr 0.9fr',
           alignItems: 'center',
-          padding: '0 120px',
-          gap: 80,
+          padding: '0 80px',
+          gap: 60,
         }}
       >
         {/* LEFT — copy */}
@@ -81,7 +81,7 @@ export const ProductIntroScene: React.FC<{ durationInFrames: number }> = ({ dura
               }}
             >
               The operator picks up — like always. The moment they hang up, the&nbsp;
-              <span style={{ color: COLORS.primarySoft, fontWeight: 700 }}>after</span>&nbsp;
+              <span style={{ color: COLORS.primary, fontWeight: 700 }}>after</span>&nbsp;
               begins.
             </div>
           </AnimatedText>
@@ -111,27 +111,33 @@ export const ProductIntroScene: React.FC<{ durationInFrames: number }> = ({ dura
             alignItems: 'center',
           }}
         >
+          {/*
+             Frame derived from capture-screenshots.mjs viewport (430×932 @2x).
+             Inner screen aspect 932/430 = 2.167; wrapper width 510 + 10 border
+             + 8 padding on each side → inner 474, inner height 474×2.167 = 1027.
+           */}
           <div
             style={{
-              width: 380,
-              height: 820,
-              borderRadius: 56,
-              border: `8px solid ${COLORS.border}`,
+              width: 510,
+              height: 1063,
+              borderRadius: 64,
+              border: `10px solid ${COLORS.border}`,
               background: '#000',
-              padding: 6,
+              padding: 8,
               boxShadow: '0 30px 80px rgba(0,0,0,0.6)',
               overflow: 'hidden',
             }}
           >
-            <img
+            <Img
               src={staticFile('screenshots/home.png')}
               alt="Home"
               style={{
                 width: '100%',
                 height: '100%',
-                borderRadius: 48,
-                objectFit: 'cover',
-                objectPosition: 'top center',
+                borderRadius: 54,
+                objectFit: 'contain',
+                objectPosition: 'center',
+                display: 'block',
               }}
             />
           </div>

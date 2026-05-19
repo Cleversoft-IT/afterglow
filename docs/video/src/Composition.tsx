@@ -3,7 +3,7 @@ import { AbsoluteFill, Sequence, Audio, staticFile } from 'remotion';
 import { SCENES, TOTAL_FRAMES, COLORS } from './remotion/data/videoScript';
 
 // Act I (typographic spot) was deliberately dropped — the video opens
-// straight on the product. ActISpot.tsx is kept on disk for re-use.
+// straight on the product.
 
 // Act II — live product demo.
 import { ProductIntroScene } from './remotion/scenes/ProductIntroScene';     // II.A
@@ -18,20 +18,14 @@ import { MarketScene } from './remotion/scenes/MarketScene';                 // 
 import { CodaScene } from './remotion/scenes/CodaScene';
 
 // ─── Voiceover segments ────────────────────────────────────────────────
-// One MP3 per Act II scene + Coda. Act I has NO voice-over (typographic +
-// sound design only). Lead-in: each VO starts ~0.5s (15f) after its scene
-// begins, leaving room for the scene to fade in cleanly.
+// One MP3 per Act II scene + Coda. Lead-in: each VO starts ~0.4s (12f)
+// after its scene begins, leaving room for the scene to fade in cleanly.
 //
 // Generate / regenerate via:
 //   python -X utf8 docs/video/scripts/generate-voiceover.py
-//
-// The MP3 filenames below are the new §4-aligned set; the old seg_NN_*
-// files are kept on disk for reference but no longer wired here.
 
 const LEAD_IN = 12;
 
-// Act I (660f) has NO voiceover — typographic + silence + pad-only.
-// Voiceover starts with Act II.A.
 const VOICEOVER = [
   { file: 'audio/seg_iiA_intro.mp3',        startFrame: SCENES.iiA.start + LEAD_IN },
   { file: 'audio/seg_iiB_endrun.mp3',       startFrame: SCENES.iiB.start + LEAD_IN },

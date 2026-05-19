@@ -75,30 +75,11 @@ export const VIDEO_CONFIG = {
   height: 1080,
 };
 
-// ─── Act I — typographic beats (no VO) ─────────────────────────────────
-// Scene total: 660 f (22s). Beats:
-//   0–60   held black + silence
-//   60–240 "A call ends."             (~6s)
-//   240–420 "Something else begins."  (~6s)
-//   420–540 4 proof points stack      (~4s)
-//   540–660 the claim                 (~4s)
-
-export const ACT_I_BEATS = [
-  { text: 'A call ends.',            start: 60,  duration: 180 },
-  { text: 'Something else\nbegins.', start: 240, duration: 180 },
-] as const;
-
-// Beat 16–22s: four proof points stack in (one every ~10 frames / 0.33s)
-export const ACT_I_PROOFS = [
-  'Booking to enter.',
-  'Confirmation to send.',
-  'Allergy to remember.',
-  'Briefing to write.',
-] as const;
-
-// Beat 22–27s: the claim (centred)
+// ─── Claim (used in Coda) ──────────────────────────────────────────────
+// Wordmark is split-color per demo-site convention (`demo-site/src/App.tsx`):
+// `after` in foreground/white, `glow` in brand primary (#3b82f6).
 export const CLAIM = {
-  wordmark: 'afterglow',
+  wordmark: { after: 'after', glow: 'glow' },
   line1: 'Stay in the moment.',
   line2: 'We handle the after.',
 } as const;
@@ -224,34 +205,48 @@ export const MOCK_SUMMARY = "The outbound write-side integrations a multi-judge 
 
 export const MOCK_SWAP_NOTE = 'Swap a mock for real = one entry in action_catalog.py + an env var. Not an architecture migration.';
 
-// ─── Act II.G — Market & USP ───────────────────────────────────────────
+// ─── Act II.G — Market & USP (two-beat layout) ─────────────────────────
+// Beat 1: a single giant number (€110M) with counter-up + Italian-sources note.
+// Beat 2: 3 USP cards horizontal (no comparison table — that lives in the deck).
 
-export const MARKET_METRICS = [
-  { num: '478k', label: 'booking-led IT businesses' },
-  { num: '185k', label: 'phone-led subset (SAM)' },
-  { num: '€110M', label: 'initial IT SAM / year (€50 / seat)' },
+export const MARKET_HEADLINE = {
+  eyebrow: 'business value',
+  line1: 'Worldwide problem.',
+  line2: 'Italy is where we measured first.',
+} as const;
+
+export const MARKET_BIG_NUMBER = {
+  prefix: '€',
+  value: 110,            // animated counter-up 0 → 110 in Beat 1
+  suffix: 'M',
+  caption: 'initial SAM · Italian baseline · floor, not ceiling',
+  sources: 'FIPE · ISTAT · FNOMCeO · Key-Stone · Confartigianato · AGCOM · UPB',
+} as const;
+
+export const USP_CARDS = [
+  {
+    head: 'After the call',
+    body: 'They run the call. We run what comes after.',
+  },
+  {
+    head: 'Briefing + RAG',
+    body: 'Memory that survives the hang-up. Every call enriches the next.',
+  },
+  {
+    head: '2-min wizard',
+    body: 'Any vertical. Same loop. Same audit trail.',
+  },
 ] as const;
 
-export const MARKET_NOTE = 'Sized sector by sector from first-party Italian sources (FIPE · ISTAT · FNOMCeO · Key-Stone · Confartigianato · AGCOM · UPB). Same product, same wizard, expansion next: France · Germany · UK · Spain · US service economy.';
-
-export const USP_ROWS = [
-  { label: 'Where the AI lives',         them: 'On the call',       us: 'After the call' },
-  { label: 'Who picks up',               them: 'AI voice agent',    us: 'The human' },
-  { label: 'Memory across calls',        them: 'Transcript log',    us: 'Briefing + RAG' },
-  { label: 'Auditable agent reasoning',  them: '—',                 us: 'First-class UI' },
-  { label: 'Vertical adaptation',        them: 'Reseller config',   us: '2-min wizard' },
-  { label: 'Geo model',                  them: 'Country-specific',  us: 'Single-tenant · worldwide' },
-] as const;
-
-export const REVENUE_STRIP = 'SaaS per seat · SMB owner/operator buyer · expansion by vertical template';
+export const USP_EYEBROW = 'vs CallRail · Aircall · Dialpad AI';
 
 // ─── Coda — partners, stack, close ─────────────────────────────────────
 
 export const STACK = {
-  vultr: 'Cloud Compute · Managed Postgres · Vector Store · Serverless Inference',
-  google: 'Gemini 3.1 Flash Lite via Google ADK 1.18',
-  speechmatics: 'Batch STT · diarization · TTS Preview',
-  deploy: 'Coolify · auto-deploy on push to main · MIT licensed',
+  vultr: 'Cloud Compute · Coolify · Managed Postgres · Vector Store · Serverless Inference',
+  google: 'Gemini 3.1 Flash Lite · Google ADK 1.18',
+  speechmatics: 'Batch STT · Diarization · TTS Preview',
+  deploy: 'Auto-deploy on push to main · MIT licensed',
 };
 
 export const URLS = {

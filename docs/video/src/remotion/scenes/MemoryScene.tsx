@@ -107,7 +107,7 @@ export const MemoryScene: React.FC<{ durationInFrames: number }> = ({ durationIn
         <div style={{ flexShrink: 0 }}>
           <ScreenshotInPhone
             src="screenshots/customer-detail.png"
-            screenWidth={310}
+            screenWidth={400}
             delay={10}
             slideFrom="right"
           />
