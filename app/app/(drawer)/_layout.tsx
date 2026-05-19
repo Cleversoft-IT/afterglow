@@ -15,11 +15,10 @@ function DrawerContent(props: DrawerContentComponentProps) {
   const [busy, setBusy] = useState(false);
   const [resetDialogVisible, setResetDialogVisible] = useState(false);
 
-  // Drawer passes `color` derived from active/inactive tint. We honor it
-  // and fall back to onSurface if the navigator doesn't provide one yet
-  // (first render flicker), so icons stay visible in dark mode.
-  const iconColor = (focused: boolean, color: string | null | undefined) =>
-    focused ? theme.colors.primary : color || theme.colors.onSurface;
+  // Always use theme tokens: react-navigation's default inactiveTintColor is
+  // rgba(0,0,0,0.68) which is invisible on dark surfaces.
+  const iconColor = (focused: boolean) =>
+    focused ? theme.colors.primary : theme.colors.onSurface;
 
   // Same flow as Settings → keep the two paths byte-identical so the
   // demo-reset UX never diverges. `window.confirm` was previously used
@@ -68,8 +67,8 @@ function DrawerContent(props: DrawerContentComponentProps) {
         focused={isOnCalls}
         activeTintColor={theme.colors.primary}
         activeBackgroundColor={theme.colors.secondaryContainer}
-        icon={({ color, size }: IconRenderProps) => (
-          <Icon source="phone-outline" size={size} color={iconColor(isOnCalls, color)} />
+        icon={({ size }: IconRenderProps) => (
+          <Icon source="phone-outline" size={size} color={iconColor(isOnCalls)} />
         )}
         labelStyle={itemLabelStyle(isOnCalls)}
         onPress={() => router.navigate('/(drawer)/(tabs)' as never)}
@@ -79,8 +78,8 @@ function DrawerContent(props: DrawerContentComponentProps) {
         focused={isOnTemplates}
         activeTintColor={theme.colors.primary}
         activeBackgroundColor={theme.colors.secondaryContainer}
-        icon={({ color, size }: IconRenderProps) => (
-          <Icon source="view-grid-outline" size={size} color={iconColor(isOnTemplates, color)} />
+        icon={({ size }: IconRenderProps) => (
+          <Icon source="view-grid-outline" size={size} color={iconColor(isOnTemplates)} />
         )}
         labelStyle={itemLabelStyle(isOnTemplates)}
         onPress={() => router.push('/(drawer)/templates' as never)}
@@ -90,8 +89,8 @@ function DrawerContent(props: DrawerContentComponentProps) {
         focused={isOnAudit}
         activeTintColor={theme.colors.primary}
         activeBackgroundColor={theme.colors.secondaryContainer}
-        icon={({ color, size }: IconRenderProps) => (
-          <Icon source="text-box-search-outline" size={size} color={iconColor(isOnAudit, color)} />
+        icon={({ size }: IconRenderProps) => (
+          <Icon source="text-box-search-outline" size={size} color={iconColor(isOnAudit)} />
         )}
         labelStyle={itemLabelStyle(isOnAudit)}
         onPress={() => router.push('/(drawer)/audit' as never)}
@@ -101,8 +100,8 @@ function DrawerContent(props: DrawerContentComponentProps) {
         focused={isOnIntegrations}
         activeTintColor={theme.colors.primary}
         activeBackgroundColor={theme.colors.secondaryContainer}
-        icon={({ color, size }: IconRenderProps) => (
-          <Icon source="puzzle-outline" size={size} color={iconColor(isOnIntegrations, color)} />
+        icon={({ size }: IconRenderProps) => (
+          <Icon source="puzzle-outline" size={size} color={iconColor(isOnIntegrations)} />
         )}
         labelStyle={itemLabelStyle(isOnIntegrations)}
         onPress={() => router.push('/(drawer)/integrations' as never)}
@@ -113,8 +112,8 @@ function DrawerContent(props: DrawerContentComponentProps) {
         focused={isOnSimulator}
         activeTintColor={theme.colors.primary}
         activeBackgroundColor={theme.colors.secondaryContainer}
-        icon={({ color, size }: IconRenderProps) => (
-          <Icon source="phone-in-talk-outline" size={size} color={iconColor(isOnSimulator, color)} />
+        icon={({ size }: IconRenderProps) => (
+          <Icon source="phone-in-talk-outline" size={size} color={iconColor(isOnSimulator)} />
         )}
         labelStyle={itemLabelStyle(isOnSimulator)}
         onPress={() => router.push('/(drawer)/simulator' as never)}
@@ -125,8 +124,8 @@ function DrawerContent(props: DrawerContentComponentProps) {
         focused={isOnSettings}
         activeTintColor={theme.colors.primary}
         activeBackgroundColor={theme.colors.secondaryContainer}
-        icon={({ color, size }: IconRenderProps) => (
-          <Icon source="cog-outline" size={size} color={iconColor(isOnSettings, color)} />
+        icon={({ size }: IconRenderProps) => (
+          <Icon source="cog-outline" size={size} color={iconColor(isOnSettings)} />
         )}
         labelStyle={itemLabelStyle(isOnSettings)}
         onPress={() => router.push('/(drawer)/settings' as never)}
@@ -134,8 +133,8 @@ function DrawerContent(props: DrawerContentComponentProps) {
       {isDemoMode() && (
         <DrawerItem
           label={busy ? 'Resetting…' : 'Reset demo'}
-          icon={({ size }: IconRenderProps) => <Icon source="restore" size={size} color={callRed} />}
-          labelStyle={{ color: callRed }}
+          icon={({ size }: IconRenderProps) => <Icon source="restore" size={size} color={theme.colors.primary} />}
+          labelStyle={{ color: theme.colors.primary, fontWeight: '500' }}
           onPress={() => setResetDialogVisible(true)}
         />
       )}
