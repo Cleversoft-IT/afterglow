@@ -1,0 +1,8 @@
+file '/home/sepa/cleversoft/hackaton/afterglow/docs/video/public/audio/seg_iiA_intro.mp3'
+file '/home/sepa/cleversoft/hackaton/afterglow/docs/video/public/audio/seg_iiB_endrun.mp3'
+file '/home/sepa/cleversoft/hackaton/afterglow/docs/video/public/audio/seg_iiC_selfcorrect.mp3'
+file '/home/sepa/cleversoft/hackaton/afterglow/docs/video/public/audio/seg_iiD_memory.mp3'
+file '/home/sepa/cleversoft/hackaton/afterglow/docs/video/public/audio/seg_iiE_wizard.mp3'
+file '/home/sepa/cleversoft/hackaton/afterglow/docs/video/public/audio/seg_iiF_honest.mp3'
+file '/home/sepa/cleversoft/hackaton/afterglow/docs/video/public/audio/seg_iiG_market.mp3'
+file '/home/sepa/cleversoft/hackaton/afterglow/docs/video/public/audio/seg_coda_close.mp3'

@@ -38,50 +38,48 @@ OUT_DIR.mkdir(parents=True, exist_ok=True)
 # Il video è @30fps, 2400 frame = 80 secondi
 
 SEGMENTS = [
+    # Act I (0:00–0:22) has NO voiceover — typographic, silence + pad only.
+    # Narration starts with Act II.A. Budgets in SUBMISSION.md §4 (tightened
+    # to 3:30 total). Word counts target ~150 wpm with breathing room.
     {
-        "id":       "intro-tagline",
-        "startSec": 3.3,
-        "text":     "afterglow.",
+        "id":       "iiA_intro",
+        "startSec": 22.4,  # SCENES.iiA.start (660f) + LEAD_IN (12f) at 30fps
+        "text":     "Afterglow is a phone app. The operator picks up. The moment they hang up, the after begins. Transcript. Booking. Follow-ups. The briefing for the next call. The operator never touched a screen. Stay in the moment. We handle the after.",
     },
     {
-        "id":       "promise",
-        "startSec": 6.7,
-        "text":     "Every day, operators answer dozens of calls. Each one ends the same way — a note, a tab switch, a follow-up they might forget.",
+        "id":       "iiB_endrun",
+        "startSec": 40.4,  # SCENES.iiB.start (1200f) + LEAD_IN
+        "text":     "Mark Ross calls. He's a regular. The audio is real — Speechmatics TTS, transcribed by Speechmatics batch, diarization on. Trail on the right. Turn one, read the transcript. Turn two, Vultr's Vector Store — and the question is specific. Allergies on file? Comes back: gluten-free. Turn three, booking dot create, payload typed against the template's JSON schema. Turn four, WhatsApp confirmation. Turn five, finalize: fields, intent, sentiment, briefing. Five turns. Two thousand tokens. Six seconds end to end.",
     },
     {
-        "id":       "home",
-        "startSec": 14.7,
-        "text":     "Afterglow replaces the phone app. Every call becomes a structured record — with extracted fields, booked appointments, and automatic follow-ups.",
+        "id":       "iiC_selfcorrect",
+        "startSec": 80.4,  # SCENES.iiC.start (2400f) + LEAD_IN
+        "text":     "Here it's a loop, not a script. The agent submits party_size equals zero. Validator says no — validation failed. Next turn: re-read the transcript, find four people, resubmit, executed. Two attempts per action, hard cap. A mutation that already succeeded cannot be replayed.",
     },
     {
-        "id":       "incoming-call",
-        "startSec": 24.7,
-        "text":     "Answer normally. One tap on the blue AI button enables post-call analysis. The caller never knows. And before you even say hello — the AI already knows who's calling.",
+        "id":       "iiD_memory",
+        "startSec": 104.4,  # SCENES.iiD.start (3120f) + LEAD_IN
+        "text":     "The briefing the agent wrote at the end of the last call. Same number rings again — the operator sees it before picking up. Gluten-free. Last booking. Anniversary. No typing. No second tab. No CRM lookup. The after of one call is the before of the next.",
     },
     {
-        "id":       "call-analysis",
-        "startSec": 34.7,
-        "text":     "After the call, Gemini 2.0 Flash reads the full transcript and extracts every field in a single pass — party size, date, allergies, preferences — all with source evidence.",
+        "id":       "iiE_wizard",
+        "startSec": 126.4,  # SCENES.iiE.start (3780f) + LEAD_IN
+        "text":     "Three presets ship: restaurant, dentist, body shop. For everything else, a wizard. Two to five questions, out the other end a working template — JSON schema, action tools, two fresh demo MP3s through Speechmatics TTS. Pick any vertical. Same loop. Same audit trail. New domain in thirty seconds.",
     },
     {
-        "id":       "actions",
-        "startSec": 44.7,
-        "text":     "Bookings are confirmed. WhatsApp messages are sent. Customer profiles are updated. No operator clicks required. Every action is audited — and individually reversible.",
+        "id":       "iiF_honest",
+        "startSec": 149.4,  # SCENES.iiF.start (4470f) + LEAD_IN
+        "text":     "What's real: Speechmatics on every call. The Gemini ADK loop. Vultr RAG with audited input tokens. Postgres. The profile mutation. The demo MP3s. Mocked, by design: booking, WhatsApp, calendar, payment, CRM — the outbound writes no public demo should fire. Swapping a mock for real is one entry in the action catalog plus an env var. Not a migration.",
     },
     {
-        "id":       "memory",
-        "startSec": 54.7,
-        "text":     "Every call enriches a vector store. At the next ring, the operator is already briefed — who's calling, their preferences, and when they last visited.",
+        "id":       "iiG_market",
+        "startSec": 173.4,  # SCENES.iiG.start (5190f) + LEAD_IN
+        "text":     "Italy is where we measured first: four hundred seventy-eight thousand booking-led businesses, a phone-led subset of one hundred eighty-five thousand, a hundred and ten million in initial SAM. Worldwide is next. Against CallRail, Aircall, Dialpad AI — one word of difference. After. They're on the call. We are everything that happens next.",
     },
     {
-        "id":       "tech",
-        "startSec": 63.7,
-        "text":     "Built on Speechmatics for transcription, Google Gemini and ADK for intelligence, and Vultr for compute, database, and vector memory.",
-    },
-    {
-        "id":       "outro",
-        "startSec": 72.7,
-        "text":     "afterglow. AI for what happens after the call.",
+        "id":       "coda_close",
+        "startSec": 195.4,  # SCENES.coda.start (5850f) + LEAD_IN
+        "text":     "Vultr · Postgres · Vector Store · Serverless Inference. Gemini through ADK. Speechmatics for STT and TTS. MIT. Afterglow. Stay in the moment. We handle the after.",
     },
 ]
 
@@ -89,7 +87,7 @@ SEGMENTS = [
 
 async def generate_segment(seg: dict, idx: int) -> Path:
     """Genera un file MP3 per un singolo segmento."""
-    out_path = OUT_DIR / f"seg_{idx:02d}_{seg['id']}.mp3"
+    out_path = OUT_DIR / f"seg_{seg['id']}.mp3"
 
     print(f"  [{idx+1}/{len(SEGMENTS)}] Generating: {seg['id']}")
     print(f"           Text: \"{seg['text'][:60]}{'...' if len(seg['text']) > 60 else ''}\"")

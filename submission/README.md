@@ -9,6 +9,7 @@ single source of truth; this directory is the rendered output.
 
 | File | Purpose | lablab field | Spec |
 |---|---|---|---|
+| `afterglow-pitch.mp4` | 3:32 video pitch (live product demo + Coda — no opening cinematic) | **Video Presentation** | MP4, ≤5:00, ≤300 MB |
 | `afterglow-slides.pdf` | 10-slide pitch deck (16:9, 1920×1080 per page) | **Slide Presentation** | PDF, ≤5 MB |
 | `afterglow-cover.png` | Title-slide capture, used as the cover hero | **Cover Image** | PNG, 16:9, ≤500 KB |
 | `slides/deck.html` + `slides/styles.css` | Source for the deck — Pixel-style Material aesthetic, brand seed `#3b82f6` mirrored from `app/lib/paperTheme.ts` | — | — |
@@ -16,14 +17,13 @@ single source of truth; this directory is the rendered output.
 | `slides/cover.cjs` | Playwright PNG export of slide 1 | — | — |
 | `slides/preview.cjs` | Renders every slide as an individual PNG into `slides/_preview/` for visual review | — | — |
 
-The video pitch MP4 is NOT versioned here — recorded on demand from the
-script in [`SUBMISSION.md §4`](../docs/SUBMISSION.md#4-video-pitch-script--5-minutes-scene-by-scene).
+The MP4 is rendered from the Remotion project under
+[`docs/video/`](../docs/video/) — see "Rebuilding the video" below.
 
 ## Rebuilding
 
 Requires `playwright` installed globally (`sudo npm install -g playwright`
-+ `playwright install chromium`) — same toolchain as
-[`scripts/record-demo.cjs`](../scripts/record-demo.cjs).
++ `playwright install chromium`).
 
 ```bash
 # from repo root
@@ -32,7 +32,37 @@ NODE_PATH=$(npm root -g) node submission/slides/cover.cjs    # → afterglow-cov
 NODE_PATH=$(npm root -g) node submission/slides/preview.cjs  # → slides/_preview/slide-NN.png
 ```
 
-Current build sizes: PDF ~1.9 MB · cover ~320 KB (both well under lablab caps).
+Current build sizes: PDF ~1.4 MB · cover ~290 KB · video ~15 MB (3:32)
+— all well under the respective lablab caps (5 MB · 500 KB · 300 MB).
+
+## Rebuilding the video
+
+The pitch MP4 is rendered from a Remotion project at
+[`docs/video/`](../docs/video/). One-shot regen from scratch:
+
+```bash
+cd docs/video
+
+# 1. install deps (once)
+npm install
+python3 -m venv .venv && .venv/bin/pip install edge-tts
+
+# 2. capture fresh app screenshots (against the live app)
+node scripts/capture-screenshots.mjs
+
+# 3. regenerate voice-over (edits in scripts/generate-voiceover.py)
+.venv/bin/python -X utf8 scripts/generate-voiceover.py
+
+# 4. render the MP4
+npm run video:render        # → out/afterglow-final.mp4
+
+# 5. promote to submission/
+cp out/afterglow-final.mp4 ../../submission/afterglow-pitch.mp4
+```
+
+Source of truth for narration + timings: [`docs/SUBMISSION.md §4`](../docs/SUBMISSION.md#4-video-pitch-script--5-minutes-scene-by-scene).
+Composition wiring + scene structure: [`docs/video/src/Composition.tsx`](../docs/video/src/Composition.tsx)
+and [`docs/video/src/remotion/data/videoScript.ts`](../docs/video/src/remotion/data/videoScript.ts).
 
 ## Slide map
 
@@ -71,7 +101,5 @@ After any edit:
 
 ## What is NOT in this directory
 
-* **Video pitch MP4** — record per [§4 script](../docs/SUBMISSION.md#4-video-pitch-script--5-minutes-scene-by-scene).
-  Spec filename: `afterglow-pitch.mp4`. Direct upload to lablab (not YouTube/Drive).
 * **Deep-research market report** (`tmp/deep-research-report (2).md`) —
   source for the TAM/SAM figures on slide 7. Quoted but not bundled.

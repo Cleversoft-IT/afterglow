@@ -1,7 +1,7 @@
 // Cattura screenshot delle pagine reali dell'app Afterglow
 // Uso: node scripts/capture-screenshots.mjs
 
-import { chromium } from 'playwright-chromium';
+import { chromium } from 'playwright';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
