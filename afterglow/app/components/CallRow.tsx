@@ -131,12 +131,18 @@ function RidialButton({
   );
 }
 
+// Statuses where the post-call pipeline is still running. Surfaced to the
+// avatar as a pulsing primary-colored halo so the row reads as "live" even
+// at a glance — without the user needing to read the timestamp icon.
+const ANALYZING_STATUSES = new Set(['pending', 'transcribing', 'analyzing']);
+
 export function CallRow({ call, booking, mode, onPress, onRidial }: Props) {
   const theme = useTheme();
   const { locale } = useLocale();
   const caller = resolveFromCallItem(call);
   const status = statusIconInfo(call, theme);
   const isBookingsMode = mode === 'bookings';
+  const isAnalyzing = ANALYZING_STATUSES.has(call.status);
 
   return (
     <List.Item
@@ -149,6 +155,7 @@ export function CallRow({ call, booking, mode, onPress, onRidial }: Props) {
             avatarUrl={caller.avatar_url}
             size={48}
             isCustomer={caller.is_customer}
+            analyzing={isAnalyzing}
           />
         </View>
       )}

@@ -19,6 +19,7 @@ import {
   Text,
   useTheme,
 } from 'react-native-paper';
+import { AnalyzingChip } from '../../../components/AnalyzingChip';
 import { CallRow, type CallFilterKey } from '../../../components/CallRow';
 import { api, ApiError } from '../../../lib/api';
 import { findMockContact } from '../../../lib/mockContacts';
@@ -384,15 +385,10 @@ export default function HomeScreen() {
         </ScrollView>
       ) : null}
 
-      {toast ? (
-        <Banner
-          visible
-          icon="clock-outline"
-          actions={[{ label: 'Dismiss', onPress: () => setPipelineToast(null) }]}
-        >
-          {`Analysis in progress · ${toast.phoneE164}`}
-        </Banner>
-      ) : null}
+      <AnalyzingChip
+        inFlightCount={calls.filter((c) => NON_TERMINAL_STATUSES.has(c.status)).length}
+        startedAtMs={toast?.startedAt ?? null}
+      />
 
       {error ? (
         <Banner visible icon="alert-circle-outline" actions={[{ label: 'Retry', onPress: load }]}>

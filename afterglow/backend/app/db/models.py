@@ -179,6 +179,13 @@ class Call(Base):
         UUID(as_uuid=True), nullable=True
     )
     is_seed: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    # Marks the two early-morning anchor-day seed slots (day_offset=0). The
+    # lifespan refresh task uses this flag to reposition them just before
+    # `now` on every boot so they never sit in the future of a user's local
+    # clock — see `app/tasks/seed_date_refresh.py::_reposition_anchor_day_calls`.
+    is_anchor_day: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
     created_at: Mapped[datetime] = _ts()
 
 

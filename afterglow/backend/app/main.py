@@ -53,11 +53,12 @@ async def lifespan(app: FastAPI):
     except Exception as exc:  # noqa: BLE001
         logger.warning("orphan_recovery failed at startup: %s", exc)
 
-    today = datetime.now(timezone.utc).date()
+    now = datetime.now(timezone.utc)
+    today = now.date()
     async with SessionLocal() as session:
         refresh_ok = False
         try:
-            shifted = await refresh_seed_dates_if_needed(session, today)
+            shifted = await refresh_seed_dates_if_needed(session, today, now)
             await session.commit()
             refresh_ok = True
             if shifted:

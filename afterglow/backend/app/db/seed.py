@@ -1617,6 +1617,7 @@ def _emit_seeded_call_core(session, spec) -> None:
         started_at=spec["created_at"],
         completed_at=spec["created_at"] + timedelta(seconds=45),
         is_seed=True,
+        is_anchor_day=spec.get("is_anchor_day", False),
         created_at=spec["created_at"],
     )
     session.add(call)
@@ -2182,6 +2183,12 @@ def _busy_week_specs(anchor: date) -> list[dict]:
 
             if customer_name:
                 fixture["customer_name"] = customer_name
+            if day_offset == 0:
+                # See `Call.is_anchor_day` docstring + `_reposition_anchor_day_calls`
+                # in `app/tasks/seed_date_refresh.py`: the lifespan refresh
+                # uses this flag to keep these slots positioned safely in
+                # the past relative to `now` on every backend boot.
+                fixture["is_anchor_day"] = True
             out.append(fixture)
     return out
 
@@ -2756,6 +2763,7 @@ def _make_ai_booking_spec(
     phone: str,
     created_at: datetime,
     customer_name: str,
+    is_anchor_day: bool = False,
 ) -> dict:
     """Materialize a `_emit_seeded_call_core`-compatible spec from a busy-
     week AI booking fixture. Templates are looked up per-customer via
@@ -2786,6 +2794,7 @@ def _make_ai_booking_spec(
         "phone_e164": phone,
         "language": "en",
         "created_at": created_at,
+        "is_anchor_day": is_anchor_day,
         "transcript": bp["transcript_template"],
         "fields": extracted_fields,
         "confidence": confidence,
@@ -3057,6 +3066,7 @@ async def _ensure_personal_calls(session, anchor: date) -> None:
                         started_at=fx["created_at"],
                         completed_at=fx["created_at"],
                         is_seed=True,
+                        is_anchor_day=fx.get("is_anchor_day", False),
                         session_id=None,
                         created_at=fx["created_at"],
                     )
@@ -3073,6 +3083,7 @@ async def _ensure_personal_calls(session, anchor: date) -> None:
                 phone=fx["phone_e164"],
                 created_at=fx["created_at"],
                 customer_name=customer_name or "",
+                is_anchor_day=fx.get("is_anchor_day", False),
             )
             ai_specs.append(spec)
             inserted += 1
@@ -3092,6 +3103,7 @@ async def _ensure_personal_calls(session, anchor: date) -> None:
                 started_at=fx["created_at"],
                 completed_at=fx["created_at"] if fx["status"] != "failed" else None,
                 is_seed=True,
+                is_anchor_day=fx.get("is_anchor_day", False),
                 session_id=None,
                 created_at=fx["created_at"],
             )
