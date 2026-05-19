@@ -88,13 +88,20 @@ color so the active highlight stays and dark mode never loses legibility.
 **Simulator / incoming-call audio** reads the active template's
 `simulation_config`. Seed templates ship bundled recordings under
 `app/assets/audio/` (two MP3s per domain, one per `scenarios.existing` /
-`scenarios.new`). Wizard-generated templates produce both scenarios via
-the backend's simulation endpoints (`simulation_script.py` writes two
-script_turns lists; Speechmatics TTS preview returns 16kHz mono PCM WAV
-per turn, we concat with Python's `wave` stdlib and transcode the final
-file to mono 48kbps MP3 via ffmpeg → `<template_id>_{existing,new}.mp3`
-under `AUDIO_STORAGE_DIR/templates/`). They can also accept an uploaded
-recording. The selected recording is submitted to `POST /api/v1/calls`
+`scenarios.new`) AND a matching seeded Customer per existing-caller
+phone, so both Simulator buttons resolve cleanly. Wizard-generated
+templates produce both scenarios via the backend's simulation endpoints
+(`simulation_script.py` writes two script_turns lists; Speechmatics TTS
+preview returns 16kHz mono PCM WAV per turn, we concat with Python's
+`wave` stdlib and transcode the final file to mono 48kbps MP3 via ffmpeg
+→ `<template_id>_{existing,new}.mp3` under `AUDIO_STORAGE_DIR/templates/`).
+**But** the Simulator hides the "Call from existing customer" button for
+non-seed templates: the existing-caller phone is fabricated by Gemini
+("never a real number") and would never match a seeded Customer, so the
+incoming-call screen would mislabel the call as "New caller" anyway —
+see `.claude/memory/project_wizard_template_new_only.md`. Wizard
+templates expose only "Call from new customer"; uploaded recordings are
+also supported. The selected recording is submitted to `POST /api/v1/calls`
 with the current `X-Demo-Session` header.
 
 **Home (Recents) layout** mirrors the Pixel call log: an `Appbar` pill

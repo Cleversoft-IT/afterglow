@@ -1,44 +1,55 @@
 ---
 name: project-wizard-template-new-only
-description: SUPERSEDED 2026-05-18 — wizard-built templates now emit BOTH scenarios; preserved for historical context.
+description: Wizard-built (non-seed) templates show ONLY "Call from new customer" in the Simulator — even though they now ship both `scenarios.{existing,new}` — because the fabricated existing-caller phone never matches a seeded Customer row.
 metadata:
   type: project
 ---
 
-> ⚠️ **SUPERSEDED 2026-05-18.** Since the round-10 polish wave, wizard-built
-> templates emit BOTH `scenarios.existing` AND `scenarios.new`, generated
-> in a single LLM pass and rendered to two MP3 files
-> (`<template_id>_existing.mp3` + `<template_id>_new.mp3`, concat'd in PCM
-> via `wave` stdlib, transcoded to mono 48kbps MP3 via ffmpeg). The
-> Simulator now shows BOTH buttons for wizard-built templates, identical
-> to the seeded presets. See `CLAUDE.md` (constraint #3 "Custom wizard-built
-> templates follow the same two-scenarios shape since 2026-05-18"),
-> `afterglow/docs/ARCHITECTURE.md`, and `afterglow/backend/app/integrations/speechmatics_tts.py`.
-> The `hasTwoScenarios` guard in `app/simulator.tsx` still exists for
-> safety on legacy rows but in practice always evaluates true for
-> templates created after 2026-05-18.
+## Current rule (2026-05-19 onward)
 
----
+The Simulator (`app/app/(drawer)/simulator.tsx`) shows **only** "Call
+from new customer" whenever `template.is_seed === false`, regardless of
+how many scenarios the wizard wrote to `simulation_config`. The
+`hasTwoScenarios` flag gates the existing-caller button:
 
-# Historical record (pre 2026-05-18)
+```typescript
+const hasTwoScenarios =
+  !!(sim?.scenarios?.existing && sim?.scenarios?.new) && !!template.is_seed;
+```
 
-The Simulator on a wizard-built template showed **only** the "Call from
-new customer" button. "Call from existing customer" was rendered only
-when `simulation_config.scenarios.existing` AND
-`simulation_config.scenarios.new` both existed — i.e. the seeded
-restaurant / dentist / bodyshop presets.
+**Why.** `agents/simulation_script.build_simulation_script` now emits
+BOTH scenarios with two distinct caller identities (since 2026-05-18),
+and the audio pipeline renders one MP3 per scenario via Speechmatics +
+ffmpeg. BUT the existing-caller phone is fabricated by Gemini ("never a
+real number" — explicit prompt rule in `simulation_script.py`), and
+the seeded `Customer` table only covers restaurant / dentist /
+bodyshop. So `getCustomerByPhone(scenario.existing.caller_phone_e164)`
+returns null for every wizard-built template, and `<CallerContext>`
+falls back to the "New caller" chip on the incoming-call screen — the
+operator would see the "existing" button but the call would mislabel
+itself, confusing the demo. We keep the demo honest by hiding the
+button.
 
-**Why.** `agents/simulation_script.build_simulation_script()` returned
-a single script with one `caller_name` + `caller_phone_e164`, and
-`script_response_to_simulation_config()` wrote it in the flat shape
-(no `scenarios.*`). The generated phone number was fabricated, so it
-didn't match any seeded `Customer` and `getCustomerByPhone` returned
-null — the "existing" path would always degrade into "New caller"
-anyway, which misled the operator into thinking the existing flow was
-broken.
+**How to apply.** When touching the Simulator's scenario gating, the
+incoming-call resolver, or the wizard's script output:
 
-**Resolution shipped on 2026-05-18.** Option (a) from the original
-"how to apply" was chosen: the script generator now emits two
-scenarios with two distinct caller identities. See
-[[feedback-audio-blob-url-for-session-endpoints]] for how the audio
-reaches the player.
+- Do NOT relax `hasTwoScenarios` to drop `template.is_seed`. The
+  fabricated phone problem still applies until the wizard learns to
+  seed a matching `Customer`.
+- If you DO add Customer-seeding to the wizard, drop the `is_seed`
+  guard in the same commit and update this file.
+- The historical reason (pre 2026-05-18) was different — "wizard only
+  generated one script". Don't conflate the two.
+
+## How to evolve
+
+The future-ideas doc tracks the proper fix: when the wizard generates
+`scenarios.existing.caller_phone_e164`, also create a `Customer` row
+in the same session with that phone, plus a minimal `memory_summary`
++ a couple of fake prior calls. Then the "existing customer" button
+can return, and the incoming-call screen will resolve a real customer
+display name instead of a generic chip.
+
+See [[feedback-audio-blob-url-for-session-endpoints]] for how the
+audio reaches the player and `afterglow/docs/future-ideas.md` for the
+post-hackathon roadmap.

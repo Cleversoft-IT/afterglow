@@ -475,24 +475,36 @@ async def get_simulation_audio(
 
 def _enrich_action_types_with_catalog_schemas(
     action_types: list[dict[str, object]],
+    template_domain_hint: str | None = None,
 ) -> list[dict[str, object]]:
-    """Merge `default_payload_schema` from the action catalog into any
-    action_type dict that does not already carry an explicit `payload_schema`.
+    """Merge a payload_schema from the action catalog into any action_type
+    dict that does not already carry an explicit `payload_schema`.
 
-    Run this at the persistence boundary (create_template / update_template)
-    so the wizard's `ActionDefinitionDraft` (which cannot expose
-    `payload_schema` because Gemini structured-output rejects
-    `additionalProperties`) still lands typed in the database. The
-    call_agent's `make_action_tool` builds a typed Pydantic model for Gemini, instead of
-    falling back to the untyped `dict` annotation that ADK 1.18+ rejects.
+    When `template_domain_hint` matches a key in
+    `ActionCatalogEntry.domain_payload_schemas`, that override wins
+    (e.g. a Hotel template gets the hotel-shaped `booking.create`
+    schema with `check_out_date` instead of the restaurant-shaped
+    default). Falls back to `default_payload_schema` for unknown /
+    generic / `None` domains, so existing seed templates keep the same
+    behaviour they had before per-domain overrides existed.
+
+    Run this at the persistence boundary (create_template /
+    update_template) so the wizard's `ActionDefinitionDraft` (which
+    cannot expose `payload_schema` because Gemini structured-output
+    rejects `additionalProperties`) still lands typed in the database.
+    The call_agent's `make_action_tool` builds a typed Pydantic model
+    for Gemini, instead of falling back to the untyped `dict`
+    annotation that ADK 1.18+ rejects.
     """
     enriched: list[dict[str, object]] = []
     for data in action_types:
         if not data.get("payload_schema"):
             key = data.get("key")
             entry = action_catalog.get(key) if isinstance(key, str) else None
-            if entry is not None and entry.default_payload_schema is not None:
-                data = {**data, "payload_schema": entry.default_payload_schema}
+            if entry is not None:
+                schema = entry.payload_schema_for_domain(template_domain_hint)
+                if schema is not None:
+                    data = {**data, "payload_schema": schema}
         enriched.append(data)
     return enriched
 
@@ -508,7 +520,8 @@ async def create_template(
     version = await _next_version_for(session, tpl.name, target_session_id)
 
     action_types_data = _enrich_action_types_with_catalog_schemas(
-        [a.model_dump() for a in tpl.action_types]
+        [a.model_dump() for a in tpl.action_types],
+        template_domain_hint=tpl.domain_hint or "generic",
     )
 
     row = Template(
@@ -614,7 +627,8 @@ async def update_template(
         row.fields_schema = [f.model_dump() for f in payload.fields_schema]
     if payload.action_types is not None:
         row.action_types = _enrich_action_types_with_catalog_schemas(
-            [a.model_dump() for a in payload.action_types]
+            [a.model_dump() for a in payload.action_types],
+            template_domain_hint=row.domain_hint or "generic",
         )
     if payload.prompt_hints is not None:
         row.prompt_hints = [r.model_dump() for r in payload.prompt_hints]

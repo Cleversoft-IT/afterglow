@@ -295,8 +295,6 @@ export default function CallDetailScreen() {
         </Banner>
       ) : null}
 
-      <AgentReasoningTrail callId={call.id} />
-
       {extracted ? (
         <Card mode="elevated">
           <Card.Title
@@ -373,7 +371,7 @@ export default function CallDetailScreen() {
               Extracted
             </Text>
             <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
-              Pipeline did not finalize — review the agent trail above.
+              Pipeline did not finalize — review the agent trail below.
             </Text>
           </Card.Content>
         </Card>
@@ -442,6 +440,8 @@ export default function CallDetailScreen() {
       ) : null}
 
       {call.raw_transcript?.text ? <TranscriptList text={call.raw_transcript.text} /> : null}
+
+      <AgentReasoningTrail callId={call.id} />
 
       <Portal>
         <Dialog

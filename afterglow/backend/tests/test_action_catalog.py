@@ -6,6 +6,8 @@ can rely on it.
 """
 from __future__ import annotations
 
+import jsonschema
+
 from app.integrations import action_catalog
 from app.integrations.mocks import MOCK_REGISTRY
 
@@ -67,6 +69,47 @@ def test_appointment_namespace_removed():
     assert "appointment.create" not in action_catalog.CATALOG
     assert "appointment.create_inspection" not in action_catalog.CATALOG
     assert "appointment.cancel" not in action_catalog.CATALOG
+
+
+def test_domain_payload_schema_for_hotel_booking_create():
+    """Hotel templates must get the hotel-shaped booking schema instead of
+    the restaurant default (`booking_date`+`booking_time` required) which
+    rejected every Hotel call until 2026-05-19.
+
+    Required surface: guest_name + booking_date (= check-in date,
+    canonical for the Bookings UI) + check_out_date. `booking_time` is
+    OPTIONAL — check-in times are institutional, the agent should not
+    have to invent a value when the transcript doesn't mention one.
+    """
+    entry = action_catalog.CATALOG["booking.create"]
+    assert entry.domain_payload_schemas is not None
+    hotel = entry.domain_payload_schemas.get("hotel")
+    assert hotel is not None, "booking.create needs a hotel-specific schema"
+    required = set(hotel.get("required") or [])
+    assert required == {"guest_name", "booking_date", "check_out_date"}, required
+    assert "booking_time" not in required
+    assert "booking_time" in hotel.get("properties") or {}
+
+
+def test_all_default_and_domain_payload_schemas_are_valid_jsonschema():
+    """Every schema we hand to jsonschema at validation time must itself be
+    a valid Draft-7 JSONSchema, else the agent's first call_tool blows up
+    with a schema-meta error instead of a payload error."""
+    for key, entry in action_catalog.CATALOG.items():
+        if entry.default_payload_schema is not None:
+            jsonschema.Draft7Validator.check_schema(entry.default_payload_schema)
+        for domain, schema in (entry.domain_payload_schemas or {}).items():
+            jsonschema.Draft7Validator.check_schema(schema), f"{key}@{domain}"
+
+
+def test_to_dict_does_not_leak_domain_payload_schemas():
+    """`/api/v1/actions/catalog` must expose only the canonical schema
+    surface so the operator UI keeps a single shape per action. The
+    per-domain variants are an internal persistence concern."""
+    entry = action_catalog.CATALOG["booking.create"]
+    payload = entry.to_dict()
+    assert "default_payload_schema" in payload
+    assert "domain_payload_schemas" not in payload
 
 
 def test_booking_compatible_domains_cover_demo_verticals():

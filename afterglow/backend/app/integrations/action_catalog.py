@@ -91,6 +91,15 @@ class ActionCatalogEntry:
     # `can_undo`: a booking creation mutates state but is also undoable.
     mutates: bool = False
     default_payload_schema: Optional[dict[str, Any]] = None
+    # Per-domain overrides for `default_payload_schema`. Keyed by
+    # `Template.domain_hint`. When `_enrich_action_types_with_catalog_schemas`
+    # merges the schema into an action_type, it picks the override matching
+    # the template's domain (e.g. `"hotel"` → check-in/check-out shape)
+    # and falls back to `default_payload_schema` for unknown / generic
+    # domains. Deliberately NOT exposed via `to_dict()` so the public
+    # `GET /api/v1/actions/catalog` keeps a single canonical schema per
+    # action — the per-domain variants are an internal persistence concern.
+    domain_payload_schemas: Optional[dict[str, dict[str, Any]]] = None
     compatible_domains: list[str] = field(default_factory=lambda: ["*"])
 
     def to_dict(self) -> dict[str, Any]:
@@ -106,6 +115,21 @@ class ActionCatalogEntry:
             "default_payload_schema": self.default_payload_schema,
             "compatible_domains": self.compatible_domains,
         }
+
+    def payload_schema_for_domain(
+        self, domain_hint: Optional[str]
+    ) -> Optional[dict[str, Any]]:
+        """Pick the schema variant matching `domain_hint`.
+
+        Returns the override from `domain_payload_schemas` when present,
+        else `default_payload_schema`. Callers must accept the `None`
+        result (some entries have no schema at all).
+        """
+        if domain_hint and self.domain_payload_schemas:
+            override = self.domain_payload_schemas.get(domain_hint)
+            if override is not None:
+                return override
+        return self.default_payload_schema
 
 
 # Default JSONSchema payloads applied at the persistence boundary in
@@ -130,6 +154,39 @@ _BOOKING_PAYLOAD_SCHEMA = {
         "notes": {"type": "string", "description": "Free-form notes from the call"},
     },
     "required": ["booking_date", "booking_time"],
+}
+
+# Hotel variant: keeps `booking_date` canonical (the Bookings UI in
+# `backend/app/api/bookings.py` + `app/components/CallRow.tsx` reads
+# `payload.booking_date` to render the BookingBadge and to sort the
+# Bookings tab — diverging would break the Home feed). Adds
+# `check_out_date` + `room_type` + `nights_count` as the hotel-specific
+# spread. `booking_time` stays optional: hotel check-ins are
+# institutional ("3 PM front desk policy") and almost never quoted in
+# the inbound call, so requiring it would force the agent into another
+# `validation_failed` retry. `app/lib/dateFormat.ts` and the Home
+# Bookings sort already fall back to a `'00:00'` default when
+# `booking_time` is missing.
+_HOTEL_BOOKING_PAYLOAD_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "properties": {
+        "guest_name": {"type": "string", "description": "Guest display name"},
+        "phone_e164": {"type": "string", "description": "E.164 phone number"},
+        "booking_date": {
+            "type": "string",
+            "description": "Check-in date YYYY-MM-DD",
+        },
+        "booking_time": {
+            "type": "string",
+            "description": "Check-in time HH:MM (24h, optional — hotel default ~15:00)",
+        },
+        "check_out_date": {"type": "string", "description": "YYYY-MM-DD"},
+        "room_type": {"type": "string"},
+        "nights_count": {"type": "integer", "minimum": 1},
+        "notes": {"type": "string"},
+    },
+    "required": ["guest_name", "booking_date", "check_out_date"],
 }
 
 _INSPECTION_PAYLOAD_SCHEMA = {
@@ -332,12 +389,13 @@ CATALOG: dict[str, ActionCatalogEntry] = {
     "booking.create": ActionCatalogEntry(
         key="booking.create",
         label="Create booking",
-        description="Reserve a slot in the venue's booking system (restaurant table, dental visit, body-shop inspection, salon, gym, etc.).",
+        description="Reserve a slot in the venue's booking system (restaurant table, dental visit, body-shop inspection, salon, gym, hotel stay, etc.).",
         integration_kind="mock_external",
         mock_target="booking",
         can_undo=True,
         mutates=True,
         default_payload_schema=_BOOKING_PAYLOAD_SCHEMA,
+        domain_payload_schemas={"hotel": _HOTEL_BOOKING_PAYLOAD_SCHEMA},
         compatible_domains=[
             "restaurant", "hotel", "salon", "gym", "events",
             "dentist", "bodyshop", "clinic", "*",

@@ -170,11 +170,18 @@ export default function SimulatorScreen() {
     !!sim?.scenarios?.new?.audio_url;
   const legacyReady = sim?.audio_status === 'ready' && !!sim?.audio_url;
   const audioReady = seededScenariosReady || legacyReady;
-  // Both seed and wizard-built templates now ship `scenarios.{existing,new}`
-  // (since 2026-05-18). The legacy flat shape only survives on custom
-  // templates generated before that date — in that case `hasTwoScenarios`
-  // is false and we fall back to the single-button "new caller" path.
-  const hasTwoScenarios = !!(sim?.scenarios?.existing && sim?.scenarios?.new);
+  // Seed templates ship `scenarios.{existing,new}` AND a matching seeded
+  // Customer row for the existing-caller phone, so the incoming-call
+  // screen can resolve a real customer when the operator hits "Call
+  // from existing customer". Wizard-built (non-seed) templates also
+  // ship two scenarios, but the existing-caller phone is fabricated by
+  // Gemini ("never a real number" — see simulation_script.py) and will
+  // never match a seeded Customer. The dialer would then mislabel the
+  // call as "New caller" anyway, so we hide the button entirely on
+  // wizard templates and only expose the "new customer" path until the
+  // wizard learns to seed a matching Customer.
+  const hasTwoScenarios =
+    !!(sim?.scenarios?.existing && sim?.scenarios?.new) && !!template.is_seed;
   const hasScript =
     (sim?.scenarios?.existing?.script_turns?.length ?? 0) > 0 ||
     (sim?.scenarios?.new?.script_turns?.length ?? 0) > 0 ||
@@ -216,7 +223,7 @@ export default function SimulatorScreen() {
             <Text variant="bodyMedium" style={{ color: theme.colors.onSurfaceVariant, marginBottom: 12 }}>
               {hasTwoScenarios
                 ? 'Existing customer plays back a recording for a caller the system already knows; new customer generates a fresh phone so you can watch Afterglow create the record from scratch.'
-                : 'This is an older custom template with only one demo script. Regenerate the script to get both existing and new caller scenarios.'}
+                : 'Custom templates only expose the new-customer path: the Wizard fabricates a fresh phone number for the existing-caller script, which won’t match any seeded contact, so we keep the demo honest and skip that button.'}
             </Text>
           </Card.Content>
           <Card.Actions style={{ flexDirection: 'column', gap: 8, padding: 16 }}>
