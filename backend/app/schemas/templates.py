@@ -8,7 +8,7 @@ System-level concerns live elsewhere:
     `app/integrations/action_catalog.py` (one source of truth, keyed by
     the action's `key`);
   - PII / privacy classification is out of scope for the hackathon
-    (see `afterglow/docs/future-ideas.md`);
+    (see `docs/future-ideas.md`);
   - the ASR custom dictionary was removed 2026-05-17 with migration
     `0012_drop_template_custom_dictionary`.
 
@@ -200,7 +200,7 @@ class CreateTemplateRequest(BaseModel):
     `set_active=True` flips the new template to the caller's active slot
     (DemoSession.active_template_id for demo callers, Template.is_active for
     prod). `parent_seed_id` is reserved for future lineage tracking (see
-    `afterglow/docs/future-ideas.md`); it is accepted but ignored today.
+    `docs/future-ideas.md`); it is accepted but ignored today.
     """
 
     template: TemplateWizardResponse

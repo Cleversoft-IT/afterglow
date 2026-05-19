@@ -19,14 +19,14 @@ Pipeline per file:
   2. Concatenate with 250ms of silence in between using ffmpeg's concat demuxer
   3. Encode to MP3 (96 kbps mono 22.05 kHz) to match the previous placeholders
   4. Write the result to both:
-        afterglow/app/assets/audio/<domain>_<mode>.mp3      (bundled by Expo)
-        afterglow/backend/sample_audio/<domain>_<mode>.mp3  (used by backend smoke tests)
+        app/assets/audio/<domain>_<mode>.mp3      (bundled by Expo)
+        backend/sample_audio/<domain>_<mode>.mp3  (used by backend smoke tests)
 
 Usage:
-    python afterglow/scripts/generate_demo_audio.py
+    python scripts/generate_demo_audio.py
 
 Requires:
-  - SPEECHMATICS_API_KEY in env (or in afterglow/.env, auto-loaded)
+  - SPEECHMATICS_API_KEY in env (or in .env, auto-loaded)
   - ffmpeg on PATH
 """
 from __future__ import annotations
@@ -44,10 +44,9 @@ import httpx
 
 CallerMode = Literal["existing", "new"]
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
-AFTERGLOW_DIR = REPO_ROOT / "afterglow"
-APP_AUDIO_DIR = AFTERGLOW_DIR / "app" / "assets" / "audio"
-BACKEND_AUDIO_DIR = AFTERGLOW_DIR / "backend" / "sample_audio"
+REPO_ROOT = Path(__file__).resolve().parents[1]
+APP_AUDIO_DIR = REPO_ROOT / "app" / "assets" / "audio"
+BACKEND_AUDIO_DIR = REPO_ROOT / "backend" / "sample_audio"
 
 TTS_BASE = "https://preview.tts.speechmatics.com/generate"
 TTS_OUTPUT_FORMAT = "wav_16000"
@@ -210,7 +209,7 @@ def _load_dotenv(path: Path) -> None:
 def _require_api_key() -> str:
     key = os.environ.get("SPEECHMATICS_API_KEY", "").strip()
     if not key:
-        sys.exit("error: SPEECHMATICS_API_KEY is not set (check afterglow/.env)")
+        sys.exit("error: SPEECHMATICS_API_KEY is not set (check .env)")
     return key
 
 

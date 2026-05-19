@@ -1839,11 +1839,11 @@ def _emit_seeded_call_audit(session, spec) -> None:
 # session filter (`visibility_filter_seedable`) lets all visitors see them.
 #
 # Caller fixtures duplicate phone + display_name from
-# `afterglow/app/lib/mockContacts.ts` — keep these in sync with the
+# `app/lib/mockContacts.ts` — keep these in sync with the
 # matching `pc_xxx` entries listed in the comment below.
 # ---------------------------------------------------------------------------
 
-# Source of truth on the client side: afterglow/app/lib/mockContacts.ts
+# Source of truth on the client side: app/lib/mockContacts.ts
 # Entries used here:
 #   pc_001 Amelia Brooks     +447911100001
 #   pc_003 Charlotte Davies  +447911100003

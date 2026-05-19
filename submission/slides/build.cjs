@@ -1,11 +1,11 @@
 // Build the submission slide deck PDF.
 //
 // Run from anywhere:
-//   NODE_PATH=$(npm root -g) node afterglow/submission/slides/build.cjs
+//   NODE_PATH=$(npm root -g) node submission/slides/build.cjs
 //
-// Output: afterglow/submission/afterglow-slides.pdf
+// Output: submission/afterglow-slides.pdf
 //
-// Strategy: render afterglow/submission/slides/deck.html in headless Chromium
+// Strategy: render submission/slides/deck.html in headless Chromium
 // at exactly 1920×1080 per slide, then print to PDF with page format matched
 // to those dimensions (16:9). Each .slide in the HTML carries
 // `page-break-after: always` so one .slide becomes one PDF page.

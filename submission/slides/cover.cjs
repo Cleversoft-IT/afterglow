@@ -4,8 +4,8 @@
 // (16:9), then drop it as PNG. Re-compress in a second pass with sharp if
 // the raw PNG would exceed the 500 KB lablab budget.
 //
-// Run: NODE_PATH=$(npm root -g) node afterglow/submission/slides/cover.cjs
-// Output: afterglow/submission/afterglow-cover.png
+// Run: NODE_PATH=$(npm root -g) node submission/slides/cover.cjs
+// Output: submission/afterglow-cover.png
 
 const { chromium } = require('playwright');
 const { resolve } = require('node:path');

@@ -28,7 +28,7 @@ the rest of the system:
 
 Future work: a future iteration can add `compensation_action` so undo
 actually invokes a counter-mock (e.g. booking.cancel) — see
-`afterglow/docs/future-ideas.md`.
+`docs/future-ideas.md`.
 """
 from __future__ import annotations
 

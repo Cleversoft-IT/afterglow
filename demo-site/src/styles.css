@@ -210,7 +210,7 @@ html, body, #root {
           bar or left a visible gap above it (see feedback memory).
 
    Web scrollbars are hidden globally inside the app at
-   `afterglow/app/app/_layout.tsx` (module-level, Platform.OS === 'web'
+   `app/app/_layout.tsx` (module-level, Platform.OS === 'web'
    only). The iframe inherits that behaviour, so no scrollbar workaround
    is needed here. */
 .phone-frame {

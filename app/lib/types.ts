@@ -1,4 +1,4 @@
-// Backend DTOs mirrored on the client. Keep in sync with afterglow/backend/app/schemas.
+// Backend DTOs mirrored on the client. Keep in sync with backend/app/schemas.
 
 export type ExtractorHint = 'regex' | 'freeform' | 'enum' | 'llm_only';
 export type ExecutionMode = 'auto' | 'manual-only';

@@ -1,7 +1,7 @@
 // Render each .slide to a PNG for visual review.
-// Output: afterglow/submission/slides/_preview/slide-NN.png
+// Output: submission/slides/_preview/slide-NN.png
 //
-// Run: NODE_PATH=$(npm root -g) node afterglow/submission/slides/preview.cjs
+// Run: NODE_PATH=$(npm root -g) node submission/slides/preview.cjs
 
 const { chromium } = require('playwright');
 const { resolve } = require('node:path');

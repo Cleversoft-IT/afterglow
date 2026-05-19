@@ -8,10 +8,10 @@
 //   - stitch with ImageMagick (variable -delay per frame),
 //   - optionally squeeze with gifsicle if installed.
 //
-// Output: afterglow/demo-site/public/afterglow-demo.gif
+// Output: demo-site/public/afterglow-demo.gif
 //
 // Re-run after frontend changes:
-//   NODE_PATH=$(npm root -g) node afterglow/scripts/record-demo.cjs
+//   NODE_PATH=$(npm root -g) node scripts/record-demo.cjs
 //
 // Requirements:
 //   - Node + global `playwright` (sudo npm install -g playwright)

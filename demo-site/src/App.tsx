@@ -8,7 +8,7 @@ import {
 } from 'lucide-react';
 import { DemoGuide } from './components/DemoGuide';
 
-const REPO_URL = 'https://github.com/Cleversoft-IT/hackaton-lablab';
+const REPO_URL = 'https://github.com/Cleversoft-IT/afterglow';
 
 function GithubIcon({ className }: { className?: string }) {
   return (
