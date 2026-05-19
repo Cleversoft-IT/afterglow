@@ -220,7 +220,22 @@ function DemoSection() {
       className="border-t border-border/40 -mx-6 px-6 py-16"
     >
       <div className="w-full">
-        <div className="flex flex-col gap-6 max-w-2xl">
+        <div className="flex flex-col gap-6 w-full">
+          {/* Mobile-first: surface the "Open the live app" CTA at the
+              top of the section, since the right-rail iframe is hidden
+              under 1024 px and the visitor would otherwise have to scroll
+              past all the copy to find out where the demo is. */}
+          <div className="lg:hidden flex flex-col items-center gap-4 rounded-2xl border border-border/60 bg-card/60 p-8">
+            <p className="text-sm text-muted-foreground text-center leading-relaxed max-w-xs">
+              The embedded preview is hidden on smaller screens — open the real app full-screen.
+            </p>
+            <Button asChild size="lg" className="rounded-full gap-2 w-full sm:w-auto">
+              <a href={APP_URL} target="_blank" rel="noopener noreferrer">
+                Open the live app
+                <ExternalLink className="w-4 h-4" />
+              </a>
+            </Button>
+          </div>
           <div>
             <SectionLabel>02 — Try it now</SectionLabel>
             <h2 className="text-3xl md:text-4xl font-extrabold tracking-tight mb-3">
@@ -338,28 +353,6 @@ function DemoSection() {
             </div>
           </details>
 
-          <div className="flex flex-wrap items-center gap-3">
-            <Button asChild className="rounded-full gap-2">
-              <a href={APP_URL} target="_blank" rel="noopener noreferrer">
-                Open in a new tab
-                <ExternalLink className="w-4 h-4" />
-              </a>
-            </Button>
-          </div>
-
-          {/* Mobile fallback — the right-rail phone is hidden under
-              1024 px, so we still need a CTA for phones / tablets. */}
-          <div className="lg:hidden flex flex-col items-center gap-4 rounded-2xl border border-border/60 bg-card/60 p-8 mt-2">
-            <p className="text-sm text-muted-foreground text-center leading-relaxed max-w-xs">
-              The embedded preview is hidden on smaller screens — open the real app full-screen instead.
-            </p>
-            <Button asChild size="lg" className="rounded-full gap-2 w-full sm:w-auto">
-              <a href={APP_URL} target="_blank" rel="noopener noreferrer">
-                Open the live app
-                <ExternalLink className="w-4 h-4" />
-              </a>
-            </Button>
-          </div>
         </div>
       </div>
     </section>
@@ -461,7 +454,7 @@ export default function App() {
         </div>
       </section>
 
-      <div className="mx-auto max-w-5xl px-6">
+      <div className="mx-auto max-w-3xl px-6">
 
         {/* ── Problem / Solution ────────────────────────── */}
         <section id="why" className="py-20 md:py-24">

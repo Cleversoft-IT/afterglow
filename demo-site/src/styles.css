@@ -102,7 +102,11 @@ html, body, #root {
   }
   .app-shell__phone {
     position: fixed;
-    top: 56px; /* under the h-14 sticky navbar */
+    /* Phone is centred vertically against the full viewport, not the
+       area-below-the-navbar. The navbar uses backdrop-blur and sits
+       above the phone visually; that's fine — the brand is more
+       legible than a thin slice of phone at the top would be. */
+    top: 0;
     right: 0;
     bottom: 0;
     width: var(--app-shell-rail);
@@ -114,6 +118,19 @@ html, body, #root {
   }
   .app-shell__hint {
     display: inline-flex;
+  }
+  /* Hero overlays (`hero-glow`, `dot-grid`, `hero-bottom-fade`) live
+     inside `.app-shell__content`, which has a wide `padding-right`
+     reserved for the fixed phone rail. By default `inset:0` would
+     clip the pattern to that narrower content box, drawing a hard
+     vertical seam at the rail edge — the "texture ends abruptly /
+     looks like it's repeating" effect. Extend each layer rightward
+     by the rail width so the dot pattern bleeds the full viewport
+     before the phone column overlays the right portion. */
+  .app-shell__content .hero-glow,
+  .app-shell__content .dot-grid,
+  .app-shell__content .hero-bottom-fade {
+    right: calc(0px - var(--app-shell-rail));
   }
 }
 
