@@ -1,6 +1,7 @@
 """Calls API — upload audio, kick off pipeline, poll status."""
 from __future__ import annotations
 
+import logging
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -49,6 +50,7 @@ from app.schemas import (
 )
 
 router = APIRouter(prefix="/api/v1/calls", tags=["calls"])
+logger = logging.getLogger("afterglow")
 
 settings = get_settings()
 
@@ -220,12 +222,29 @@ async def _run_pipeline_isolated(call_id: uuid.UUID) -> None:
         try:
             await run_pipeline(bg_session, call_id)
         except Exception as exc:  # noqa: BLE001
+            # The no-raise contract in `call_agent.run_call_agent` means
+            # an exception escaping here is genuinely catastrophic
+            # (DB connection drop, programming error). Surface the
+            # traceback in logs AND emit an audit row so the failure is
+            # visible in the operator UI, not only in Coolify stderr.
+            logger.exception("pipeline_isolated: catastrophic failure for call %s", call_id)
             await bg_session.rollback()
+            async with audit_step(
+                call_id=call_id,
+                agent_name="orchestrator",
+                step_type="pipeline_error",
+                status="error",
+                payload={
+                    "exc_type": type(exc).__name__,
+                    "exc": str(exc)[:500],
+                },
+            ):
+                pass
             stmt = select(Call).where(Call.id == call_id)
             call = (await bg_session.execute(stmt)).scalar_one_or_none()
             if call is not None:
                 call.status = "failed"
-                call.error = str(exc)[:1000]
+                call.error = f"[{type(exc).__name__}] {exc}"[:1000]
                 await bg_session.commit()
 
 

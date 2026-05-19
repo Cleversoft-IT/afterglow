@@ -28,6 +28,7 @@ Contract (no-raise):
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 from dataclasses import dataclass, field
 from typing import Any, Literal, Optional
@@ -146,9 +147,17 @@ async def run_call_agent(
     is_demo: bool,
     preseed_available: bool,
     collection_id: Optional[str],
+    session_lock: asyncio.Lock,
     max_iterations: int = 12,
 ) -> CallAgentResult:
-    """Run the agentic loop for one call. Always returns; never raises."""
+    """Run the agentic loop for one call. Always returns; never raises.
+
+    `session_lock` is a required asyncio.Lock owned by the orchestrator and
+    shared with every tool that mutates `session`. Gemini may emit parallel
+    function calls in a single turn; without the lock two concurrent
+    `session.flush()` coroutines would trigger SQLAlchemy's
+    "Session is already flushing" InvalidRequestError.
+    """
     if not settings.google_api_key:
         return CallAgentResult(
             completion_reason="error",
@@ -158,7 +167,14 @@ async def run_call_agent(
     # --- build the tool surface from the template + closures over this call ---
     auto_actions = [a for a in template.action_types if a.get("execution_mode") == "auto"]
     action_tools = [
-        make_action_tool(a, session=session, call=call, customer=customer, template=template)
+        make_action_tool(
+            a,
+            session=session,
+            call=call,
+            customer=customer,
+            template=template,
+            session_lock=session_lock,
+        )
         for a in auto_actions
     ]
 
@@ -177,7 +193,7 @@ async def run_call_agent(
         transcript_text=transcript_text,
         speakers=(call.raw_transcript or {}).get("speakers"),
     )
-    flag_tool = make_flag_for_review(session=session, call=call)
+    flag_tool = make_flag_for_review(session=session, call=call, session_lock=session_lock)
     finalize_tool = make_finalize_call()
 
     tools: list[Any] = [
@@ -213,10 +229,10 @@ async def run_call_agent(
             runner, prompt_text=user_prompt, max_iterations=max_iterations
         )
     except Exception as exc:  # noqa: BLE001
-        logger.warning("call_agent: ADK runner failed (%s)", exc)
+        logger.exception("call_agent: ADK runner failed")
         return CallAgentResult(
             completion_reason="error",
-            error=f"adk_runner: {exc}"[:1000],
+            error=f"adk_runner [{type(exc).__name__}]: {exc}"[:1000],
             available_tools=available_tools,
         )
 

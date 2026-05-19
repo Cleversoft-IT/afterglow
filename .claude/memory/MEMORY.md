@@ -24,3 +24,4 @@
 - [RAG demo read-only](project_rag_demo_read_only.md) — round-9: demo RAG attiva in lettura su collection preseedata, write skipped.
 - [Agentic post-call pipeline](project_agentic_pipeline.md) — round-10: un unico Gemini/ADK multi-turn agent fonde analyzer+planner+executor; tool surface, no-raise contract, `needs_review` status, audit correlation via `payload.agent_turn`.
 - [Audit collapse pattern](feedback_audit_collapse_pattern.md) — pattern UI overview-first per pagine list-heavy (call → agent → step → payload).
+- [Session lock for concurrent tools](feedback_session_lock_concurrent_tools.md) — round-11: `run_call_agent` richiede un `asyncio.Lock` per-run; serializza `session.flush()` dei tool paralleli (Gemini parallel function calling) altrimenti SQLAlchemy alza "Session is already flushing".

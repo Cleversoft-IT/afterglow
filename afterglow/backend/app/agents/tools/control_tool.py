@@ -5,6 +5,7 @@ just record state that the orchestrator consumes after the loop exits.
 """
 from __future__ import annotations
 
+import asyncio
 from typing import Any, Callable, Literal
 
 from pydantic import BaseModel, Field
@@ -33,7 +34,9 @@ class FinalizeCallPayload(BaseModel):
     briefing: str = ""
 
 
-def make_flag_for_review(*, session: AsyncSession, call: Call) -> Callable[..., Any]:
+def make_flag_for_review(
+    *, session: AsyncSession, call: Call, session_lock: asyncio.Lock
+) -> Callable[..., Any]:
     """Build the `flag_for_review` callable. Persists `call.review_flag`."""
 
     async def flag_for_review(
@@ -54,13 +57,17 @@ def make_flag_for_review(*, session: AsyncSession, call: Call) -> Callable[..., 
         normally, `status="completed"` AND review_flag stays visible.
         """
         turn = bump_turn(tool_context)
-        call.review_flag = {
-            "reason": (reason or "").strip()[:500] or "unspecified",
-            "severity": severity,
-            "turn_count": turn,
-            "flagged_by": "agent",
-        }
-        await session.flush()
+        # See `make_action_tool` for the rationale: `session.flush()` on the
+        # orchestrator's shared AsyncSession must be serialized to avoid
+        # SQLAlchemy's "Session is already flushing" race with action tools.
+        async with session_lock:
+            call.review_flag = {
+                "reason": (reason or "").strip()[:500] or "unspecified",
+                "severity": severity,
+                "turn_count": turn,
+                "flagged_by": "agent",
+            }
+            await session.flush()
         return {"flagged": True}
 
     flag_for_review.__annotations__ = {

@@ -2062,18 +2062,33 @@ def _busy_week_specs(anchor: date) -> list[dict]:
             ("ai_booking", "customer:Sophie Walker"),
             ("missed", "mock"),
         ]),
-        # 16 May → -1 (Friday)
+        # 16 May → -1 (Friday). Densified to put booking + client rows at
+        # the top of the Calls feed on a fresh install: two AI bookings
+        # (Mark Ross + Tom Hughes) and one known-client completed call
+        # (Julia White, no booking) so the "Clients" filter is rich on
+        # "yesterday" rather than crowded by mock/anonymous noise.
         (-1, [
-            ("completed", "mock"),
             ("ai_booking", "customer:Mark Ross"),
-            ("completed", "mock"), ("completed", "unknown"),
+            ("ai_booking", "customer:Tom Hughes"),
+            ("completed", "customer:Julia White"),
+            ("completed", "mock"),
             ("missed", "mock"),
         ]),
-        # Anchor-day (`day_offset == 0`) entries are intentionally omitted:
-        # every refresh shifts them to "today" and they end up sitting on
-        # top of any real call placed at an earlier hour of the day. Legacy
-        # rows from older seeds are purged in `_ensure_personal_calls`.
+        # Anchor-day (`day_offset == 0`) policy: two early-morning slots
+        # (07:00 + 08:30 UTC) so the demo shows live "today" activity even
+        # on a totally fresh install. Slots are hardcoded for day_offset=0
+        # (see the slot picker below) so they sit BELOW any real call the
+        # operator simulates later in the day instead of colliding.
+        (0, [
+            ("ai_booking", "customer:Sophie Walker"),  # 07:00 UTC
+            ("completed", "mock"),                     # 08:30 UTC
+        ]),
     ]
+
+    # day_offset=0 uses hardcoded early-morning slots so the seed entries
+    # sit above any same-day real simulator call without colliding with
+    # the slot-picker logic used for day_offset < 0.
+    _ANCHOR_DAY_FIXED_SLOTS = [(7, 0), (8, 30)]
 
     for day_offset, calls in plan:
         # Compute weekday at anchor + day_offset (rather than from the legacy
@@ -2087,7 +2102,10 @@ def _busy_week_specs(anchor: date) -> list[dict]:
         slots = list(_HOUR_SLOTS_WEEKEND if weekend else _HOUR_SLOTS_WEEKDAY)
         rng.shuffle(slots)
         for idx, (kind, pool) in enumerate(calls):
-            hh, mm = slots[idx % len(slots)]
+            if day_offset == 0:
+                hh, mm = _ANCHOR_DAY_FIXED_SLOTS[idx % len(_ANCHOR_DAY_FIXED_SLOTS)]
+            else:
+                hh, mm = slots[idx % len(slots)]
             created = _anchor_dt(anchor, day_offset, hh, mm)
             if pool == "mock":
                 phone = rng.choice(_BUSY_MOCK_PHONES)
@@ -2973,46 +2991,13 @@ async def _ensure_personal_calls(session, anchor: date) -> None:
         ).all()
         phone_to_customer_id = {phone: cid for cid, phone in rows}
 
-    # Round-10 cleanup: drop residual anchor-day busy-week seed calls left
-    # over from older deploys. They used to live in the (0, [...]) block of
-    # `_busy_week_specs()`, which has been removed because every refresh
-    # shifts them to "today" and they end up sitting on top of any real
-    # call placed at an earlier hour of the day. New fixtures never set
-    # `created_at::date == anchor`, so this DELETE only matches legacy rows.
-    #
-    # Scope is tight: seed-only (`is_seed = True`), no visitor clones
-    # (`session_id IS NULL`). CustomerMemoryChunk.call_id is ondelete=SET
-    # NULL, so chunks would survive otherwise — we purge them first so the
-    # RAG preseed collection doesn't keep recalling briefings tied to a
-    # call that no longer exists. ExtractedFields / ExecutedAction cascade
-    # automatically; AuditLog.call_id is SET NULL (logs survive without
-    # the link, which is acceptable for the demo).
-    seed_anchor_day_calls = (
-        select(Call.id)
-        .where(
-            Call.is_seed.is_(True),
-            Call.session_id.is_(None),
-            func.date(Call.created_at) == anchor,
-        )
-        .scalar_subquery()
-    )
-    await session.execute(
-        delete(CustomerMemoryChunk).where(
-            CustomerMemoryChunk.call_id.in_(seed_anchor_day_calls)
-        )
-    )
-    purge_res = await session.execute(
-        delete(Call).where(
-            Call.is_seed.is_(True),
-            Call.session_id.is_(None),
-            func.date(Call.created_at) == anchor,
-        )
-    )
-    if purge_res.rowcount:
-        print(
-            f"[seed] purged {purge_res.rowcount} legacy anchor-day "
-            f"seed calls (anchor={anchor.isoformat()})."
-        )
+    # Round-11 policy update: the historical "no anchor-day seed calls"
+    # rule has been relaxed. `_busy_week_specs` now emits two early-morning
+    # entries at day_offset=0 (07:00 and 08:30 UTC) so the demo shows live
+    # "today" activity on a fresh install. The legacy anchor-day purge that
+    # used to live here has been removed — migration 0017 wiped every seed
+    # call once, and any subsequent boot must keep the new day_offset=0
+    # rows alive across the lifespan refresh.
 
     all_fixtures = (
         _personal_call_fixtures(anchor)

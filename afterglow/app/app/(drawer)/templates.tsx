@@ -11,6 +11,7 @@ import {
   Card,
   Chip,
   Dialog,
+  Divider,
   Portal,
   Text,
   useTheme,
@@ -98,6 +99,11 @@ export default function TemplatesScreen() {
         list: { padding: 16, paddingBottom: 48, gap: 12 },
         helpText: { color: theme.colors.onSurfaceVariant, marginBottom: 12 },
         sep: { height: 12 },
+        // Dialog spacing: Paper Dialog defaults leave button rows hugging
+        // the edges on web. These three overrides add breathing room.
+        dialog: { marginHorizontal: 24, maxWidth: 480, alignSelf: 'center' },
+        dialogContent: { paddingHorizontal: 24, paddingBottom: 8 },
+        dialogActions: { paddingHorizontal: 16, paddingBottom: 12, gap: 8 },
       }),
     [theme],
   );
@@ -131,15 +137,22 @@ export default function TemplatesScreen() {
         ListHeaderComponent={
           <View style={{ marginBottom: 12, gap: 12 }}>
             <Text variant="bodyMedium" style={styles.helpText}>
-              Pick which preset drives the call analysis. Exactly one template can be active at a time.
+              Build a template tailored to your business in a 2-minute chat — or pick one of the presets below.
             </Text>
             <Button
               mode="contained-tonal"
               icon="plus"
               onPress={() => router.push('/templates/wizard' as never)}
             >
-              New from prompt
+              Set up your own business
             </Button>
+            <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 8, gap: 12 }}>
+              <Divider style={{ flex: 1 }} />
+              <Text variant="labelSmall" style={{ color: theme.colors.onSurfaceVariant }}>
+                OR PICK A PRESET
+              </Text>
+              <Divider style={{ flex: 1 }} />
+            </View>
           </View>
         }
         renderItem={({ item }) => (
@@ -180,15 +193,16 @@ export default function TemplatesScreen() {
         <Dialog
           visible={welcomeDialogVisible}
           onDismiss={() => setWelcomeDialogVisible(false)}
+          style={styles.dialog}
         >
           <Dialog.Icon icon="hand-wave-outline" />
           <Dialog.Title>Welcome to Afterglow</Dialog.Title>
-          <Dialog.Content>
+          <Dialog.Content style={styles.dialogContent}>
             <Text variant="bodyMedium">
               To get started, tell the dialer what kind of calls it handles. Pick one of the three presets — fastest path for a demo — or describe your own business from a prompt.
             </Text>
           </Dialog.Content>
-          <Dialog.Actions>
+          <Dialog.Actions style={styles.dialogActions}>
             <Button
               mode="text"
               onPress={() => {
@@ -196,7 +210,7 @@ export default function TemplatesScreen() {
                 router.push('/templates/wizard' as never);
               }}
             >
-              Build from prompt
+              Set up your own
             </Button>
             <Button
               mode="contained"
@@ -206,15 +220,19 @@ export default function TemplatesScreen() {
             </Button>
           </Dialog.Actions>
         </Dialog>
-        <Dialog visible={goHomeDialogVisible} onDismiss={() => setGoHomeDialogVisible(false)}>
+        <Dialog
+          visible={goHomeDialogVisible}
+          onDismiss={() => setGoHomeDialogVisible(false)}
+          style={styles.dialog}
+        >
           <Dialog.Icon icon="phone-incoming" />
           <Dialog.Title>Template activated</Dialog.Title>
-          <Dialog.Content>
+          <Dialog.Content style={styles.dialogContent}>
             <Text variant="bodyMedium">
               The dialer is wired up. Head over to the calls feed to try the simulator, or stay here to keep tweaking templates.
             </Text>
           </Dialog.Content>
-          <Dialog.Actions>
+          <Dialog.Actions style={styles.dialogActions}>
             <Button onPress={() => setGoHomeDialogVisible(false)}>Stay on Templates</Button>
             <Button
               mode="contained"

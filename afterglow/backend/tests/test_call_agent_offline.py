@@ -10,6 +10,7 @@ need a real Gemini key. We focus on:
 """
 from __future__ import annotations
 
+import asyncio
 import uuid
 from contextlib import asynccontextmanager
 from types import SimpleNamespace
@@ -181,6 +182,7 @@ async def test_finalize_completion(monkeypatch):
         preseed_available=False,
         collection_id=None,
         max_iterations=12,
+        session_lock=asyncio.Lock(),
     )
     assert result.completion_reason == "finalize"
     assert result.fields and result.fields[0].key == "party_size"
@@ -211,6 +213,7 @@ async def test_max_turns_completion(monkeypatch):
         preseed_available=False,
         collection_id=None,
         max_iterations=3,
+        session_lock=asyncio.Lock(),
     )
     assert result.completion_reason == "max_turns"
     assert result.turn_count >= 3
@@ -233,6 +236,7 @@ async def test_missing_api_key_returns_error(monkeypatch):
         is_demo=False,
         preseed_available=False,
         collection_id=None,
+        session_lock=asyncio.Lock(),
     )
     assert result.completion_reason == "error"
     assert "GOOGLE_API_KEY" in (result.error or "")
@@ -259,6 +263,7 @@ async def test_runner_exception_returns_error(monkeypatch):
         is_demo=False,
         preseed_available=False,
         collection_id=None,
+        session_lock=asyncio.Lock(),
     )
     assert result.completion_reason == "error"
     assert "adk_runner" in (result.error or "")

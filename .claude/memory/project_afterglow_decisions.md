@@ -921,6 +921,35 @@ Cluster di fix post-audit pre-submission. Non tocca pipeline agentic (round-10 s
 
 **How to apply:** quando aggiungi un nuovo seed template, ricordati che `_ensure_seed_templates_fresh` confronta `(name, description, fields_schema, action_types, prompt_hints)` — drift su uno di questi triggera UPDATE in-place. Per cambiare il nome di un seed template esistente, bumpare `version` non serve (l'helper UPDATE in-place); l'unica precauzione è la collisione con eventuali template user-built con stesso `(name, version)`. Quando aggiungi una pagina stack sotto un sub-stack, ricordati di wirarle `headerLeft: Appbar.BackAction`. `formatRelativeTime` deve restare calendar-day-first — riusa `startOfDay()` e calcola `diffDays` PRIMA del branching ore-based, non dopo.
 
+### 1.diciotto. Round 11 — Session lock + seed top-of-list (2026-05-19)
+
+**Cosa cambia:**
+
+1. **Session lock per-pipeline-run.** `orchestrator.run_pipeline` ora crea un `asyncio.Lock` per ogni esecuzione e lo passa come kw-arg **obbligatorio** a `run_call_agent(session_lock=...)`. Il lock si propaga a `make_action_tool(session_lock=...)` e `make_flag_for_review(session_lock=...)`; ogni tool wrappa la sua sezione di `session.add`/`flush`/`execute` in `async with session_lock:`. Risolve la race "Session is already flushing" che il modello triggherava emettendo parallel function calls (riproducibile su Mark Ross + template ristorante: `lookup_customer_memory` + `booking.create` nello stesso turno). `_run_pipeline_isolated.except` ora emette anche un audit row `agent_name="orchestrator" step_type="pipeline_error"` (con `exc_type` + snippet) + log con traceback completo. Test regression: `backend/tests/test_call_agent_concurrency.py`. Dettagli e alternative scartate in [[feedback-session-lock-concurrent-tools]].
+
+2. **Seed top-of-list densificato + `day_offset=0` ammesso early-morning.** `_busy_week_specs` in `seed.py` ora include un blocco `(0, [...])` con due slot fissi (07:00 e 08:30 UTC) — il vincolo "no anchor-day entries" del round 8 era troppo conservativo, l'utente vede una `/calls` "vuota oggi" su install fresca. Lo slot picker (riga ~2086) usa `_ANCHOR_DAY_FIXED_SLOTS` per `day_offset=0` invece di shuffle, così i row di seed non possono collidere con un simulator click reale di tarda mattinata. Day_offset=-1 ridensificato a 5 entry (Mark Ross booking + Tom Hughes booking + Julia White client + 1 mock + 1 missed) per popolare i filtri Bookings/Clients in cima al feed. La purge legacy "anchor-day cleanup" in `_ensure_personal_calls` è stata RIMOSSA (cancellava i nuovi `day_offset=0`); migration `0017_reshape_busy_week.py` fa una purge one-shot di tutti i seed Call esistenti per garantire che la nuova shape materializzi su DB già deployati.
+
+3. **CTA wizard rebranded.** Il button "+ New from prompt" in `app/(drawer)/templates.tsx` diventa "Set up your own business". Aggiunto un `<Divider>` orizzontale con label "OR PICK A PRESET" tra la sezione wizard e la lista preset. Welcome dialog button label `Build from prompt` → `Set up your own` per coerenza.
+
+4. **Riordino chip filtri Home.** `FILTERS` array in `(drawer)/(tabs)/index.tsx`: `['all', 'bookings', 'clients', 'missed', 'saved', 'unsaved', 'review']` (era `['all', 'missed', 'review', 'bookings', 'clients', 'saved', 'unsaved']`). `review` chiude la riga; `bookings` e `clients` salgono in cima come azioni più frequenti dell'operatore.
+
+5. **Padding Dialog Paper.** I due Dialog del templates screen (Welcome + Activation "Go to Calls") hanno ora `style={{ marginHorizontal: 24, maxWidth: 480, alignSelf: 'center' }}` + `Dialog.Content style={paddingHorizontal: 24}` + `Dialog.Actions style={paddingHorizontal: 16, gap: 8}`. Paper `Dialog` NON espone `contentStyle` (verificato in `node_modules/react-native-paper/lib/typescript/components/Dialog/Dialog.d.ts`), va usato `Dialog.Content style={...}`.
+
+**File toccati:**
+- BE: `backend/app/agents/orchestrator.py`, `backend/app/agents/call_agent.py`, `backend/app/agents/tools/action_tool.py`, `backend/app/agents/tools/control_tool.py`, `backend/app/api/calls.py`, `backend/app/db/seed.py`, `backend/alembic/versions/0017_reshape_busy_week.py` (nuovo).
+- FE: `app/app/(drawer)/templates.tsx`, `app/app/(drawer)/(tabs)/index.tsx`.
+- Tests: `backend/tests/test_call_agent_concurrency.py` (nuovo), `backend/tests/test_action_tool_typed.py`, `backend/tests/test_call_agent_offline.py`, `backend/tests/test_turn_counter_correlation.py` (aggiunto `session_lock=asyncio.Lock()` nelle invocazioni dirette).
+- Docs: `CLAUDE.md` (No-raise contract + constraint 7 round-11), questo file, [[feedback-session-lock-concurrent-tools]] (nuovo), `MEMORY.md` (entry pointer), `[[project-agentic-pipeline]]` (sezione "Session-lock invariant").
+
+**Why:** la chiamata di Mark Ross sul ristorante crashava silenziosamente con `adk_runner: ... pipeline error`, gli operatori vedevano `Call.status="failed"` senza diagnostica. Inoltre il primo paint di `/calls` su install fresca mostrava "non gestite" in cima e nessuna call "oggi", svuotando la value-prop del demo. La combinazione lock-fix + seed-rebalance rimette in piedi il path Mark Ross E rende la lista calls credibile al primo sguardo.
+
+**How to apply:**
+- Qualunque nuovo tool del call_agent che muta `bg_session` DEVE accettare `session_lock: asyncio.Lock` e wrappare i `session.add/flush/execute` in `async with session_lock:`. Audit rows passano per `audit_step` (proprio `SessionLocal()`) e NON serve il lock.
+- Quando aggiungi un `day_offset=0` in `_busy_week_specs`, scegli slot fissi early-morning (consigliato 06:00-09:00 UTC) e aggiungili a `_ANCHOR_DAY_FIXED_SLOTS`. NON ripristinare la purge anchor-day in `_ensure_personal_calls`.
+- Per Paper Dialog, lo styling interno va su `Dialog.Content style={...}` e `Dialog.Actions style={...}`, non su un `contentStyle` inesistente sul Dialog stesso.
+
+**Operativo Vultr (NON in repo):** la migration 0017 lascia residui nella collection Vultr remota (`vultr_inference` non espone delete API). Decisione: accettato il rischio stale-RAG per il demo perché [[feedback-db-disposable]] autorizza dati seed disposable; se l'utente preferisce pulito, creare nuova collection Vultr e aggiornare `VULTR_VECTOR_DEFAULT_COLLECTION` in Coolify env per `afterglow-backend`.
+
 ### 9. Stato env in produzione (volatile, 2026-05-15)
 Sezione "what's live right now" — da rileggere prima di pushare grossi cambi al backend.
 

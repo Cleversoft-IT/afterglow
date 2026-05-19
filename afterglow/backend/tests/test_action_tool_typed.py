@@ -14,6 +14,7 @@ We never hit Gemini or ADK here.
 """
 from __future__ import annotations
 
+import asyncio
 import uuid
 from contextlib import asynccontextmanager
 from types import SimpleNamespace
@@ -93,6 +94,7 @@ def test_make_action_tool_typed_annotation():
         call=_make_call(),
         customer=_make_customer(),
         template=_make_template(_booking_action()),
+        session_lock=asyncio.Lock(),
     )
     ann = tool.__annotations__
     assert ann["confidence"] is float
@@ -113,6 +115,7 @@ def test_make_action_tool_fallback_dict_annotation():
         call=_make_call(),
         customer=_make_customer(),
         template=_make_template(action),
+        session_lock=asyncio.Lock(),
     )
     ann = tool.__annotations__
     # Optional[dict] resolves to dict | None at runtime.
@@ -135,6 +138,7 @@ async def test_invocation_executes_and_returns_status():
         call=_make_call(),
         customer=_make_customer(),
         template=template,
+        session_lock=asyncio.Lock(),
     )
     ctx = FakeToolContext()
     payload_model = tool.__annotations__["payload"]
@@ -161,6 +165,7 @@ async def test_attempt_counter_per_action_type():
         call=_make_call(),
         customer=_make_customer(),
         template=template,
+        session_lock=asyncio.Lock(),
     )
     ctx = FakeToolContext()
     payload_model = tool.__annotations__["payload"]
@@ -187,6 +192,7 @@ async def test_retry_after_validation_failure_is_allowed():
         call=_make_call(),
         customer=_make_customer(),
         template=template,
+        session_lock=asyncio.Lock(),
     )
     ctx = FakeToolContext()
     payload_model = tool.__annotations__["payload"]
@@ -232,6 +238,7 @@ async def test_turn_counter_is_monotonic_across_tools():
         call=_make_call(),
         customer=_make_customer(),
         template=template,
+        session_lock=asyncio.Lock(),
     )
     t2 = action_tool.make_action_tool(
         other,
@@ -239,6 +246,7 @@ async def test_turn_counter_is_monotonic_across_tools():
         call=_make_call(),
         customer=_make_customer(),
         template=template,
+        session_lock=asyncio.Lock(),
     )
     ctx = FakeToolContext()
     p1 = t1.__annotations__["payload"].model_validate(

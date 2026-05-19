@@ -16,6 +16,7 @@ Self-correction guardrails:
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 from typing import Any, Callable, Optional
@@ -86,6 +87,7 @@ def make_action_tool(
     call: Call,
     customer: Optional[Customer],
     template: Template,
+    session_lock: asyncio.Lock,
 ) -> Callable[..., Any]:
     """Build the executable ADK tool callable for one action_type entry.
 
@@ -145,14 +147,19 @@ def make_action_tool(
             "confidence": float(confidence),
             "evidence": list(evidence or []),
         }
-        record = await execute_single_action(
-            session,
-            call=call,
-            customer=customer,
-            template=template,
-            entry=entry,
-            agent_turn=turn,
-        )
+        # Serialize ORM mutations: `execute_single_action` issues several
+        # `session.add` + `session.flush()` calls against the shared
+        # AsyncSession, which is not re-entrant. The orchestrator-owned
+        # lock prevents two parallel tool calls from racing on it.
+        async with session_lock:
+            record = await execute_single_action(
+                session,
+                call=call,
+                customer=customer,
+                template=template,
+                entry=entry,
+                agent_turn=turn,
+            )
         status = record.status if record is not None else "hallucinated"
         result = record.result if record is not None else {"refused": "action_type not in template"}
         _record_status(tool_context, key, status)

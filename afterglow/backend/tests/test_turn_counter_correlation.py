@@ -12,6 +12,7 @@ via `payload.agent_turn`. This is the contract:
 """
 from __future__ import annotations
 
+import asyncio
 import uuid
 from contextlib import asynccontextmanager
 from types import SimpleNamespace
@@ -100,6 +101,7 @@ async def test_agent_turn_lands_in_action_exec_payload():
         call=SimpleNamespace(id=uuid.uuid4(), session_id=None),
         customer=SimpleNamespace(id=uuid.uuid4(), display_name=None, tags=[]),
         template=template,
+        session_lock=asyncio.Lock(),
     )
     ctx = FakeToolContext()
     # Pretend two earlier tool turns already happened (e.g. memory + search).

@@ -45,7 +45,7 @@ const FILTER_LABEL: Record<CallFilterKey, string> = {
   unsaved: 'Unsaved',
 };
 
-const FILTERS: CallFilterKey[] = ['all', 'missed', 'review', 'bookings', 'clients', 'saved', 'unsaved'];
+const FILTERS: CallFilterKey[] = ['all', 'bookings', 'clients', 'missed', 'saved', 'unsaved', 'review'];
 
 export default function HomeScreen() {
   const theme = useTheme();

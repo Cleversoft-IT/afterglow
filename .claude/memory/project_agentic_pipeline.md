@@ -86,6 +86,27 @@ agent loop before the failure. The no-raise contract keeps the loop's
 side effects visible (an operator can review or undo them) even when the
 agent itself bails out.
 
+## Session-lock invariant (round-11, 2026-05-19)
+
+Gemini supports parallel function calling — two `function_call` parts can
+arrive in the same agent turn and ADK's `InMemoryRunner` fires them
+concurrently. The shared `bg_session` (`AsyncSession`) is NOT re-entrant:
+two `await session.flush()` coroutines collide with
+`InvalidRequestError("Session is already flushing")`.
+
+`orchestrator.run_pipeline` creates a single `asyncio.Lock` per pipeline
+invocation and threads it through `run_call_agent(session_lock=...)` →
+`make_action_tool(session_lock=...)` → `make_flag_for_review(session_lock=...)`.
+Every tool wraps its `session.add` / `flush` / `execute` block in
+`async with session_lock:`. Audit rows are not affected: `audit_step`
+opens its own `SessionLocal()` (`audit/logger.py`) and is outside the
+shared-session contract.
+
+The `session_lock` kw-arg is **required** on `run_call_agent`,
+`make_action_tool`, `make_flag_for_review`. Any new tool that mutates
+`bg_session` must accept it. Rationale and rejected alternatives are in
+[[feedback-session-lock-concurrent-tools]].
+
 ## `Call.status` values
 
 | status | When | UI |

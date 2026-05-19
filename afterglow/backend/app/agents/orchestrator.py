@@ -27,6 +27,7 @@ safety net for catastrophic uncaught exceptions only.
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 import uuid
 from datetime import datetime, timezone
@@ -71,6 +72,14 @@ async def run_pipeline(session: AsyncSession, call_id: uuid.UUID) -> None:
     ):
         logger.info("orchestrator: call %s already in status %s — skipping", call_id, call.status)
         return
+
+    # Serializes every ORM mutation that the agent loop's parallel tool
+    # calls would otherwise issue concurrently against this single
+    # AsyncSession. Without it, two `await session.flush()` coroutines
+    # racing on the same session raise SQLAlchemy's
+    # "Session is already flushing" InvalidRequestError, which the call
+    # agent surfaces as "adk_runner: ... pipeline error".
+    session_lock = asyncio.Lock()
 
     call.status = "transcribing"
     call.started_at = datetime.now(tz=timezone.utc)
@@ -198,6 +207,7 @@ async def run_pipeline(session: AsyncSession, call_id: uuid.UUID) -> None:
         preseed_available=preseed_available,
         collection_id=collection_id,
         max_iterations=12,
+        session_lock=session_lock,
     )
 
     # Emit the per-turn audit rows. We do this AFTER the loop so they share
