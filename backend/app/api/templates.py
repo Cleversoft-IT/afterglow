@@ -13,7 +13,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, File, HTTPException, Response, UploadFile
 from fastapi.responses import FileResponse
@@ -50,6 +50,29 @@ from app.schemas import (
 )
 
 router = APIRouter(prefix="/api/v1/templates", tags=["templates"])
+
+
+def mark_tts_audio_ready(
+    target: dict[str, Any], *, audio_url: str, now_iso: str
+) -> None:
+    """Stamp the standard set of "TTS audio is ready" metadata onto
+    either a scenario sub-dict or the flat (legacy) simulation_config.
+
+    `audio_diarization='channel'` is the load-bearing one: the submit
+    path (`derive_audio_diarization` in `app/api/calls.py`) reads it to
+    route the ASR call to channel diarization on stereo TTS audio. The
+    rest is bookkeeping the UI uses to render "Audio ready" + the
+    last-generated timestamp.
+
+    Mutates the dict in place — `flag_modified(row, "simulation_config")`
+    happens at the caller because the dict is nested inside a JSONB
+    column.
+    """
+    target["audio_url"] = audio_url
+    target["audio_status"] = "ready"
+    target["audio_generated_at"] = now_iso
+    target["audio_source"] = "tts_generated"
+    target["audio_diarization"] = "channel"
 
 
 class SetActiveTemplateRequest(BaseModel):
@@ -337,14 +360,11 @@ async def generate_simulation_audio(
             row.simulation_config = config
             await session.commit()
             raise HTTPException(status_code=502, detail=str(exc)) from exc
-        config["audio_url"] = str(out_path)
-        config["audio_status"] = "ready"
-        config["audio_generated_at"] = datetime.now(tz=timezone.utc).isoformat()
-        config["audio_source"] = "tts_generated"
-        # TTS pipeline renders stereo (one speaker per channel); flag the
-        # config so submit_audio_call can route ASR to channel diarization
-        # for any call made against this template.
-        config["audio_diarization"] = "channel"
+        mark_tts_audio_ready(
+            config,
+            audio_url=str(out_path),
+            now_iso=datetime.now(tz=timezone.utc).isoformat(),
+        )
         row.simulation_config = config
         await session.commit()
         await session.refresh(row)
@@ -375,13 +395,7 @@ async def generate_simulation_audio(
             scenario["audio_generated_at"] = now_iso
             errors.append(f"{mode}: {exc}")
             continue
-        scenario["audio_url"] = str(out_path)
-        scenario["audio_status"] = "ready"
-        scenario["audio_generated_at"] = now_iso
-        scenario["audio_source"] = "tts_generated"
-        # Stereo TTS → channel diarization downstream (see ASR routing in
-        # `submit_audio_call` and `transcribe_audio`).
-        scenario["audio_diarization"] = "channel"
+        mark_tts_audio_ready(scenario, audio_url=str(out_path), now_iso=now_iso)
 
     config["scenarios"] = scenarios
     row.simulation_config = config

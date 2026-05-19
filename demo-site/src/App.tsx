@@ -206,23 +206,21 @@ function usePhoneScale(): number {
 }
 
 /* ─── Demo section ──────────────────────────────────────────
-   Side-by-side: copy/CTAs on the left, full-viewport-height phone
-   on the right. On narrow viewports the iframe is hidden and the
-   page shows a single "Open the live app" CTA card instead. */
+   Copy-only section. The live phone now lives in the app shell's
+   fixed right rail (see `AppShellPhone`), so this section is just
+   the click-path narrative + the disclosures. On mobile the rail
+   is hidden — the section still shows an "Open the live app" CTA
+   card so the visitor isn't stuck. */
 function DemoSection() {
-  const scale = usePhoneScale();
-  const scaledDown = scale < 0.999;
-  const pct = Math.round(scale * 100);
   const [guideOpen, setGuideOpen] = useState(false);
 
   return (
     <section
       id="demo"
-      className="border-t border-border/40 -mx-6 px-6 md:min-h-dvh md:flex md:items-center py-16 md:py-0"
+      className="border-t border-border/40 -mx-6 px-6 py-16"
     >
-      <div className="w-full grid grid-cols-1 md:grid-cols-[minmax(260px,1fr)_auto] md:gap-12 lg:gap-16 items-center">
-        {/* Left column: copy + CTAs (sits next to the phone) */}
-        <div className="flex flex-col gap-6 max-w-md">
+      <div className="w-full">
+        <div className="flex flex-col gap-6 max-w-2xl">
           <div>
             <SectionLabel>02 — Try it now</SectionLabel>
             <h2 className="text-3xl md:text-4xl font-extrabold tracking-tight mb-3">
@@ -340,7 +338,7 @@ function DemoSection() {
             </div>
           </details>
 
-          <div className="hidden md:flex flex-wrap items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3">
             <Button asChild className="rounded-full gap-2">
               <a href={APP_URL} target="_blank" rel="noopener noreferrer">
                 Open in a new tab
@@ -349,10 +347,11 @@ function DemoSection() {
             </Button>
           </div>
 
-          {/* Mobile: single CTA, no iframe-in-phone-in-phone */}
-          <div className="md:hidden flex flex-col items-center gap-4 rounded-2xl border border-border/60 bg-card/60 p-8 mt-2">
+          {/* Mobile fallback — the right-rail phone is hidden under
+              1024 px, so we still need a CTA for phones / tablets. */}
+          <div className="lg:hidden flex flex-col items-center gap-4 rounded-2xl border border-border/60 bg-card/60 p-8 mt-2">
             <p className="text-sm text-muted-foreground text-center leading-relaxed max-w-xs">
-              The embedded preview is hidden on mobile — open the real app full-screen instead.
+              The embedded preview is hidden on smaller screens — open the real app full-screen instead.
             </p>
             <Button asChild size="lg" className="rounded-full gap-2 w-full sm:w-auto">
               <a href={APP_URL} target="_blank" rel="noopener noreferrer">
@@ -362,45 +361,66 @@ function DemoSection() {
             </Button>
           </div>
         </div>
-
-        {/* Right column: phone */}
-        <div className="hidden md:flex justify-center md:justify-end">
-          <div className="phone-stage">
-            <div className="demo-phone-glow" aria-hidden="true" />
-            {scaledDown && (
-              <div className="phone-scale-badge" aria-live="polite" title="The embedded phone is scaled to fit your viewport. Open in a new tab for full size.">
-                <Maximize2 className="w-3 h-3" aria-hidden="true" />
-                Scaled · {pct}%
-              </div>
-            )}
-            <div className="phone-frame">
-              <iframe
-                title="Afterglow live demo"
-                src={APP_URL}
-                allow="autoplay; clipboard-write"
-                loading="lazy"
-              />
-            </div>
-          </div>
-        </div>
       </div>
     </section>
+  );
+}
+
+/* ─── Fixed right-rail demo phone (desktop only) ─────────
+   Mounts the live iframe once at the App root and pins it to the
+   right edge of the viewport, full-height. On scroll the content
+   column slides past on the left; the phone stays visible the whole
+   time. Hidden under 1024 px — mobile falls back to the "Open the
+   live app" CTA card already present in the Live demo section.
+
+   The iframe is mounted exactly once and never re-mounted, so the
+   visitor's in-app state survives any cross-section scroll/jump
+   between landing-page anchors. */
+function AppShellPhone() {
+  const scale = usePhoneScale();
+  const scaledDown = scale < 0.999;
+  const pct = Math.round(scale * 100);
+  return (
+    <aside className="app-shell__phone" aria-label="Live demo app">
+      <div className="phone-stage">
+        <div className="demo-phone-glow" aria-hidden="true" />
+        {scaledDown && (
+          <div
+            className="phone-scale-badge"
+            aria-live="polite"
+            title="The embedded phone is scaled to fit your viewport. Open in a new tab for full size."
+          >
+            <Maximize2 className="w-3 h-3" aria-hidden="true" />
+            Scaled · {pct}%
+          </div>
+        )}
+        <div className="phone-frame">
+          <iframe
+            title="Afterglow live demo"
+            src={APP_URL}
+            allow="autoplay; clipboard-write"
+            loading="eager"
+          />
+        </div>
+      </div>
+    </aside>
   );
 }
 
 /* ─── App ───────────────────────────────────────────────── */
 export default function App() {
   return (
-    <div className="min-h-screen bg-background text-foreground antialiased">
+    <div className="app-shell min-h-screen bg-background text-foreground antialiased">
       <Navbar />
 
+      <main className="app-shell__content">
       {/* ── Hero — full-viewport width so bg bleeds edge-to-edge */}
       <section className="relative overflow-hidden">
         <div className="hero-glow" aria-hidden="true" />
         <div className="dot-grid" aria-hidden="true" />
         <div className="hero-bottom-fade" aria-hidden="true" />
 
-        <div className="relative mx-auto max-w-5xl px-6 pt-12 md:pt-20 pb-20 md:pb-24 grid grid-cols-1 md:grid-cols-2 gap-12 items-center">
+        <div className="relative mx-auto max-w-2xl px-6 pt-12 md:pt-20 pb-20 md:pb-24">
           <div className="flex flex-col items-start gap-7">
             <h1 className="text-5xl md:text-[62px] font-extrabold leading-[1.05] tracking-tight">
               Stay in the moment.
@@ -414,10 +434,15 @@ export default function App() {
               follow-ups — all in the seconds after the caller hangs up.
             </p>
 
+            <p className="inline-flex items-center gap-2 text-sm text-muted-foreground app-shell__hint">
+              <ArrowRight className="w-4 h-4 text-primary" aria-hidden="true" />
+              Try it now — the real app is running on the right.
+            </p>
+
             <div className="flex flex-wrap gap-3">
               <Button asChild size="lg" className="rounded-full gap-2">
                 <a href="#demo">
-                  Live demo <ArrowRight className="w-4 h-4" />
+                  How to drive it <ArrowRight className="w-4 h-4" />
                 </a>
               </Button>
               <Button asChild variant="outline" size="lg" className="rounded-full">
@@ -432,18 +457,6 @@ export default function App() {
               <span className="inline-block w-1.5 h-1.5 rounded-full bg-primary flex-shrink-0" />
               For service businesses where every call is a booking
             </p>
-          </div>
-
-          <div className="relative flex justify-center items-center">
-            <div className="phone-glow" aria-hidden="true" />
-            <div className="relative phone-frame hero-phone">
-              <iframe
-                title="Afterglow live demo (hero)"
-                src={APP_URL}
-                allow="autoplay; clipboard-write"
-                loading="eager"
-              />
-            </div>
           </div>
         </div>
       </section>
@@ -629,6 +642,11 @@ export default function App() {
           </div>
         </footer>
       </div>
+      </main>
+
+      {/* The phone is mounted exactly once at the App root so its
+          iframe state survives all in-page scrolling and anchor jumps. */}
+      <AppShellPhone />
     </div>
   );
 }

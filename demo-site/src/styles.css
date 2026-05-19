@@ -80,6 +80,48 @@ html, body, #root {
   color: var(--foreground);
 }
 
+/* ── App shell: content stream on the left, fixed phone on the right ──
+   On desktop (≥1024 px) the live phone is pinned to the right edge of
+   the viewport via `.app-shell__phone` (position: fixed). The content
+   stream gets a matching `padding-right` so it never slides under the
+   phone. Under 1024 px the rail is hidden and the layout collapses to
+   single column — the existing "Open the live app" CTA on the Live
+   demo section takes over. */
+.app-shell {
+  position: relative;
+}
+
+.app-shell__hint {
+  display: none;
+}
+
+@media (min-width: 1024px) {
+  :root { --app-shell-rail: min(50vw, 540px); }
+  .app-shell__content {
+    padding-right: var(--app-shell-rail);
+  }
+  .app-shell__phone {
+    position: fixed;
+    top: 56px; /* under the h-14 sticky navbar */
+    right: 0;
+    bottom: 0;
+    width: var(--app-shell-rail);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    pointer-events: auto;
+    z-index: 5;
+  }
+  .app-shell__hint {
+    display: inline-flex;
+  }
+}
+
+/* Below the breakpoint we never render the rail. */
+@media (max-width: 1023.98px) {
+  .app-shell__phone { display: none; }
+}
+
 /* ── Gradient text (hero "after") ─────────────────────── */
 .gradient-text {
   background: linear-gradient(
@@ -267,18 +309,10 @@ html, body, #root {
   aspect-ratio: 410 / 850;
 }
 
-/* Keep the hero phone visible as the visitor scrolls past the hero into
-   "Why / How it works" on desktop — the iframe is the demo, so we want
-   it visible while the supporting copy scrolls next to it. Drops back to
-   static on mobile (the hero phone column is hidden anyway via the
-   media-query block below). */
-@media (min-width: 768px) {
-  .phone-frame.hero-phone {
-    position: sticky;
-    top: 24px;
-    align-self: start;
-  }
-}
+/* The hero-phone variant is now unused (the live phone moved to the
+   fixed right rail in `.app-shell__phone`), but we keep the geometry
+   class around for the slide deck / submission screenshots that still
+   target it. */
 
 /* ── Phone stage (demo section) ───────────────────────────
    Side-by-side layout: copy on the left, full-height phone on
@@ -293,22 +327,20 @@ html, body, #root {
 .phone-stage {
   --demo-chrome: 48px;
   /* Outer dimensions including the 10 px painted bezel. Inner content
-     area is (--phone-w − 20) × (--phone-h − 20) = 390 × 815, matching
-     the GIF the recorder produces and the visible iframe area after
-     the −30 px shift. */
+     area is (--phone-w − 20) × (--phone-h − 20) = 390 × 815, the
+     logical viewport the operator app renders against. */
   --phone-h: 835px;
   --phone-w: 410px;
-  /* Reserved horizontal width for everything that isn't the phone in the
-     demo section: the section's px-6 (×2 = 48px), the text column min
-     width (260px), and the grid gap (48px) → 356px total. The phone
-     must shrink so it fits in (100vw - 356) on medium viewports too,
-     otherwise it pushes the text column off-canvas and the page scrolls
-     horizontally. */
+  /* The phone now lives in the fixed right rail. We scale it to fit
+     whichever is smaller: the rail's logical column (~min(50vw, 540px))
+     minus 32 px of horizontal breathing room, or the viewport height
+     minus chrome. Clamp floor 0.45 keeps it readable on extreme
+     vertical sizes. */
   --phone-scale: clamp(
     0.45,
     min(
       calc((100dvh - var(--demo-chrome)) / var(--phone-h)),
-      calc((100vw - 356px) / var(--phone-w))
+      calc((min(50vw, 540px) - 32px) / var(--phone-w))
     ),
     1
   );
