@@ -37,12 +37,13 @@ async def transcribe_audio(
     `diarization` accepts:
       - `"speaker"` (default): standard speaker diarization on mono input.
       - `"channel"`: the audio is stereo with one speaker per channel; we
-        pass `channel_diarization_labels=["S1","S2"]` so Speechmatics tags
-        results by channel and `_diarized_text` can render them with the
-        same `S1:` / `S2:` prefixes the rest of the pipeline expects.
-        `diarization` is left unset on the config because the SDK only
-        accepts `"none"` / `"speaker"` there — channel mode is implicit
-        when `channel_diarization_labels` is provided.
+        pass `diarization="channel"` and `channel_diarization_labels=["S1","S2"]`
+        so Speechmatics tags results by channel and `_diarized_text` can
+        render them with the same `S1:` / `S2:` prefixes the rest of the
+        pipeline expects. The SDK dataclass docstring only lists `"none"` /
+        `"speaker"`, but the Batch API schema requires `diarization="channel"`
+        whenever `channel_diarization_labels` is present — omitting it makes
+        the server reject the job with HTTP 400 (anyOf/not/allOf validation).
     """
     settings = get_settings()
 
@@ -63,6 +64,7 @@ async def transcribe_audio(
         # than speaker diarization on short synthetic mono runs.
         transcription_config = TranscriptionConfig(
             language=language,
+            diarization="channel",
             channel_diarization_labels=["S1", "S2"],
         )
     else:
@@ -114,12 +116,21 @@ def _to_transcript_result(transcript: Any, *, requested_language: str) -> Transc
 
 
 def _diarized_text(results: list[Any]) -> str:
-    """Render `[{speaker, content}, ...]` as 'S1: hi S2: hey ...'.
+    """Render `[{speaker, content}, ...]` as
 
-    Punctuation is appended to the current segment without a leading space.
-    Falls back to the per-result `channel` attribute when speaker is not
-    populated (Speechmatics emits `channel` instead of `speaker` when
-    channel diarization is in use).
+        S1: hi there
+        S2: hello, how can I help?
+        S1: I'd like to book a table
+
+    one turn per line. The newline matters: the frontend transcript
+    component (`app/components/TranscriptList.tsx`) splits on `\\n` and
+    matches a `Speaker:` prefix at the start of each line. Inline
+    concatenation collapsed every turn into a single block.
+
+    Punctuation is appended to the current segment without a leading
+    space. Falls back to the per-result `channel` attribute when
+    `speaker` is not populated (Speechmatics emits `channel` instead of
+    `speaker` when channel diarization is in use).
     """
     pieces: list[str] = []
     current_speaker: Optional[str] = None
@@ -143,7 +154,10 @@ def _diarized_text(results: list[Any]) -> str:
 
         if speaker and speaker != current_speaker:
             current_speaker = speaker
-            pieces.append(f" {speaker}: " if pieces else f"{speaker}: ")
+            # Newline before every speaker change so the frontend can
+            # split turns line-by-line. No leading newline for the very
+            # first speaker (would render as a blank turn).
+            pieces.append(f"\n{speaker}: " if pieces else f"{speaker}: ")
             pieces.append(content)
         else:
             if rtype == "punctuation":

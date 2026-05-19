@@ -6,22 +6,50 @@ import type { AppTheme } from '../lib/paperTheme';
 type Turn = { speaker: string; text: string };
 
 // Parse a transcript that uses "Operator: …" / "Caller: …" line prefixes
-// (the convention used by both the seed and the live Speechmatics output).
-// We tolerate Italian-localized labels too ("Operatore" / "Chiamante") so
-// the same component works for any pipeline output.
-const SPEAKER_RE = /^\s*(Operator|Caller|Operatore|Chiamante)\s*:\s*/i;
+// (seed convention) OR "S1: …" / "S2: …" prefixes (Speechmatics raw output
+// — both speaker and channel diarization use the same Sn label scheme).
+// We tolerate Italian-localized labels too ("Operatore" / "Chiamante").
+// Speakers map: S1 + first untagged segment → Operator, S2 + everything
+// else → Caller. We only render two colors, so additional Sn channels
+// (rare with two-party diarization) collapse to Caller.
+const SPEAKER_RE =
+  /^\s*(Operator|Caller|Operatore|Chiamante|S\d+)\s*:\s*/i;
+// Inline match used by the safety-net split — same captures as SPEAKER_RE
+// but anchored on a word boundary rather than line start, so we can break
+// a single-line transcript into turns when newlines never made it through.
+const SPEAKER_INLINE_RE =
+  /\b(Operator|Caller|Operatore|Chiamante|S\d+)\s*:\s*/gi;
+
+function normaliseSpeaker(raw: string): 'Operator' | 'Caller' {
+  const lower = raw.toLowerCase();
+  if (lower.startsWith('o')) return 'Operator';
+  if (lower.startsWith('c')) return 'Caller';
+  // Sn: by convention S1 is the operator (left channel in our stereo TTS),
+  // any other Sn collapses to Caller for the 2-color render.
+  return lower === 's1' ? 'Operator' : 'Caller';
+}
+
+function splitOnInlineSpeakers(text: string): string[] {
+  // If the transcript is a single line containing 2+ inline speaker tags,
+  // split before each tag so the line-based parser below can take over.
+  if (/\r?\n/.test(text)) return text.split(/\r?\n/);
+  const matches = text.match(SPEAKER_INLINE_RE) ?? [];
+  if (matches.length < 2) return [text];
+  return text
+    .split(/(?=\b(?:Operator|Caller|Operatore|Chiamante|S\d+)\s*:\s*)/i)
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0);
+}
 
 function parseTurns(text: string): Turn[] {
-  const lines = text.split(/\r?\n/);
+  const lines = splitOnInlineSpeakers(text);
   const turns: Turn[] = [];
   let current: Turn | null = null;
   for (const line of lines) {
     const m = line.match(SPEAKER_RE);
     if (m) {
       if (current) turns.push(current);
-      const speakerRaw = m[1].toLowerCase();
-      const speaker = speakerRaw.startsWith('o') ? 'Operator' : 'Caller';
-      current = { speaker, text: line.slice(m[0].length).trim() };
+      current = { speaker: normaliseSpeaker(m[1]), text: line.slice(m[0].length).trim() };
     } else if (current) {
       // Continuation line of the current speaker.
       const append = line.trim();

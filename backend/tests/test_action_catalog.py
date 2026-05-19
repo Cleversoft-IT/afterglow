@@ -112,6 +112,62 @@ def test_to_dict_does_not_leak_domain_payload_schemas():
     assert "domain_payload_schemas" not in payload
 
 
+def test_booking_create_rejects_natural_language_date():
+    """The strict ISO `booking_date` / `booking_time` pattern in the
+    catalog schemas is what stops the call_agent from emitting
+    "next Tuesday" — that string would crash the web Bookings tab via
+    formatBookingSlot. We validate with the SAME validator the executor
+    uses (`jsonschema.validate(payload, schema)`, no FormatChecker), not
+    `Draft7Validator.check_schema`, so the regex `pattern` enforcement is
+    actually exercised."""
+    import pytest
+    schema = action_catalog.CATALOG["booking.create"].default_payload_schema
+    # Natural-language date — the actual demo regression we're guarding.
+    with pytest.raises(jsonschema.ValidationError):
+        jsonschema.validate(
+            {"booking_date": "next Tuesday", "booking_time": "20:00"}, schema
+        )
+    # 24h-out-of-range time. The regex only allows 00-23, so "25:00"
+    # short-circuits before the call_agent could write a bogus row.
+    with pytest.raises(jsonschema.ValidationError):
+        jsonschema.validate(
+            {"booking_date": "2026-05-23", "booking_time": "25:00"}, schema
+        )
+    # NB: regex pattern checks shape only — `2026-13-01` passes here
+    # because `\d{2}` matches "13". Calendar validity is out of scope;
+    # the model is steered toward today-relative resolution by the
+    # call_agent system prompt instead.
+    # Valid payload passes.
+    jsonschema.validate(
+        {"booking_date": "2026-05-23", "booking_time": "20:00"}, schema
+    )
+
+
+def test_booking_create_hotel_variant_rejects_natural_language_date():
+    """Hotel variant uses a separate schema (with check_out_date), same
+    strict pattern enforcement."""
+    import pytest
+    entry = action_catalog.CATALOG["booking.create"]
+    schema = entry.payload_schema_for_domain("hotel")
+    with pytest.raises(jsonschema.ValidationError):
+        jsonschema.validate(
+            {
+                "guest_name": "Mark Ross",
+                "booking_date": "next Tuesday",
+                "check_out_date": "2026-05-25",
+            },
+            schema,
+        )
+    jsonschema.validate(
+        {
+            "guest_name": "Mark Ross",
+            "booking_date": "2026-05-23",
+            "check_out_date": "2026-05-25",
+        },
+        schema,
+    )
+
+
 def test_booking_compatible_domains_cover_demo_verticals():
     """booking.create must work for restaurant + dentist + bodyshop (the
     three seed templates) plus the wizard-suggested verticals. Loss of any

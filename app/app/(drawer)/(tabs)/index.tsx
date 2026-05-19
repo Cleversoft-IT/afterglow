@@ -438,20 +438,18 @@ export default function HomeScreen() {
           </View>
         )}
         renderItem={({ item }) => {
-          // Calls without a customer row don't navigate anywhere — the
-          // detail screen is only meaningful for client calls (extracted
-          // fields, executed actions, memory). For unsaved callers the
-          // row becomes inert; Paper's TouchableRipple gracefully skips
-          // the ripple when onPress is undefined.
-          const onPress = item.customer_id
-            ? () => router.push(`/call/${item.id}` as never)
-            : undefined;
+          // Every row navigates to /call/:id, including calls without a
+          // resolved customer (e.g. anonymous mocks and the seed
+          // needs_review rows that intentionally have customer_id=null).
+          // The detail screen handles `customer == null` defensively —
+          // it still renders the transcript, the review flag and any
+          // extracted fields.
           return (
             <CallRow
               call={item}
               booking={bookingByCallId.get(item.id)}
               mode={filter}
-              onPress={onPress}
+              onPress={() => router.push(`/call/${item.id}` as never)}
             />
           );
         }}
