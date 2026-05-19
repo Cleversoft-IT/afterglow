@@ -66,11 +66,20 @@ export function formatBookingSlot(
   // numeric style. If only date is present, append midnight.
   const safeTime = time ?? '00:00';
   const iso = `${date ?? '1970-01-01'}T${safeTime}`;
+  // Validity check MUST come before any Intl.DateTimeFormat call:
+  // custom-template extracts can emit natural-language dates like
+  // "next Tuesday", and Intl throws RangeError("Invalid time value")
+  // before our fallback path could fire. Belt-and-suspenders try/catch
+  // around the formatters guards against locale/timezone edge cases.
   const d = parse(iso);
-  const day = date ? formatDayMonth(iso, loc) : '';
-  const hour = time ? formatTime(iso, loc) : '';
   if (Number.isNaN(d.getTime())) return [date, time].filter(Boolean).join(' ');
-  return [day, hour].filter(Boolean).join(' ');
+  try {
+    const day = date ? formatDayMonth(iso, loc) : '';
+    const hour = time ? formatTime(iso, loc) : '';
+    return [day, hour].filter(Boolean).join(' ');
+  } catch {
+    return [date, time].filter(Boolean).join(' ');
+  }
 }
 
 function startOfDay(d: Date): number {

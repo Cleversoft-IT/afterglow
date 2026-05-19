@@ -125,6 +125,7 @@ async def run_pipeline(session: AsyncSession, call_id: uuid.UUID) -> None:
             transcript = await speechmatics.transcribe_audio(
                 Path(call.audio_url) if call.audio_url else Path("/dev/null"),
                 domain_hint=template.domain_hint,
+                diarization=call.audio_diarization or "speaker",
             )
         call.raw_transcript = {
             "text": transcript.text,
@@ -185,13 +186,25 @@ async def run_pipeline(session: AsyncSession, call_id: uuid.UUID) -> None:
     # via execute_single_action, so ExecutedAction rows are flushed turn by
     # turn. Audit rows (`agent_turn`, `action_exec`) are linked deterministically
     # via the `agent_turn` numeric counter in their payload.
+    # `audio_source` makes it auditable that the transcript came from the
+    # real Speechmatics batch API (no script shortcut, no admin-pre-loaded
+    # text path). Filename only, not the absolute disk path — audit logs
+    # are surfaced in the demo UI.
+    audio_basename = (
+        Path(call.audio_url).name if call.audio_url else None
+    )
     async with audit_step(
         call_id=call.id,
         session_id=call.session_id,
         agent_name="call_agent",
         step_type="agent_loop_start",
         model=settings.gemini_default_model,
-        payload={"max_iterations": 12},
+        payload={
+            "max_iterations": 12,
+            "audio_source": "speechmatics_batch",
+            "audio_basename": audio_basename,
+            "diarization": call.audio_diarization or "speaker",
+        },
     ):
         pass
 

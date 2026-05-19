@@ -661,8 +661,10 @@ GitHub link. Same composition as the title card in Act I.
   or library) + a low pad. Total render: a few minutes once the
   beats are timed.
 * **Act II is screen capture** of the real product on the demo URL.
-  Use `scripts/record-demo.cjs` (Playwright) as the base
-  for scripted scenes; voice-over dubbed in post.
+  Record the live iframe at `afterglow.cleversoft.it` with QuickTime / OBS
+  (the standalone `scripts/record-demo.cjs` recorder has been removed —
+  the demo site now embeds a live iframe instead of a baked GIF, so any
+  screen-capture tool replaces the old Playwright pipeline).
 * Pre-warm the backend right before recording: hit
   `/api/v1/admin/rag-stats` to confirm preseed chunks, then load Home
   so the cold start doesn't show.
@@ -1201,6 +1203,25 @@ video timestamp where it lands.
 
 This is the table to **lead with** if anyone asks. Showing this matrix
 proactively builds trust; trying to hide it backfires.
+
+### Why the audio path is real (not a script shortcut)
+
+Every demo call follows the same wire: **operator presses the AI button →
+Expo records the MP3 → `POST /api/v1/calls` uploads it → the orchestrator
+calls Speechmatics Batch STT → the agent loop runs on the resulting
+transcript**. There is no "skip ASR, read the script" hatch on this code
+path. The only bypass that exists at all is `POST /admin/calls/probe`,
+which is admin-only, never exposed to the demo URL, and labelled
+`step_type="tool_call" status="skipped" reason="transcript_preloaded"`
+in the audit log so the bypass is always visible if used.
+
+For wizard-generated templates, the MP3 itself is built by
+Speechmatics TTS Preview (one round-trip per script turn) — same
+artifact the operator's microphone would produce in production. The
+orchestrator's `agent_loop_start` audit row carries
+`payload.audio_source = "speechmatics_batch"` plus the
+on-disk basename, so the auditor can verify the path end-to-end
+without trusting our story.
 
 ### What is REAL (billed, not stubbed)
 

@@ -2051,15 +2051,21 @@ def _busy_week_specs(anchor: date) -> list[dict]:
             ("ai_booking", "customer:Laura Bennett"),
             ("completed", "mock"), ("missed", "unknown"),
         ]),
-        # 14 May → -3 (Wednesday)
+        # 14 May → -3 (Wednesday). Includes a needs_review call — restaurant
+        # caller whose allergy report was ambiguous; the agent stalled and
+        # never finalized, so the row stays in the "Review" filter for the
+        # operator to inspect.
         (-3, [
             ("ai_booking", "customer:Julia White"),
-            ("completed", "mock"), ("completed", "mock"),
+            ("completed", "mock"),
+            ("needs_review", "mock:restaurant"),
             ("missed", "mock"),
         ]),
-        # 15 May → -2 (Thursday) — Sophie repeat business dinner
+        # 15 May → -2 (Thursday) — Sophie repeat business dinner + a
+        # bodyshop needs_review (quote evidence missing from the call).
         (-2, [
-            ("completed", "mock"), ("completed", "mock"),
+            ("completed", "mock"),
+            ("needs_review", "mock:bodyshop"),
             ("ai_booking", "customer:Sophie Walker"),
             ("missed", "mock"),
         ]),
@@ -2108,11 +2114,24 @@ def _busy_week_specs(anchor: date) -> list[dict]:
             else:
                 hh, mm = slots[idx % len(slots)]
             created = _anchor_dt(anchor, day_offset, hh, mm)
+            # Pool shapes:
+            #   "mock"               — random anonymous mock phone
+            #   "unknown"            — random unknown caller phone
+            #   "mock:<domain>"      — mock phone tagged with a domain hint so
+            #                          the needs_review kind can pick a
+            #                          realistic transcript (restaurant /
+            #                          bodyshop / dentist).
+            #   "customer:<name>"    — phone of the named seed customer
+            review_domain: str | None = None
             if pool == "mock":
                 phone = rng.choice(_BUSY_MOCK_PHONES)
                 customer_name = None
             elif pool == "unknown":
                 phone = rng.choice(_BUSY_UNKNOWN_PHONES)
+                customer_name = None
+            elif pool.startswith("mock:"):
+                review_domain = pool.split(":", 1)[1]
+                phone = rng.choice(_BUSY_MOCK_PHONES)
                 customer_name = None
             elif pool.startswith("customer:"):
                 customer_name = pool.split(":", 1)[1]
@@ -2132,6 +2151,8 @@ def _busy_week_specs(anchor: date) -> list[dict]:
             namespace = (
                 uuid.UUID("22222222-2222-5222-8222-aaaa00000000")
                 if kind == "ai_booking"
+                else uuid.UUID("22222222-2222-5222-8222-bbbb00000000")
+                if kind == "needs_review"
                 else uuid.UUID("22222222-2222-5222-8222-000000000000")
             )
             fixture_uuid = uuid.uuid5(
@@ -2177,6 +2198,84 @@ def _busy_week_specs(anchor: date) -> list[dict]:
                     "created_at": created,
                     "language": "en",
                     "ai_booking": True,
+                }
+            elif kind == "needs_review":
+                # Demo seeds for the Review filter — the agent loop hit a
+                # condition that requires a human eye. Two flavors, picked
+                # by the `mock:<domain>` pool hint:
+                #   - restaurant: the caller mentioned an allergy mid-call
+                #                 but the diarization mixed speakers; the
+                #                 agent could not pin the allergy to a
+                #                 verbatim span and stalled.
+                #   - bodyshop:  caller wanted a quote but no damage
+                #                description ever made it into the call;
+                #                quote.create failed evidence_missing twice.
+                if review_domain == "restaurant":
+                    review_payload = {
+                        "reason": "agent_did_not_finalize",
+                        "severity": "high",
+                        "summary": (
+                            "Caller mentioned an allergy but the diarized "
+                            "transcript could not pin it to a verbatim span. "
+                            "Agent stalled without finalize_call."
+                        ),
+                    }
+                    transcript_text = (
+                        "S1: Thank you for calling — how can I help?\n"
+                        "S2: Hi, I'd like to book a table for two tonight at "
+                        "eight. Also, one of us has an allergy.\n"
+                        "S1: Of course. Could you tell me which allergy so I "
+                        "can flag it for the kitchen?\n"
+                        "S2: It's… (inaudible) — anyway, eight o'clock works?\n"
+                        "S1: Yes, eight is fine. Can I get the name?\n"
+                        "S2: Yeah, sorry, you cut out — what was the question?"
+                    )
+                elif review_domain == "bodyshop":
+                    review_payload = {
+                        "reason": "evidence_missing",
+                        "severity": "medium",
+                        "summary": (
+                            "Caller asked for a repair quote but never "
+                            "described the damage. quote.create rejected "
+                            "twice for evidence_missing."
+                        ),
+                    }
+                    transcript_text = (
+                        "S1: Bodyshop, how can I help?\n"
+                        "S2: Yeah hi, I had a small accident yesterday, "
+                        "can you give me a quote?\n"
+                        "S1: Sure — can you describe the damage? Front, "
+                        "rear, doors?\n"
+                        "S2: It's complicated, I'd rather show you. Can I "
+                        "drop in tomorrow?\n"
+                        "S1: Of course. What time works?\n"
+                        "S2: I'll figure it out and call back."
+                    )
+                else:
+                    review_payload = {
+                        "reason": "ambiguous_intent",
+                        "severity": "medium",
+                        "summary": "Caller intent unclear; agent flagged for review.",
+                    }
+                    transcript_text = (
+                        "S1: Hello, how can I help?\n"
+                        "S2: I just wanted to ask something quickly.\n"
+                        "S1: Go ahead.\n"
+                        "S2: Actually never mind, I'll think about it."
+                    )
+                fixture = {
+                    "id": fixture_uuid,
+                    "phone_e164": phone,
+                    "status": "needs_review",
+                    "created_at": created,
+                    "language": "en",
+                    "review_flag": review_payload,
+                    "raw_transcript": {
+                        "text": transcript_text,
+                        "speakers": [],
+                        "language": "en",
+                        "raw": {},
+                    },
                 }
             else:
                 raise ValueError(f"unknown kind: {kind}")
@@ -3108,11 +3207,12 @@ async def _ensure_personal_calls(session, anchor: date) -> None:
                 phone_e164=fx["phone_e164"],
                 audio_url=None,
                 detected_language=fx["language"],
-                raw_transcript=None,
+                raw_transcript=fx.get("raw_transcript"),
                 status=fx["status"],
                 error=fx.get("error"),
+                review_flag=fx.get("review_flag"),
                 started_at=fx["created_at"],
-                completed_at=fx["created_at"] if fx["status"] != "failed" else None,
+                completed_at=fx["created_at"] if fx["status"] not in ("failed", "needs_review") else fx["created_at"],
                 is_seed=True,
                 is_anchor_day=fx.get("is_anchor_day", False),
                 session_id=None,

@@ -166,6 +166,21 @@ export class ApiError extends Error {
   }
 }
 
+// Raised by `fetchSimulationAudio` when the backend says the audio file
+// was flagged ready but is missing on disk (HTTP 409, structured body with
+// `code === 'audio_not_on_disk'`). Distinct from a plain 404 so the
+// incoming-call screen can offer "regenerate from the simulator" without
+// crashing the call into a generic error banner.
+export class AudioNotReadyError extends Error {
+  templateId: string;
+  mode: 'existing' | 'new';
+  constructor(templateId: string, mode: 'existing' | 'new', message?: string) {
+    super(message ?? 'Audio not available — regenerate from the Simulator screen.');
+    this.templateId = templateId;
+    this.mode = mode;
+  }
+}
+
 /**
  * `true` whenever the client is talking to the backend as a per-visitor demo
  * sandbox. `false` only when the user has flipped into bypass mode via
@@ -233,10 +248,21 @@ export const api = {
   },
   getCall: (id: string) => request<CallDetailView>(`/api/v1/calls/${id}`),
 
-  submitAudio: async (audio: Blob, phone_e164: string, filename = 'audio.mp3') => {
+  // `callerMode` is the simulator scenario the operator just executed
+  // (`existing` or `new`). The backend uses it to read the matching
+  // `simulation_config.scenarios.<mode>.audio_diarization` so the ASR
+  // route picks channel diarization for TTS-stereo recordings instead
+  // of falling back to (mono) speaker diarization.
+  submitAudio: async (
+    audio: Blob,
+    phone_e164: string,
+    callerMode: 'existing' | 'new',
+    filename = 'audio.mp3',
+  ) => {
     const fd = new FormData();
     fd.append('audio', audio as unknown as Blob, filename);
     fd.append('phone_e164', phone_e164);
+    fd.append('caller_mode', callerMode);
     return request<CallSubmittedResponse>('/api/v1/calls', {
       method: 'POST',
       body: fd,
@@ -327,6 +353,20 @@ export const api = {
     }
     if (!res.ok) {
       const text = await res.text().catch(() => '');
+      if (res.status === 409) {
+        // Try to parse the structured body — backend emits
+        // {"detail": {"code": "audio_not_on_disk", ...}}.
+        try {
+          const parsed = JSON.parse(text);
+          const code = parsed?.detail?.code ?? parsed?.code;
+          if (code === 'audio_not_on_disk') {
+            throw new AudioNotReadyError(template_id, mode);
+          }
+        } catch (e) {
+          if (e instanceof AudioNotReadyError) throw e;
+          // fall through to generic ApiError below
+        }
+      }
       throw new ApiError(res.status, text || res.statusText);
     }
     return res.blob();

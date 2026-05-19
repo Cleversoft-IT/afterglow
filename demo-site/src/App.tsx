@@ -403,9 +403,9 @@ export default function App() {
         <div className="relative mx-auto max-w-5xl px-6 pt-12 md:pt-20 pb-20 md:pb-24 grid grid-cols-1 md:grid-cols-2 gap-12 items-center">
           <div className="flex flex-col items-start gap-7">
             <h1 className="text-5xl md:text-[62px] font-extrabold leading-[1.05] tracking-tight">
-              AI for what happens
+              Stay in the moment.
               <br />
-              <span className="gradient-text">after</span> the call.
+              We handle the <span className="gradient-text">after</span>.
             </h1>
 
             <p className="text-muted-foreground text-lg leading-relaxed max-w-[440px]">
@@ -437,9 +437,11 @@ export default function App() {
           <div className="relative flex justify-center items-center">
             <div className="phone-glow" aria-hidden="true" />
             <div className="relative phone-frame hero-phone">
-              <img
-                src="/afterglow-demo.gif"
-                alt="Afterglow live demo: incoming call with the caller's history pre-fetched from memory, before the operator even picks up"
+              <iframe
+                title="Afterglow live demo (hero)"
+                src={APP_URL}
+                allow="autoplay; clipboard-write"
+                loading="eager"
               />
             </div>
           </div>

@@ -21,6 +21,7 @@ import {
   useTheme,
 } from 'react-native-paper';
 import { api, ApiError } from '../../lib/api';
+import { detectLanguage, type DetectedLanguage } from '../../lib/detectLanguage';
 import type {
   TemplateWizardResponse,
   ValidationReport,
@@ -53,6 +54,7 @@ export default function TemplateWizardScreen() {
   const [draft, setDraft] = useState<TemplateWizardResponse | null>(null);
   const [validation, setValidation] = useState<ValidationReport | null>(null);
   const [proposedKeys, setProposedKeys] = useState<string[]>([]);
+  const [language, setLanguage] = useState<DetectedLanguage>('en');
 
   const scrollRef = useRef<ScrollView | null>(null);
 
@@ -71,12 +73,21 @@ export default function TemplateWizardScreen() {
     setInput('');
     setSending(true);
     setError(null);
+    // Lock the conversation language to whatever the user opened with —
+    // mixing English questions with an Italian user disorients the model
+    // mid-turn, while re-detecting every reply risks flipping on a short
+    // "ok" or "sì".
+    const turnLanguage =
+      messages.filter((m) => m.role === 'user').length === 0
+        ? detectLanguage(trimmed)
+        : language;
+    if (turnLanguage !== language) setLanguage(turnLanguage);
     try {
       const resp = await api.runWizardChat({
         messages: nextMessages,
         draft_partial: draft,
         slots_filled: slots,
-        language: 'en',
+        language: turnLanguage,
       });
       setMessages([...nextMessages, { role: 'assistant', content: resp.assistant_message }]);
       setSlots(resp.slots_filled ?? {});
@@ -182,6 +193,13 @@ export default function TemplateWizardScreen() {
           multiline
           numberOfLines={2}
           editable={!sending}
+          onKeyPress={(e) => {
+            const ne = e.nativeEvent as { key?: string; shiftKey?: boolean };
+            if (ne.key === 'Enter' && !ne.shiftKey) {
+              (e as unknown as { preventDefault?: () => void }).preventDefault?.();
+              void send();
+            }
+          }}
           right={
             <TextInput.Icon
               icon="send"

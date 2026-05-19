@@ -1,5 +1,5 @@
 import { DrawerActions } from '@react-navigation/native';
-import { useNavigation, useRouter } from 'expo-router';
+import { useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import { ScrollView, StyleSheet, View } from 'react-native';
 import {
@@ -36,12 +36,15 @@ export default function SimulatorScreen() {
   const theme = useTheme();
   const router = useRouter();
   const navigation = useNavigation();
+  const params = useLocalSearchParams<{ audioMissing?: string }>();
+  const audioMissingHint = params.audioMissing === '1';
   const [template, setTemplate] = useState<TemplateView | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [generatingScript, setGeneratingScript] = useState(false);
   const [generatingAudio, setGeneratingAudio] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [missingBannerVisible, setMissingBannerVisible] = useState(audioMissingHint);
 
   const load = useCallback(async () => {
     try {
@@ -288,6 +291,17 @@ export default function SimulatorScreen() {
 
       {hasScript ? <ScriptPreview sim={sim} /> : null}
 
+      {missingBannerVisible ? (
+        <Banner
+          visible
+          icon="alert-circle-outline"
+          actions={[
+            { label: 'Dismiss', onPress: () => setMissingBannerVisible(false) },
+          ]}
+        >
+          The audio for this template was flagged ready but is missing on disk. Regenerate it below to make the dialer work again.
+        </Banner>
+      ) : null}
       {error ? (
         <Banner visible icon="alert-circle-outline">
           {error}

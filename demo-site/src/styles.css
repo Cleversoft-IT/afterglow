@@ -267,6 +267,19 @@ html, body, #root {
   aspect-ratio: 410 / 850;
 }
 
+/* Keep the hero phone visible as the visitor scrolls past the hero into
+   "Why / How it works" on desktop — the iframe is the demo, so we want
+   it visible while the supporting copy scrolls next to it. Drops back to
+   static on mobile (the hero phone column is hidden anyway via the
+   media-query block below). */
+@media (min-width: 768px) {
+  .phone-frame.hero-phone {
+    position: sticky;
+    top: 24px;
+    align-self: start;
+  }
+}
+
 /* ── Phone stage (demo section) ───────────────────────────
    Side-by-side layout: copy on the left, full-height phone on
    the right. The phone keeps its logical 390×845 size so the

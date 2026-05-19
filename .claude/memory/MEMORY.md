@@ -26,3 +26,5 @@
 - [Audit collapse pattern](feedback_audit_collapse_pattern.md) — pattern UI overview-first per pagine list-heavy (call → agent → step → payload).
 - [Session lock for concurrent tools](feedback_session_lock_concurrent_tools.md) — round-11: `run_call_agent` richiede un `asyncio.Lock` per-run; serializza `session.flush()` dei tool paralleli (Gemini parallel function calling) altrimenti SQLAlchemy alza "Session is already flushing".
 - [Coolify OOM = silent stale deploy](project_coolify_oom_silent_deploys.md) — VM 4 GB, build muore SIGKILL e Coolify tiene il container vecchio: "il codice non si vede in prod" senza errori GH.
+- [Wizard budget 8 + domain ASK BEFORE DRAFTING](feedback_wizard_budget_8.md) — wizard finalizzava draft a 95% in 2 turni; budget 5→8 + categorie domain-aware + quality gate fields<4.
+- [TTS stereo + channel diarization](feedback_tts_stereo_channel_diarization.md) — TTS rende stereo (operator L, caller R), Call.audio_diarization propaga end-to-end, ASR usa channel_diarization_labels invece di speaker. Recupera multi-turn transcript per template custom.

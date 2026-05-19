@@ -14,13 +14,13 @@ import {
   Chip,
   IconButton,
   Searchbar,
-  Snackbar,
   Surface,
   Text,
   useTheme,
 } from 'react-native-paper';
 import { AnalyzingChip } from '../../../components/AnalyzingChip';
 import { CallRow, type CallFilterKey } from '../../../components/CallRow';
+import { ErrorBoundary } from '../../../components/ErrorBoundary';
 import { api, ApiError } from '../../../lib/api';
 import { findMockContact } from '../../../lib/mockContacts';
 import { resolveFromCallItem } from '../../../lib/callerResolver';
@@ -46,7 +46,9 @@ const FILTER_LABEL: Record<CallFilterKey, string> = {
   unsaved: 'Unsaved',
 };
 
-const FILTERS: CallFilterKey[] = ['all', 'bookings', 'clients', 'missed', 'saved', 'unsaved', 'review'];
+// Filter order: 'review' sits right after 'all' but is only rendered when
+// at least one call needs review — see `visibleFilters` below.
+const FILTERS: CallFilterKey[] = ['all', 'review', 'bookings', 'clients', 'missed', 'saved', 'unsaved'];
 
 export default function HomeScreen() {
   const theme = useTheme();
@@ -72,7 +74,6 @@ export default function HomeScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [toast, setToast] = useState<PipelineToast | null>(null);
-  const [ridialSnackbar, setRidialSnackbar] = useState<string | null>(null);
   const focusedRef = useRef(false);
 
   const load = useCallback(async () => {
@@ -129,6 +130,21 @@ export default function HomeScreen() {
     for (const b of bookings) m.set(b.call_id, b);
     return m;
   }, [bookings]);
+
+  const reviewCount = useMemo(
+    () => calls.filter((c) => c.status === 'needs_review' || !!c.review_flag).length,
+    [calls],
+  );
+  const visibleFilters = useMemo(
+    () => FILTERS.filter((k) => k !== 'review' || reviewCount > 0),
+    [reviewCount],
+  );
+  // If the user was filtering by 'review' and the count drops to 0 (e.g. all
+  // reviews resolved in-session), reset to 'all' so the chip isn't selected
+  // while invisible — otherwise the list silently filters to nothing.
+  useEffect(() => {
+    if (filter === 'review' && reviewCount === 0) setFilter('all');
+  }, [filter, reviewCount]);
 
   const sections = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -290,7 +306,7 @@ export default function HomeScreen() {
         style={styles.chipsScroll}
         contentContainerStyle={styles.chipsRow}
       >
-        {FILTERS.map((k) => {
+        {visibleFilters.map((k) => {
           const isSelected = filter === k;
           // "Clients" is the legend for the customer-border treatment on
           // avatars: it always carries a subtle primary border, even when
@@ -321,7 +337,9 @@ export default function HomeScreen() {
               selectedColor={isSelected ? theme.colors.onPrimaryContainer : undefined}
               style={[baseStyle, clientsBorder]}
             >
-              {FILTER_LABEL[k]}
+              {k === 'review' && reviewCount > 0
+                ? `${FILTER_LABEL[k]} · ${reviewCount}`
+                : FILTER_LABEL[k]}
             </Chip>
           );
         })}
@@ -396,6 +414,7 @@ export default function HomeScreen() {
         </Banner>
       ) : null}
 
+      <ErrorBoundary onReset={load}>
       <SectionList
         sections={sections}
         keyExtractor={(item) => item.id}
@@ -433,7 +452,6 @@ export default function HomeScreen() {
               booking={bookingByCallId.get(item.id)}
               mode={filter}
               onPress={onPress}
-              onRidial={(phone) => setRidialSnackbar(phone)}
             />
           );
         }}
@@ -446,14 +464,7 @@ export default function HomeScreen() {
           </Surface>
         }
       />
-
-      <Snackbar
-        visible={ridialSnackbar !== null}
-        onDismiss={() => setRidialSnackbar(null)}
-        duration={1800}
-      >
-        {ridialSnackbar ? `Calling ${ridialSnackbar}… (demo)` : ''}
-      </Snackbar>
+      </ErrorBoundary>
     </View>
   );
 }

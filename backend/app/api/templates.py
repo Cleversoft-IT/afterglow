@@ -341,6 +341,10 @@ async def generate_simulation_audio(
         config["audio_status"] = "ready"
         config["audio_generated_at"] = datetime.now(tz=timezone.utc).isoformat()
         config["audio_source"] = "tts_generated"
+        # TTS pipeline renders stereo (one speaker per channel); flag the
+        # config so submit_audio_call can route ASR to channel diarization
+        # for any call made against this template.
+        config["audio_diarization"] = "channel"
         row.simulation_config = config
         await session.commit()
         await session.refresh(row)
@@ -375,6 +379,9 @@ async def generate_simulation_audio(
         scenario["audio_status"] = "ready"
         scenario["audio_generated_at"] = now_iso
         scenario["audio_source"] = "tts_generated"
+        # Stereo TTS → channel diarization downstream (see ASR routing in
+        # `submit_audio_call` and `transcribe_audio`).
+        scenario["audio_diarization"] = "channel"
 
     config["scenarios"] = scenarios
     row.simulation_config = config
@@ -461,13 +468,32 @@ async def get_simulation_audio(
     scenarios = config.get("scenarios") or {}
     scenario = scenarios.get(mode) or {}
     audio_url = scenario.get("audio_url") or config.get("audio_url")
+    audio_status = scenario.get("audio_status") or config.get("audio_status")
     if not audio_url:
+        # Template has no recording at all — 404 is the right shape: the
+        # client should hide the "trigger demo call" button entirely.
         raise HTTPException(
             status_code=404,
             detail=f"No audio recorded for this template (mode={mode})",
         )
     path = Path(audio_url)
     if not path.exists():
+        # The template was flagged ready but the file vanished (storage
+        # cleanup after a redeploy, or a stale config row pointing at a
+        # path that no longer exists). 409 — not 404 — so the client can
+        # distinguish "regenerate the audio" from "this template has no
+        # recording yet". The body is structured JSON so the frontend can
+        # branch on `code`.
+        if audio_status == "ready":
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "code": "audio_not_on_disk",
+                    "detail": "Audio file is ready-flagged but missing on disk",
+                    "template_id": str(template_id),
+                    "mode": mode,
+                },
+            )
         raise HTTPException(status_code=404, detail="Audio file is missing on disk")
     media_type = "audio/wav" if path.suffix.lower() == ".wav" else "audio/mpeg"
     return FileResponse(path, media_type=media_type, filename=path.name)

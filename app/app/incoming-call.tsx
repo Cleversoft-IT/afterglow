@@ -14,11 +14,11 @@ import {
   Text,
   useTheme,
 } from 'react-native-paper';
-import { api, ApiError } from '../lib/api';
+import { api, ApiError, AudioNotReadyError } from '../lib/api';
 import { initialsFromName } from '../lib/avatar';
 import { flagFromE164 } from '../lib/flagFromE164';
 import type { AudioDomain } from '../lib/audio';
-import { callGreen, callRed } from '../lib/paperTheme';
+import { callGreen, type AppTheme } from '../lib/paperTheme';
 import { setPipelineToast } from '../lib/pipelineToast';
 import type { CallListItem, CustomerCard, TemplateView } from '../lib/types';
 import { usePhoneAudio } from '../lib/usePhoneAudio';
@@ -80,7 +80,7 @@ function relativeTime(iso: string): string {
 type Phase = 'loading' | 'ringing' | 'human' | 'talking' | 'error';
 
 export default function IncomingCallScreen() {
-  const theme = useTheme();
+  const theme = useTheme<AppTheme>();
   const router = useRouter();
   const audio = usePhoneAudio();
   const params = useLocalSearchParams<{ caller?: string }>();
@@ -200,6 +200,17 @@ export default function IncomingCallScreen() {
         setPhase('ringing');
       } catch (e) {
         if (cancelled) return;
+        if (e instanceof AudioNotReadyError) {
+          // The template was flagged ready but the audio file is gone
+          // (storage cleanup, redeploy, etc.). Send the user back to the
+          // Simulator with a hint instead of breaking the call.
+          audio.stopAll();
+          router.replace({
+            pathname: '/(drawer)/simulator',
+            params: { audioMissing: '1' },
+          } as never);
+          return;
+        }
         setError(e instanceof ApiError ? e.message : String(e));
         setPhase('error');
       }
@@ -268,6 +279,7 @@ export default function IncomingCallScreen() {
       const submitted = await api.submitAudio(
         blob,
         phoneE164,
+        callerMode,
         `${domain}_${callerMode}.mp3`,
       );
       setPipelineToast({
@@ -431,9 +443,9 @@ export default function IncomingCallScreen() {
             <View style={styles.fabCol}>
               <FAB
                 icon="phone-hangup"
-                color="#FFFFFF"
+                color={theme.colors.onDanger}
                 customSize={64}
-                style={[styles.actionFab, { backgroundColor: callRed }]}
+                style={[styles.actionFab, { backgroundColor: theme.colors.danger }]}
                 onPress={hangUp}
               />
               <Text variant="labelSmall" style={styles.fabLabel}>
@@ -443,9 +455,9 @@ export default function IncomingCallScreen() {
             <View style={styles.fabCol}>
               <FAB
                 icon="creation"
-                color="#FFFFFF"
+                color={theme.colors.onAiPrimary}
                 customSize={64}
-                style={[styles.actionFab, { backgroundColor: theme.colors.primary }]}
+                style={[styles.actionFab, { backgroundColor: theme.colors.aiPrimary }]}
                 onPress={acceptAi}
               />
               <Text variant="labelSmall" style={styles.fabLabel}>
@@ -469,8 +481,8 @@ export default function IncomingCallScreen() {
           <View style={styles.hangupCenter}>
             <FAB
               icon="phone-hangup"
-              color="#FFFFFF"
-              style={[styles.hangupPill, { backgroundColor: callRed }]}
+              color={theme.colors.onDanger}
+              style={[styles.hangupPill, { backgroundColor: theme.colors.danger }]}
               onPress={hangUp}
             />
           </View>
@@ -498,7 +510,7 @@ function CallerContext({
   recentCalls: CallListItem[];
   callerMode: CallerMode;
 }) {
-  const theme = useTheme();
+  const theme = useTheme<AppTheme>();
   if (!customer) {
     return (
       <Chip mode="outlined" icon="account-plus-outline" style={{ marginTop: 16 }}>

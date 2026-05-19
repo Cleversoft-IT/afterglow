@@ -32,7 +32,18 @@ async def transcribe_audio(
     timeout_sec: float = 120.0,
     domain_hint: str = "restaurant",
 ) -> TranscriptResult:
-    """Transcribe an audio file via Speechmatics batch (diarization on, language auto)."""
+    """Transcribe an audio file via Speechmatics batch.
+
+    `diarization` accepts:
+      - `"speaker"` (default): standard speaker diarization on mono input.
+      - `"channel"`: the audio is stereo with one speaker per channel; we
+        pass `channel_diarization_labels=["S1","S2"]` so Speechmatics tags
+        results by channel and `_diarized_text` can render them with the
+        same `S1:` / `S2:` prefixes the rest of the pipeline expects.
+        `diarization` is left unset on the config because the SDK only
+        accepts `"none"` / `"speaker"` there — channel mode is implicit
+        when `channel_diarization_labels` is provided.
+    """
     settings = get_settings()
 
     if not settings.speechmatics_api_key:
@@ -46,10 +57,19 @@ async def transcribe_audio(
     # (e.g. during local linting on a fresh checkout without `pip install`).
     from speechmatics.batch import AsyncClient, TranscriptionConfig
 
-    transcription_config = TranscriptionConfig(
-        language=language,
-        diarization=diarization,
-    )
+    if diarization == "channel":
+        # Custom TTS produces stereo: speaker A on the left channel,
+        # speaker B on the right. Channel diarization is more reliable
+        # than speaker diarization on short synthetic mono runs.
+        transcription_config = TranscriptionConfig(
+            language=language,
+            channel_diarization_labels=["S1", "S2"],
+        )
+    else:
+        transcription_config = TranscriptionConfig(
+            language=language,
+            diarization=diarization,
+        )
 
     client = AsyncClient(
         api_key=settings.speechmatics_api_key,
@@ -97,6 +117,9 @@ def _diarized_text(results: list[Any]) -> str:
     """Render `[{speaker, content}, ...]` as 'S1: hi S2: hey ...'.
 
     Punctuation is appended to the current segment without a leading space.
+    Falls back to the per-result `channel` attribute when speaker is not
+    populated (Speechmatics emits `channel` instead of `speaker` when
+    channel diarization is in use).
     """
     pieces: list[str] = []
     current_speaker: Optional[str] = None
@@ -108,7 +131,14 @@ def _diarized_text(results: list[Any]) -> str:
         content = getattr(alt, "content", None)
         if not content:
             continue
-        speaker = getattr(alt, "speaker", None)
+        # In channel-diarization mode the `channel` lives on the result
+        # itself (`r.channel`), not on the alternative. Try both so the
+        # rest of the pipeline keeps seeing the same `S1:` / `S2:` shape.
+        speaker = (
+            getattr(alt, "speaker", None)
+            or getattr(r, "channel", None)
+            or getattr(alt, "channel", None)
+        )
         rtype = getattr(r, "type", "word")
 
         if speaker and speaker != current_speaker:

@@ -12,6 +12,21 @@ const BRAND_SEED = '#3b82f6';
 export const callGreen = '#26B31E';
 export const callRed = '#B3261E';
 
+// Variant of `callRed` that stays legible on a dark surface. The MD3 error
+// hue (#B3261E) goes muddy against `surfacesDark.background` (#0B0D12) and
+// the FAB-style red bg the Decline button uses — pick a brighter rouge for
+// dark mode but keep the same hue family.
+export const callRedDark = '#FF6B6B';
+
+// `aiPrimary` is the fill of the central "AI" CTA on the incoming-call
+// screen and any other "this is an AI surface" affordance. The light value
+// matches `theme.colors.primary` (brand blue from the seed); the dark
+// value is a saturated indigo that reads as a deliberate button on the
+// near-black dark background instead of the washed-out tonal blue MD3
+// auto-generates from the seed.
+export const aiPrimaryLight = '#3b82f6';
+export const aiPrimaryDark = '#1d4ed8';
+
 // Semantic success palette — separate from MD3 secondary/tertiary which the
 // `themeFromSourceColor` generator pushes toward muted blue / pink. Audit log
 // "success" rows, "completed" call status and similar states need green.
@@ -89,6 +104,7 @@ function buildSchemeColors(
   scheme: Scheme,
   base: MD3Theme['colors'],
   surfaces: typeof surfacesLight,
+  errorColor: string,
 ): MD3Theme['colors'] {
   return {
     ...base,
@@ -104,7 +120,7 @@ function buildSchemeColors(
     onTertiary: hexFromArgb(scheme.onTertiary),
     tertiaryContainer: hexFromArgb(scheme.tertiaryContainer),
     onTertiaryContainer: hexFromArgb(scheme.onTertiaryContainer),
-    error: '#B3261E',
+    error: errorColor,
     onError: '#FFFFFF',
     errorContainer: hexFromArgb(scheme.errorContainer),
     onErrorContainer: hexFromArgb(scheme.onErrorContainer),
@@ -117,13 +133,19 @@ function buildSchemeColors(
 
 const matTheme = themeFromSourceColor(argbFromHex(BRAND_SEED));
 
-// Extend MD3 colors with a semantic success palette. We keep the standard
-// MD3Theme type via cast so consumers can `useTheme<AppTheme>()` to read it.
+// Extend MD3 colors with semantic palettes — success, AI accent, danger.
+// `danger` lives alongside MD3 `error` so callers can pick the
+// readability-tuned hue (FAB Decline, drawer Reset, destructive dialog
+// actions) without overriding the MD3 form-validation `error` color.
 type AppColors = MD3Theme['colors'] & {
   success: string;
   onSuccess: string;
   successContainer: string;
   onSuccessContainer: string;
+  danger: string;
+  onDanger: string;
+  aiPrimary: string;
+  onAiPrimary: string;
 };
 
 export type AppTheme = Omit<MD3Theme, 'colors'> & { colors: AppColors };
@@ -131,17 +153,25 @@ export type AppTheme = Omit<MD3Theme, 'colors'> & { colors: AppColors };
 export const paperLightTheme: AppTheme = {
   ...MD3LightTheme,
   colors: {
-    ...buildSchemeColors(matTheme.schemes.light, MD3LightTheme.colors, surfacesLight),
+    ...buildSchemeColors(matTheme.schemes.light, MD3LightTheme.colors, surfacesLight, callRed),
     ...accentsLight,
     ...successLight,
+    danger: callRed,
+    onDanger: '#FFFFFF',
+    aiPrimary: aiPrimaryLight,
+    onAiPrimary: '#FFFFFF',
   },
 };
 
 export const paperDarkTheme: AppTheme = {
   ...MD3DarkTheme,
   colors: {
-    ...buildSchemeColors(matTheme.schemes.dark, MD3DarkTheme.colors, surfacesDark),
+    ...buildSchemeColors(matTheme.schemes.dark, MD3DarkTheme.colors, surfacesDark, callRedDark),
     ...accentsDark,
     ...successDark,
+    danger: callRedDark,
+    onDanger: '#1A1A1A',
+    aiPrimary: aiPrimaryDark,
+    onAiPrimary: '#FFFFFF',
   },
 };

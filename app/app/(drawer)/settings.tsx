@@ -15,12 +15,12 @@ import {
 import { api, ApiError, isDemoMode } from '../../lib/api';
 import type { Locale } from '../../lib/dateFormat';
 import { useLocale } from '../../lib/LocaleContext';
-import { callRed } from '../../lib/paperTheme';
+import { type AppTheme } from '../../lib/paperTheme';
 import { useThemePreference } from '../../lib/ThemeContext';
 import type { ThemePreference } from '../../lib/themePreference';
 
 export default function SettingsScreen() {
-  const theme = useTheme();
+  const theme = useTheme<AppTheme>();
   const navigation = useNavigation();
   const { mode, setMode } = useThemePreference();
   const { locale, setLocale } = useLocale();
@@ -97,10 +97,10 @@ export default function SettingsScreen() {
             <List.Subheader>Demo controls</List.Subheader>
             <List.Item
               title={busy ? 'Resetting…' : 'Reset demo session'}
-              titleStyle={{ color: callRed }}
+              titleStyle={{ color: theme.colors.danger }}
               description="Wipes all calls, customers and templates for this session and clears the active template."
               descriptionNumberOfLines={3}
-              left={(p) => <List.Icon {...p} icon="restore" color={callRed} />}
+              left={(p) => <List.Icon {...p} icon="restore" color={theme.colors.danger} />}
               onPress={() => setResetDialogVisible(true)}
               disabled={busy}
             />
@@ -135,7 +135,7 @@ export default function SettingsScreen() {
           </Dialog.Content>
           <Dialog.Actions>
             <Button onPress={() => setResetDialogVisible(false)}>Cancel</Button>
-            <Button textColor={callRed} onPress={handleReset}>
+            <Button textColor={theme.colors.danger} onPress={handleReset}>
               Reset
             </Button>
           </Dialog.Actions>

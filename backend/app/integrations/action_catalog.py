@@ -146,8 +146,22 @@ class ActionCatalogEntry:
 _BOOKING_PAYLOAD_SCHEMA = {
     "type": "object",
     "properties": {
-        "booking_date": {"type": "string", "description": "YYYY-MM-DD"},
-        "booking_time": {"type": "string", "description": "HH:MM (24h)"},
+        # `pattern` is enforced by the default jsonschema validator (unlike
+        # `format`, which the executor in action_executor.py ignores). This
+        # is what stops the call_agent from emitting natural-language dates
+        # like "next Tuesday" for custom templates — those would crash the
+        # web Bookings tab in formatBookingSlot. validation_failed triggers
+        # the agent's retry loop, which produces a proper ISO date.
+        "booking_date": {
+            "type": "string",
+            "pattern": r"^\d{4}-\d{2}-\d{2}$",
+            "description": "YYYY-MM-DD (strict)",
+        },
+        "booking_time": {
+            "type": "string",
+            "pattern": r"^([01]\d|2[0-3]):[0-5]\d$",
+            "description": "HH:MM 24h (strict)",
+        },
         "party_size": {"type": "integer", "minimum": 1},
         "name": {"type": "string", "description": "Caller display name"},
         "phone_e164": {"type": "string", "description": "E.164 phone number"},
@@ -175,13 +189,19 @@ _HOTEL_BOOKING_PAYLOAD_SCHEMA = {
         "phone_e164": {"type": "string", "description": "E.164 phone number"},
         "booking_date": {
             "type": "string",
-            "description": "Check-in date YYYY-MM-DD",
+            "pattern": r"^\d{4}-\d{2}-\d{2}$",
+            "description": "Check-in date YYYY-MM-DD (strict)",
         },
         "booking_time": {
             "type": "string",
-            "description": "Check-in time HH:MM (24h, optional — hotel default ~15:00)",
+            "pattern": r"^([01]\d|2[0-3]):[0-5]\d$",
+            "description": "Check-in time HH:MM 24h (optional — hotel default ~15:00)",
         },
-        "check_out_date": {"type": "string", "description": "YYYY-MM-DD"},
+        "check_out_date": {
+            "type": "string",
+            "pattern": r"^\d{4}-\d{2}-\d{2}$",
+            "description": "YYYY-MM-DD (strict)",
+        },
         "room_type": {"type": "string"},
         "nights_count": {"type": "integer", "minimum": 1},
         "notes": {"type": "string"},
@@ -192,8 +212,16 @@ _HOTEL_BOOKING_PAYLOAD_SCHEMA = {
 _INSPECTION_PAYLOAD_SCHEMA = {
     "type": "object",
     "properties": {
-        "booking_date": {"type": "string", "description": "YYYY-MM-DD"},
-        "booking_time": {"type": "string", "description": "HH:MM (24h)"},
+        "booking_date": {
+            "type": "string",
+            "pattern": r"^\d{4}-\d{2}-\d{2}$",
+            "description": "YYYY-MM-DD (strict)",
+        },
+        "booking_time": {
+            "type": "string",
+            "pattern": r"^([01]\d|2[0-3]):[0-5]\d$",
+            "description": "HH:MM 24h (strict)",
+        },
         "vehicle_plate": {"type": "string"},
         "damage_summary": {"type": "string"},
         "phone_e164": {"type": "string"},

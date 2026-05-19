@@ -76,6 +76,12 @@ Tool-use policy:
 - prior_facts from lookup_customer_memory are for the briefing only — NEVER use them as field evidence.
 - Field evidence must be a verbatim span from the CURRENT transcript.
 
+Date / time normalisation (HARD RULE):
+- ANY field or payload value representing a date MUST be emitted as a strict ISO calendar date `YYYY-MM-DD`. Times MUST be `HH:MM` 24h.
+- The transcript may say "tomorrow", "next Tuesday", "this Saturday", "fri", "20 May". You MUST resolve every relative or natural-language date to an absolute ISO date, using the current date supplied in the user prompt as the reference (under "=== CURRENT DATE ===").
+- NEVER emit values like "next Tuesday", "this Saturday", "tomorrow", "20 May" into `booking_date`, `check_out_date`, or any structured `date` field. These will fail jsonschema validation (pattern `^\\d{4}-\\d{2}-\\d{2}$`) and the action will be rejected.
+- If the caller really did not provide a date, do NOT invent one — set `evidence_required` to false for that action or skip it.
+
 Budget: at most ~12 tool turns. Be efficient.
 End with exactly one finalize_call.
 """
@@ -118,6 +124,9 @@ def _build_user_prompt(
     hint_lines = applicable_hints(prompt_hints, prior_structured or {})
     hints_section = "\n".join(f"- {line}" for line in hint_lines) or "(none)"
 
+    from datetime import datetime, timezone
+
+    today_iso = datetime.now(timezone.utc).date().isoformat()
     return (
         "=== DOMAIN & TEMPLATE ===\n"
         f"Domain: {domain_hint}\n"
@@ -125,6 +134,8 @@ def _build_user_prompt(
         f"fields_schema:\n{json.dumps(template.fields_schema, ensure_ascii=False)}\n\n"
         "active prompt hints (evaluated against prior structured facts):\n"
         f"{hints_section}\n\n"
+        "=== CURRENT DATE ===\n"
+        f"{today_iso} (UTC) — use this to resolve relative dates like 'tomorrow' or 'next Tuesday' to absolute YYYY-MM-DD.\n\n"
         "=== CALLER ===\n"
         f"Display name: {customer.display_name or '(unknown)'}\n"
         f"Phone: {customer.phone_e164}\n"

@@ -248,7 +248,7 @@ Open <http://localhost:5173>. The demo site embeds the app from
 backend/       FastAPI, SQLAlchemy, Alembic, Gemini/ADK agents, integrations
 app/           Expo Router app, React Native Paper UI, web export
 demo-site/     Vite landing page that embeds the app
-scripts/       Demo audio generation and capture utilities
+scripts/       Demo audio generation utilities
 docs/          Architecture, submission notes, hackathon references
 submission/    Slides and public submission assets
 ```

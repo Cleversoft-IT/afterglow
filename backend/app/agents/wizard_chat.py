@@ -43,7 +43,7 @@ from app.schemas.templates import (
 
 logger = logging.getLogger("afterglow")
 
-QUESTION_BUDGET = 5
+QUESTION_BUDGET = 8
 
 
 class WizardChatError(RuntimeError):
@@ -88,9 +88,11 @@ class _WizardModelOutput(BaseModel):
         default=False,
         description=(
             "True when the draft contains a usable starting point: at least "
-            "4 fields, at least 2 valid actions, plausible `name` / "
-            "`description` / `domain_hint`. May be True on the very first "
-            "turn if the user's message was already rich."
+            "4 fields, 2-5 prompt_hints reflecting the business playbook, "
+            "at least 2 valid actions, plausible `name` / `description` / "
+            "`domain_hint`. Do NOT set ready=True after only one or two "
+            "user replies unless the user volunteered a very rich brief — "
+            "ask one more focused question first."
         ),
     )
     draft_partial: Optional[TemplateWizardResponse] = Field(
@@ -172,10 +174,53 @@ def _system_instruction(
         "email / calendar / payment / review without explicit confirmation.\n\n"
         "Conversation budget (you are an agent, not a script — judge each "
         "turn):\n"
-        f"- Typical sessions need 2-{QUESTION_BUDGET} questions; never more than {QUESTION_BUDGET} (hard ceiling). The user prompt tells you how many questions you've already asked.\n"
+        f"- Typical sessions need 4-{QUESTION_BUDGET} questions; never more than {QUESTION_BUDGET} (hard ceiling). The user prompt tells you how many questions you've already asked.\n"
         "- Each new question must materially change the resulting "
         "template. Don't pad. Don't ask multiple things at once.\n"
         f"- When the AGENT STATE block says the budget is exhausted, you MUST draft now, even with assumptions, regardless of remaining uncertainty — but still apply the Integration discovery rule above (omit channel actions if unclear).\n\n"
+        "ASK BEFORE DRAFTING (domain-aware quality bar — apply IN ADDITION "
+        "to the channel discovery rule):\n"
+        "- A draft is shallow if you only know `business_type` + channels. "
+        "Before setting `ready=True`, make sure the conversation has "
+        "covered the categories below for the inferred domain. If a "
+        "category is missing AND the budget allows another question, ask "
+        "about it. Mix categories smartly into the same turn (e.g. \"What "
+        "do you usually need: walk-ins or just bookings, and do you also "
+        "offer takeaway?\") — each turn should still ask one focused "
+        "thing.\n"
+        "  - restaurant: opening hours / peak slots; walk-in vs booking-only; "
+        "takeaway or delivery; common dietary requests (gluten-free, "
+        "allergies); group / private events; deposit / no-show policy.\n"
+        "  - salon / barber: typical service duration; walk-in policy; "
+        "deposit / cancellation rules; common add-ons (beard, color); "
+        "preferred-stylist requests.\n"
+        "  - dentist / medical: emergency vs routine; insurance; new vs "
+        "returning patient intake; no-show / late-cancel policy; required "
+        "intake forms.\n"
+        "  - bodyshop / repair: vehicle make + plate; type of intervention "
+        "(estimate, insurance, mechanical); whether photos are expected; "
+        "loaner car or pickup; expected turnaround.\n"
+        "  - generic / fallback: who the caller usually is; what data the "
+        "operator must capture; what follow-up the business does after "
+        "the call.\n"
+        "- The above guides BOTH what to ask AND what to encode in "
+        "`fields_schema` and `prompt_hints`. Every meaningful answer "
+        "should land either as a field (when it's per-call data) or a "
+        "prompt_hint when/then rule (when it's a recurring playbook).\n"
+        "- prompt_hints carry the operator wisdom that fields can't: e.g. "
+        "{when: \"caller asks about takeaway\", then: \"confirm pickup "
+        "time and party name\"}, {when: \"caller mentions allergy\", "
+        "then: \"capture allergy details and flag for kitchen\"}. Aim "
+        "for 2-5 prompt_hints derived from the user's answers.\n\n"
+        "Examples of strong opening questions:\n"
+        "  - restaurant: \"Do most callers ask for a table, or also "
+        "takeaway? And do you usually keep a few walk-in seats?\"\n"
+        "  - salon: \"How long is your average appointment, and do you "
+        "take walk-ins or by-appointment only?\"\n"
+        "  - dentist: \"Are most calls scheduled checkups, urgent issues, "
+        "or new-patient intakes?\"\n"
+        "  - bodyshop: \"Is the typical caller asking for an estimate, an "
+        "insurance case, or a booked repair slot?\"\n\n"
         "When generating a draft:\n"
         "- Create 4-8 useful fields that capture what an operator would "
         "normally write down after a call.\n"
@@ -193,8 +238,10 @@ def _system_instruction(
         "- Use `execution_mode=\"auto\"` for safe routine actions and "
         "`execution_mode=\"manual-only\"` for actions that require human "
         "judgement (e.g. cancellations, insurance cases).\n"
-        "- Add 1-3 `prompt_hints` only when they express real business "
-        "rules.\n"
+        "- Add 2-5 `prompt_hints` that encode the recurring playbook the "
+        "user described (takeaway flow, allergy capture, walk-in handling, "
+        "etc.). prompt_hints carry the per-business operator wisdom that "
+        "fields alone can't.\n"
         "- Don't set `ready=True` unless the draft has at least 4 fields "
         "and at least 2 valid actions (unless the question budget forced "
         "you to draft).\n\n"
@@ -342,6 +389,21 @@ async def run_wizard_chat(payload: WizardChatRequest) -> WizardChatResponse:
     if parsed.ready and parsed.draft_partial is None:
         logger.warning("wizard_chat: ready=True without draft_partial; down-grading")
         parsed = parsed.model_copy(update={"ready": False})
+
+    # Quality gate: when the budget still allows another question and the
+    # draft is missing the structural minimum (fewer than 4 fields), force
+    # ready=False so the user gets at least one more focused turn. We don't
+    # gate on prompt_hints alone — they're encouraged but not blocking,
+    # and a draft can still be useful without them for simple verticals.
+    questions_so_far = _questions_asked_after_user_started(payload)
+    if parsed.ready and parsed.draft_partial is not None and questions_so_far < QUESTION_BUDGET:
+        fields_count = len(parsed.draft_partial.fields_schema or [])
+        if fields_count < 4:
+            logger.info(
+                "wizard_chat: quality gate — fields=%d → forcing ready=False",
+                fields_count,
+            )
+            parsed = parsed.model_copy(update={"ready": False})
 
     validation = None
     if parsed.ready and parsed.draft_partial is not None:

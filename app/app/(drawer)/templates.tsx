@@ -141,7 +141,7 @@ export default function TemplatesScreen() {
             </Text>
             <Button
               mode="contained-tonal"
-              icon="plus"
+              icon="creation"
               onPress={() => router.push('/templates/wizard' as never)}
             >
               Set up your own business

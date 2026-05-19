@@ -129,6 +129,7 @@ def _fake_call(call_id: uuid.UUID, status: str = "pending") -> Any:
         phone_e164="+393331112233",
         template_id=uuid.uuid4(),
         audio_url=None,
+        audio_diarization=None,
         raw_transcript=None,
         detected_language=None,
         status=status,

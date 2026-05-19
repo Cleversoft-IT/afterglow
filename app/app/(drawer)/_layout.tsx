@@ -6,12 +6,12 @@ import { Alert, Platform, View } from 'react-native';
 import { Button, Dialog, Divider, Icon, Portal, Text, useTheme } from 'react-native-paper';
 import { useState } from 'react';
 import { api, ApiError, isDemoMode } from '../../lib/api';
-import { callRed } from '../../lib/paperTheme';
+import { type AppTheme } from '../../lib/paperTheme';
 
 type IconRenderProps = { focused: boolean; color: string; size: number };
 
 function DrawerContent(props: DrawerContentComponentProps) {
-  const theme = useTheme();
+  const theme = useTheme<AppTheme>();
   const [busy, setBusy] = useState(false);
   const [resetDialogVisible, setResetDialogVisible] = useState(false);
 
@@ -133,8 +133,8 @@ function DrawerContent(props: DrawerContentComponentProps) {
       {isDemoMode() && (
         <DrawerItem
           label={busy ? 'Resetting…' : 'Reset demo'}
-          icon={({ size }: IconRenderProps) => <Icon source="restore" size={size} color={theme.colors.primary} />}
-          labelStyle={{ color: theme.colors.primary, fontWeight: '500' }}
+          icon={({ size }: IconRenderProps) => <Icon source="restore" size={size} color={theme.colors.danger} />}
+          labelStyle={{ color: theme.colors.danger, fontWeight: '500' }}
           onPress={() => setResetDialogVisible(true)}
         />
       )}
@@ -151,7 +151,7 @@ function DrawerContent(props: DrawerContentComponentProps) {
           </Dialog.Content>
           <Dialog.Actions>
             <Button onPress={() => setResetDialogVisible(false)}>Cancel</Button>
-            <Button textColor={callRed} onPress={runReset}>
+            <Button textColor={theme.colors.danger} onPress={runReset}>
               Reset
             </Button>
           </Dialog.Actions>
@@ -162,7 +162,7 @@ function DrawerContent(props: DrawerContentComponentProps) {
 }
 
 export default function DrawerLayout() {
-  const theme = useTheme();
+  const theme = useTheme<AppTheme>();
   return (
     <Drawer
       drawerContent={DrawerContent}

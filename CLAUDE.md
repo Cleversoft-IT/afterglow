@@ -24,7 +24,6 @@ that opens this repo. **Italian for the conversation; English for the code (see
   - [`feedback_web_first_paint.md`](.claude/memory/feedback_web_first_paint.md) — Afterglow's web build is SPA-shell (`app.json` `web.output: "single"`); do not flip back to `"static"` without an SSR-safety audit (theme/locale/insets all diverge and trip React error #418). The module-level theme sync in `_layout.tsx` minimizes the cold-load flash; the in-component `hydrated` guard stays as defensive scaffolding. Do not claim "pre-paint" without a custom Expo HTML template.
 - **`.claude/plans/`** — implementation plans (the most recent one is the source of truth on the day-by-day roadmap).
 - **`.claude/skills/`** — project-scoped Claude skills, auto-discovered by Claude Code sessions in this repo.
-  - [`web-demo-gifs/SKILL.md`](.claude/skills/web-demo-gifs/SKILL.md) — recipes for product-demo GIFs (Playwright scripted recording, fake cursor + tap ripples, smooth scroll, variable per-frame delays, palette pipelines with ffmpeg/gifski/gifsicle, WebP/MP4 fallbacks). The reference implementation it points at is [`scripts/record-demo.cjs`](scripts/record-demo.cjs).
 - **`docs/hackathon-reference/`** — full lablab knowledge base (judging criteria, partner deep-dives, submission rules).
 - **`docs/future-ideas.md`** — post-hackathon roadmap (template lineage, status tri-state, wizard learning loop). Pitch-only material.
 - **`submission/`** — built deliverables for the lablab form (PDF deck, PNG cover, Playwright build scripts).

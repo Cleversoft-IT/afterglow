@@ -251,7 +251,7 @@ def _payload(turns: list[tuple[str, str]]) -> WizardChatRequest:
 def test_user_prompt_marks_first_turn():
     payload = _payload([("user", "I run a restaurant for bookings")])
     prompt = _user_prompt(payload)
-    assert "Questions asked so far: 0 / 5" in prompt
+    assert "Questions asked so far: " f"0 / {QUESTION_BUDGET}" in prompt
     assert "First turn" in prompt
     assert "BUDGET EXHAUSTED" not in prompt
 
@@ -268,7 +268,7 @@ def test_user_prompt_ignores_client_side_greeting_for_question_budget():
     )
     prompt = _user_prompt(payload)
     assert _questions_asked_after_user_started(payload) == 0
-    assert "Questions asked so far: 0 / 5" in prompt
+    assert "Questions asked so far: " f"0 / {QUESTION_BUDGET}" in prompt
     assert "First turn" in prompt
 
 
@@ -283,7 +283,7 @@ def test_user_prompt_includes_question_count():
         ]
     )
     prompt = _user_prompt(payload)
-    assert "Questions asked so far: 2 / 5" in prompt
+    assert f"Questions asked so far: 2 / {QUESTION_BUDGET}" in prompt
     assert "BUDGET EXHAUSTED" not in prompt
     assert "First turn" not in prompt
 

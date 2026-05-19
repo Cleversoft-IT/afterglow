@@ -1,8 +1,7 @@
-import { Pressable, View } from 'react-native';
+import { View } from 'react-native';
 import {
   Chip,
   Icon,
-  IconButton,
   List,
   Text,
   useTheme,
@@ -21,7 +20,6 @@ type Props = {
   booking?: BookingListItem;
   mode: CallFilterKey;
   onPress?: () => void;
-  onRidial?: (phone: string) => void;
 };
 
 type StatusIconInfo = { icon: string; color: string };
@@ -54,11 +52,12 @@ function BookingBadge({ booking }: { booking: BookingListItem }) {
   const p = booking.payload as Record<string, unknown>;
   const date = typeof p.booking_date === 'string' ? p.booking_date : null;
   const time = typeof p.booking_time === 'string' ? p.booking_time : null;
-  const partySize =
-    typeof p.party_size === 'number' ? p.party_size : Number(p.party_size) || null;
 
+  // Single-row design: date + time only. Party size used to be appended
+  // (e.g. "Sat 20:00 · party 4") but the row gets noisy on phones; the
+  // detail screen surfaces it instead.
   const slot = formatBookingSlot(date, time, locale);
-  const label = partySize ? `${slot} · party ${partySize}` : slot || 'Booking';
+  const label = slot || 'Booking';
 
   return (
     <Chip
@@ -98,45 +97,12 @@ function BookingMarker() {
   );
 }
 
-// Trailing phone-outline button (Pixel system-dialer pattern). Pressing it
-// must NOT trigger the row's onPress (call detail navigation). Paper's
-// IconButton already stops native propagation; the surrounding Pressable
-// is a safety net on react-native-web where event bubbling differs.
-function RidialButton({
-  phone,
-  onRidial,
-}: {
-  phone: string;
-  onRidial?: (phone: string) => void;
-}) {
-  const theme = useTheme();
-  if (!onRidial) return null;
-  return (
-    <Pressable
-      onPress={(e) => {
-        e.stopPropagation?.();
-        onRidial(phone);
-      }}
-      accessibilityRole="button"
-      accessibilityLabel={`Call ${phone}`}
-    >
-      <IconButton
-        icon="phone-outline"
-        size={22}
-        iconColor={theme.colors.onSurfaceVariant}
-        onPress={() => onRidial(phone)}
-        accessibilityLabel={`Call ${phone}`}
-      />
-    </Pressable>
-  );
-}
-
 // Statuses where the post-call pipeline is still running. Surfaced to the
 // avatar as a pulsing primary-colored halo so the row reads as "live" even
 // at a glance — without the user needing to read the timestamp icon.
 const ANALYZING_STATUSES = new Set(['pending', 'transcribing', 'analyzing']);
 
-export function CallRow({ call, booking, mode, onPress, onRidial }: Props) {
+export function CallRow({ call, booking, mode, onPress }: Props) {
   const theme = useTheme();
   const { locale } = useLocale();
   const caller = resolveFromCallItem(call);
@@ -202,7 +168,7 @@ export function CallRow({ call, booking, mode, onPress, onRidial }: Props) {
             flexDirection: 'row',
             alignItems: 'center',
             gap: 4,
-            paddingRight: 4,
+            paddingRight: 12,
           }}
         >
           {isBookingsMode && booking ? (
@@ -210,7 +176,6 @@ export function CallRow({ call, booking, mode, onPress, onRidial }: Props) {
           ) : booking ? (
             <BookingMarker />
           ) : null}
-          <RidialButton phone={call.phone_e164} onRidial={onRidial} />
         </View>
       )}
       style={{ paddingRight: 0 }}
