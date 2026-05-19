@@ -1,0 +1,691 @@
+/* Afterglow submission deck — typography-led, A24/Apple-ish.
+   Brand seed #3b82f6 mirrored from app/lib/paperTheme.ts.
+   Each .slide is one PDF page at 1920×1080 (16:9). */
+
+:root {
+  --brand: #3b82f6;
+  --brand-deep: #1d4ed8;
+  --brand-soft: #E7EEFC;
+  --ink: #0F141B;          /* near-black for display type */
+  --ink-2: #2a2f38;
+  --ink-3: #4a5260;
+  --muted: #6b7280;
+  --line: #E5E7EC;
+  --line-2: #C7C9CF;
+  --bg: #F5F6F8;           /* warmer off-white than #F7F8FA */
+  --paper: #FFFFFF;
+  --green: #1F7A3D;
+  --green-soft: #E2F1E8;
+  --amber: #B98412;
+  --amber-soft: #FBF1DA;
+  --red: #B3261E;
+  --red-soft: #FBE3E1;
+  --night: #0B0F17;        /* close/dark slides */
+  --night-2: #141A24;
+  --shadow: 0 1px 2px rgba(15, 23, 42, 0.05),
+            0 8px 28px rgba(15, 23, 42, 0.07);
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: #cfd2d9;
+  color: var(--ink);
+  font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI",
+               Roboto, "Helvetica Neue", Arial, sans-serif;
+  font-feature-settings: "cv11", "ss01", "ss03";
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+code {
+  font-family: "JetBrains Mono", "SF Mono", ui-monospace, Menlo, Consolas, monospace;
+  font-size: 0.92em;
+  background: #EEF0F4;
+  padding: 1px 7px;
+  border-radius: 5px;
+  color: var(--ink-2);
+}
+em { font-style: italic; color: var(--ink); }
+
+/* ─── Page geometry — 1920×1080 = 16:9 ─────────────────────────── */
+
+.slide {
+  width: 1920px;
+  height: 1080px;
+  background: var(--bg);
+  padding: 88px 112px 84px;
+  display: flex;
+  flex-direction: column;
+  gap: 32px;
+  page-break-after: always;
+  break-after: page;
+  position: relative;
+  overflow: hidden;
+}
+.slide:last-child { page-break-after: auto; }
+
+/* Bottom corner stamps — skip on chrome-heavy slides */
+.slide:not(.title):not(.close):not(.bet)::before {
+  content: "afterglow";
+  position: absolute;
+  left: 112px;
+  bottom: 40px;
+  font-size: 18px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+.slide:not(.title):not(.close):not(.bet)::after {
+  content: "AI Agent Olympics · Milan AI Week 2026";
+  position: absolute;
+  right: 112px;
+  bottom: 40px;
+  font-size: 16px;
+  color: var(--muted);
+  letter-spacing: 0.02em;
+}
+
+.grow { flex: 1; min-height: 0; }
+
+/* ─── Common header ───────────────────────────────────────────── */
+
+.slide__head { display: flex; flex-direction: column; gap: 16px; }
+
+.eyebrow {
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--brand);
+}
+
+.slide__head h1 {
+  margin: 0;
+  font-size: 58px;
+  line-height: 1.08;
+  font-weight: 700;
+  letter-spacing: -0.028em;
+  color: var(--ink);
+  max-width: 1500px;
+}
+
+/* ─── Slide 1 — Title · the claim ─────────────────────────────── */
+
+.title {
+  background:
+    radial-gradient(1400px 700px at 10% 12%, #ECF2FE 0%, transparent 55%),
+    radial-gradient(1100px 700px at 90% 92%, #E6FAEF 0%, transparent 60%),
+    var(--bg);
+  justify-content: space-between;
+  padding: 80px 112px;
+}
+.title__top {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+.wordmark {
+  font-size: 64px;
+  font-weight: 800;
+  letter-spacing: -0.05em;
+  line-height: 1;
+  color: var(--ink);
+}
+.title__meta {
+  font-size: 18px;
+  color: var(--muted);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  font-weight: 500;
+}
+
+.title__claim {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 40px;
+}
+.claim-line {
+  font-size: 180px;
+  font-weight: 800;
+  letter-spacing: -0.06em;
+  line-height: 0.95;
+  color: var(--ink);
+}
+/* Solid color instead of gradient-on-text. Chromium's print pipeline
+   does not honour `background-clip: text` reliably and rendered the
+   gradient as solid blue bars instead of clipped text. */
+.claim-line--accent { color: var(--brand-deep); }
+
+.title__bottom {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+.title__partners { display: flex; gap: 14px; }
+.title__url {
+  font-size: 22px;
+  font-weight: 600;
+  color: var(--brand-deep);
+  font-family: "JetBrains Mono", ui-monospace, Menlo, monospace;
+  letter-spacing: -0.01em;
+}
+
+.partner-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 18px;
+  border-radius: 999px;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  font-size: 19px;
+  font-weight: 600;
+  color: var(--ink);
+  box-shadow: var(--shadow);
+}
+.dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--muted);
+}
+.dot--blue  { background: var(--brand); }
+.dot--green { background: var(--green); }
+.dot--amber { background: var(--amber); }
+
+/* ─── Slide 2 — Dog groomer ───────────────────────────────────── */
+
+.groomer { padding-top: 84px; padding-bottom: 88px; }
+.groomer__hero {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 32px;
+}
+.groomer-line {
+  font-size: 116px;
+  font-weight: 800;
+  letter-spacing: -0.045em;
+  line-height: 1.0;
+  color: var(--ink);
+}
+.groomer-line--muted {
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.groomer__paths {
+  display: grid;
+  grid-template-columns: 1fr 1px 1fr;
+  gap: 0;
+  margin-top: 48px;
+  flex: 1;
+}
+.path {
+  padding: 0 56px;
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+  justify-content: flex-start;
+}
+.path:first-child { padding-left: 0; }
+.path:last-child  { padding-right: 0; }
+.path__head {
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  color: var(--brand);
+}
+.path__body {
+  font-size: 36px;
+  font-weight: 500;
+  line-height: 1.32;
+  color: var(--ink);
+  letter-spacing: -0.015em;
+}
+.path__divider {
+  background: var(--line-2);
+  width: 1px;
+  align-self: stretch;
+}
+
+.groomer__kicker {
+  font-size: 24px;
+  line-height: 1.5;
+  color: var(--ink-3);
+  border-top: 1px solid var(--line);
+  padding-top: 28px;
+  max-width: 1400px;
+}
+
+/* ─── Slide 3 — The bet (dark, antithesis) ────────────────────── */
+
+.bet {
+  background:
+    radial-gradient(900px 600px at 80% 20%, rgba(59,130,246,0.18) 0%, transparent 65%),
+    linear-gradient(180deg, var(--night) 0%, var(--night-2) 100%);
+  color: #F1F5F9;
+  padding: 96px 120px 96px;
+  justify-content: center;
+  gap: 56px;
+}
+.bet__eyebrow {
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: #7DA9FF;
+}
+.bet__hero {
+  display: flex;
+  flex-direction: column;
+}
+.bet-line {
+  font-size: 132px;
+  font-weight: 800;
+  letter-spacing: -0.055em;
+  line-height: 0.98;
+  color: #E2E8F0;
+}
+.bet-line--accent { color: #7DA9FF; }
+.bet-line--big { font-size: 168px; letter-spacing: -0.06em; }
+.bet-gap { height: 28px; }
+.bet__footer {
+  font-size: 26px;
+  line-height: 1.45;
+  color: #94A3B8;
+  max-width: 1100px;
+}
+.bet__footer i {
+  color: #BFDBFE;
+  font-style: italic;
+  font-weight: 600;
+}
+
+/* ─── Grids & cards (shared) ──────────────────────────────────── */
+
+.grid { display: grid; gap: 28px; }
+.grid--2 { grid-template-columns: 1fr 1fr; }
+.grid--3 { grid-template-columns: 1fr 1fr 1fr; }
+
+.card {
+  background: var(--paper);
+  border-radius: 22px;
+  padding: 44px 46px;
+  box-shadow: var(--shadow);
+  border: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 20px;
+  min-width: 0;
+}
+.card h3 {
+  margin: 0;
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: -0.015em;
+  color: var(--ink);
+}
+.card p {
+  margin: 0;
+  font-size: 24px;
+  line-height: 1.5;
+  color: var(--ink-2);
+}
+.card ul, .card ol {
+  margin: 0;
+  padding-left: 1.25em;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.card li {
+  font-size: 22px;
+  line-height: 1.5;
+  color: var(--ink-2);
+}
+
+.card--diff { gap: 18px; justify-content: center; padding: 44px 46px; }
+.card--diff h3 { color: var(--brand-deep); font-size: 26px; }
+.card--diff p { font-size: 22px; line-height: 1.55; }
+
+.card--partner { gap: 18px; justify-content: flex-start; padding: 38px 40px; }
+.partner-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 26px;
+  font-weight: 700;
+  color: var(--ink);
+  letter-spacing: -0.01em;
+}
+.card--partner ul { gap: 12px; }
+.card--partner li { font-size: 21px; }
+.partner--vultr        { border-top: 4px solid var(--brand); }
+.partner--google       { border-top: 4px solid var(--green); }
+.partner--speechmatics { border-top: 4px solid var(--amber); }
+
+.proof {
+  margin-top: auto;
+  padding-top: 14px;
+  border-top: 1px dashed var(--line-2);
+  font-size: 17px;
+  color: var(--muted);
+}
+
+.tag {
+  display: inline-block;
+  font-size: 17px;
+  font-weight: 600;
+  padding: 2px 10px;
+  border-radius: 6px;
+  font-family: "JetBrains Mono", ui-monospace, Menlo, monospace;
+}
+.tag--ok  { background: var(--green-soft); color: var(--green); }
+.tag--err { background: var(--red-soft); color: var(--red); }
+.tag--prog{ background: var(--brand-soft); color: var(--brand-deep); }
+
+/* ─── Slide 4 — Architecture ──────────────────────────────────── */
+
+.arch {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  justify-content: center;
+}
+.arch-row {
+  display: grid;
+  grid-template-columns: 1fr 48px 1fr 48px 1fr;
+  gap: 12px;
+  align-items: stretch;
+}
+.arch-node {
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  padding: 24px 28px;
+  box-shadow: var(--shadow);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+.arch-node .node-label {
+  font-size: 26px;
+  font-weight: 700;
+  color: var(--ink);
+  letter-spacing: -0.01em;
+}
+.arch-node .node-sub {
+  font-size: 18px;
+  color: var(--muted);
+  margin-top: 6px;
+  line-height: 1.35;
+}
+.arch-node--audio   { border-top: 4px solid var(--ink-2); }
+.arch-node--stt     { border-top: 4px solid var(--amber); }
+.arch-node--persist { border-top: 4px solid var(--green); }
+
+.arrow {
+  font-size: 32px;
+  color: var(--line-2);
+  font-weight: 300;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.arch-down {
+  font-size: 38px;
+  color: var(--brand);
+  text-align: center;
+  font-weight: 300;
+  line-height: 1;
+  margin: -4px 0;
+}
+
+.arch-loop {
+  background: linear-gradient(180deg, var(--paper) 0%, #F4F7FE 100%);
+  border: 2px solid var(--brand);
+  border-radius: 22px;
+  padding: 32px 40px;
+  box-shadow: var(--shadow);
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+.loop-title {
+  font-size: 30px;
+  font-weight: 700;
+  color: var(--brand-deep);
+  letter-spacing: -0.015em;
+}
+.loop-tools { display: flex; flex-wrap: wrap; gap: 10px; }
+.tool {
+  font-family: "JetBrains Mono", ui-monospace, Menlo, monospace;
+  font-size: 20px;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px 14px;
+  color: var(--ink-2);
+}
+.tool--accent { background: var(--brand); color: #fff; border-color: var(--brand); }
+.loop-rag {
+  font-size: 21px;
+  color: var(--ink-2);
+  border-top: 1px dashed var(--line-2);
+  padding-top: 14px;
+}
+.rag-arrow { color: var(--brand); font-weight: 700; margin-right: 8px; }
+
+.status-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding-top: 10px;
+}
+.status-chip {
+  font-family: "JetBrains Mono", ui-monospace, Menlo, monospace;
+  font-size: 21px;
+  font-weight: 600;
+  padding: 10px 18px;
+  border-radius: 999px;
+}
+.status-chip--ok   { background: var(--green-soft); color: var(--green); }
+.status-chip--warn { background: var(--amber-soft); color: var(--amber); }
+.status-chip--err  { background: var(--red-soft); color: var(--red); }
+.status-foot {
+  font-size: 20px;
+  color: var(--muted);
+  margin-left: 8px;
+}
+
+/* ─── Slide 7 — Business value ────────────────────────────────── */
+
+.card--metric { gap: 22px; }
+.metric-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
+.metric {
+  background: var(--brand-soft);
+  border-radius: 16px;
+  padding: 24px;
+  text-align: center;
+}
+.metric__num {
+  font-size: 66px;
+  font-weight: 800;
+  letter-spacing: -0.04em;
+  color: var(--brand-deep);
+  line-height: 1;
+}
+.metric__lbl {
+  margin-top: 8px;
+  font-size: 18px;
+  color: var(--ink-2);
+  font-weight: 500;
+}
+.metric-note {
+  font-size: 19px !important;
+  color: var(--muted) !important;
+  line-height: 1.5;
+}
+.metric-note--small { font-size: 17px !important; }
+
+.baseline-head { display: flex; justify-content: flex-start; }
+.baseline-tag {
+  display: inline-flex;
+  align-items: center;
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--brand-deep);
+  background: var(--brand-soft);
+  padding: 6px 14px;
+  border-radius: 999px;
+}
+
+.usp {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 19px;
+}
+.usp th, .usp td {
+  padding: 13px 14px;
+  text-align: left;
+  vertical-align: middle;
+  border-bottom: 1px solid var(--line);
+}
+.usp tr:last-child td { border-bottom: none; }
+.usp th {
+  font-size: 16px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+  font-weight: 600;
+}
+.usp td:first-child { color: var(--muted); font-size: 18px; }
+.usp td:last-child  { color: var(--brand-deep); }
+
+/* ─── Slide 8 — Real vs Mocked ────────────────────────────────── */
+
+.card--real { border-top: 4px solid var(--green); }
+.card--mock { border-top: 4px solid var(--amber); }
+.card--real h3, .card--mock h3 {
+  font-size: 24px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+/* ─── Slide 9 — Try it ────────────────────────────────────────── */
+
+.url-row {
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--line);
+}
+.url-row:last-child { border-bottom: none; }
+.url-label {
+  width: 200px;
+  font-size: 18px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-weight: 600;
+}
+.url {
+  font-family: "JetBrains Mono", ui-monospace, Menlo, monospace;
+  font-size: 24px;
+  color: var(--brand-deep);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.steps {
+  counter-reset: step;
+  list-style: none;
+  padding-left: 0;
+  gap: 14px !important;
+}
+.steps li {
+  position: relative;
+  padding-left: 48px;
+  counter-increment: step;
+  font-size: 20px;
+  line-height: 1.45;
+}
+.steps li::before {
+  content: counter(step);
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--brand);
+  color: #fff;
+  font-size: 18px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* ─── Slide 10 — Close ────────────────────────────────────────── */
+
+.close {
+  background:
+    radial-gradient(900px 600px at 80% 20%, rgba(59,130,246,0.18) 0%, transparent 60%),
+    linear-gradient(180deg, var(--night) 0%, var(--night-2) 100%);
+  color: #F1F5F9;
+  padding: 96px 120px;
+  justify-content: space-between;
+  align-items: center;
+  gap: 36px;
+}
+.close__wordmark {
+  font-size: 120px;
+  font-weight: 800;
+  letter-spacing: -0.055em;
+  color: #F8FAFC;
+}
+.close__claim {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+.close__claim .claim-line {
+  font-size: 86px;
+  color: #E2E8F0;
+}
+.close__claim .claim-line--accent { color: #7DA9FF; }
+
+.close__urls {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+.close-url {
+  font-size: 26px;
+  font-family: "JetBrains Mono", ui-monospace, Menlo, monospace;
+  color: #BFDBFE;
+}
+.close-url--muted { color: #64748B; font-size: 19px; }
+
+.close__partners { display: flex; gap: 14px; }
+.close__partners .partner-pill {
+  background: #1E293B;
+  border-color: #334155;
+  color: #E2E8F0;
+}

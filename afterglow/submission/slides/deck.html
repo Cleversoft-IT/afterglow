@@ -1,0 +1,364 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Afterglow — Stay in the moment. We handle the after.</title>
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+
+<!-- ─── Slide 1 — Title · the claim ──────────────────────────────── -->
+<section class="slide title">
+  <div class="title__top">
+    <div class="wordmark">afterglow</div>
+    <div class="title__meta">AI Agent Olympics · Milan AI Week 2026 · MIT</div>
+  </div>
+
+  <div class="title__claim">
+    <div class="claim-line">Stay in the moment.</div>
+    <div class="claim-line claim-line--accent">We handle the after.</div>
+  </div>
+
+  <div class="title__bottom">
+    <div class="title__partners">
+      <span class="partner-pill"><span class="dot dot--blue"></span>Vultr</span>
+      <span class="partner-pill"><span class="dot dot--green"></span>Google · Gemini · ADK</span>
+      <span class="partner-pill"><span class="dot dot--amber"></span>Speechmatics</span>
+    </div>
+    <div class="title__url">demo.95-179-245-107.sslip.io · github.com/sepa85/hackaton-lablab</div>
+  </div>
+</section>
+
+<!-- ─── Slide 2 — The after ──────────────────────────────────────── -->
+<section class="slide groomer">
+  <header class="slide__head">
+    <div class="eyebrow">01 · the after</div>
+  </header>
+
+  <div class="groomer__hero">
+    <div class="groomer-line">A call ends.</div>
+    <div class="groomer-line groomer-line--muted">Something else begins.</div>
+  </div>
+
+  <div class="groomer__paths">
+    <div class="path">
+      <div class="path__head">THE CALL</div>
+      <div class="path__body">
+        Thirty seconds.<br/>
+        Two humans.<br/>
+        Works just fine.
+      </div>
+    </div>
+    <div class="path__divider"></div>
+    <div class="path">
+      <div class="path__head">THE AFTER</div>
+      <div class="path__body">
+        Booking to enter.<br/>
+        Confirmation to send.<br/>
+        Allergy to remember.<br/>
+        Briefing for next time.
+      </div>
+    </div>
+  </div>
+
+  <footer class="groomer__kicker">
+    Every restaurant, dentist, body shop, dog groomer, garage
+    on earth has this gap. Today it's post-its, short-term memory,
+    a second tab open <i>just in case</i>.
+  </footer>
+</section>
+
+<!-- ─── Slide 3 — The bet · antithesis ───────────────────────────── -->
+<section class="slide bet">
+  <div class="bet__eyebrow">02 · the bet</div>
+
+  <div class="bet__hero">
+    <div class="bet-line">We don't replace</div>
+    <div class="bet-line">the call.</div>
+    <div class="bet-gap"></div>
+    <div class="bet-line bet-line--accent">We replace</div>
+    <div class="bet-line bet-line--accent bet-line--big">the after.</div>
+  </div>
+
+  <footer class="bet__footer">
+    AI receptionists kill the moat. The reason a customer dials
+    a small business is the human on the other end.
+  </footer>
+</section>
+
+<!-- ─── Slide 4 — The after, mechanically ────────────────────────── -->
+<section class="slide">
+  <header class="slide__head">
+    <div class="eyebrow">03 · after they hang up</div>
+    <h1>The after is an agentic loop, not a script.</h1>
+  </header>
+
+  <div class="arch grow">
+    <div class="arch-row">
+      <div class="arch-node arch-node--audio">
+        <div class="node-label">audio MP3</div>
+        <div class="node-sub">operator hangs up</div>
+      </div>
+      <div class="arrow">→</div>
+      <div class="arch-node arch-node--stt">
+        <div class="node-label">Speechmatics</div>
+        <div class="node-sub">batch STT · diarization · language=auto</div>
+      </div>
+      <div class="arrow">→</div>
+      <div class="arch-node arch-node--persist">
+        <div class="node-label">Briefing</div>
+        <div class="node-sub">ExtractedFields · memory_summary · Vultr add_vector_item</div>
+      </div>
+    </div>
+
+    <div class="arch-down">↓</div>
+
+    <div class="arch-loop">
+      <div class="loop-title">Gemini 3.1 Flash Lite · Google ADK · up to 12 turns</div>
+      <div class="loop-tools">
+        <span class="tool">lookup_customer_memory</span>
+        <span class="tool">search_transcript</span>
+        <span class="tool">read_transcript_segment</span>
+        <span class="tool">flag_for_review</span>
+        <span class="tool tool--accent">N domain action tools</span>
+        <span class="tool tool--accent">finalize_call</span>
+      </div>
+      <div class="loop-rag">
+        <span class="rag-arrow">↳</span>
+        Vultr RAG · <code>/v1/chat/completions/RAG</code> · MiniMax-M2.7 over the preseeded collection
+      </div>
+    </div>
+  </div>
+
+  <div class="status-row">
+    <span class="status-chip status-chip--ok">finalize → completed</span>
+    <span class="status-chip status-chip--warn">max_turns → needs_review</span>
+    <span class="status-chip status-chip--err">error → failed</span>
+    <span class="status-foot">no-raise contract — executed actions survive loop errors</span>
+  </div>
+</section>
+
+<!-- ─── Slide 5 — Why agentic ────────────────────────────────────── -->
+<section class="slide">
+  <header class="slide__head">
+    <div class="eyebrow">04 · why it's agentic</div>
+    <h1>The model chooses tools, corrects itself, and exits explicitly.</h1>
+  </header>
+
+  <div class="grid grid--2 grow">
+    <article class="card card--diff">
+      <h3>1 · Self-correction on tool errors</h3>
+      <p>Turn N: <code>booking.create</code> →
+         <span class="tag tag--err">validation_failed</span>
+         <em>party_size required</em>.<br/>
+         Turn N+1: re-read transcript, re-emit with <code>party_size=4</code> →
+         <span class="tag tag--ok">executed</span>. Hard cap: 2 attempts per action.</p>
+    </article>
+    <article class="card card--diff">
+      <h3>2 · RAG-on-demand, not RAG-as-prefix</h3>
+      <p>The agent decides whether to spend tokens on the Vector Store —
+         and asks <b>specific</b> questions ("allergies on file?"),
+         not catch-all queries. First-time caller: skip entirely.</p>
+    </article>
+    <article class="card card--diff">
+      <h3>3 · Explicit loop exit conditions</h3>
+      <p><code>finalize</code> → <b>completed</b>.
+         <code>max_turns</code> → <b>needs_review</b> (first-class terminal,
+         surfaced in the UI). <code>error</code> → <b>failed</b>.
+         No silent fallback.</p>
+    </article>
+    <article class="card card--diff">
+      <h3>4 · Auditable turn-by-turn</h3>
+      <p>Each turn → one audit row. Action results joined on
+         <code>payload.agent_turn</code> (integer, not timestamps). The
+         Agent Reasoning Trail is a first-class UI surface, not a buried log.</p>
+    </article>
+  </div>
+</section>
+
+<!-- ─── Slide 6 — Partners ───────────────────────────────────────── -->
+<section class="slide">
+  <header class="slide__head">
+    <div class="eyebrow">05 · partner integration depth</div>
+    <h1>Real APIs. Billed. Verifiable. One audit trail.</h1>
+  </header>
+
+  <div class="grid grid--3 grow">
+    <article class="card card--partner partner--vultr">
+      <div class="partner-head"><span class="dot dot--blue"></span>Vultr · 4 surfaces</div>
+      <ul>
+        <li>Cloud Compute + Coolify auto-deploy</li>
+        <li>Managed Postgres 16 (system of record)</li>
+        <li>Vector Store (preseeded collection)</li>
+        <li>Serverless Inference RAG (MiniMax-M2.7)</li>
+      </ul>
+      <div class="proof">verify: <code>/api/v1/admin/rag-probe</code> — real <code>input_tokens</code></div>
+    </article>
+
+    <article class="card card--partner partner--google">
+      <div class="partner-head"><span class="dot dot--green"></span>Google · Gemini via ADK</div>
+      <ul>
+        <li>gemini-3.1-flash-lite + ADK 1.18 runner</li>
+        <li>Typed tool surface via function declarations</li>
+        <li>Structured output: dynamic Pydantic ← JSON Schema</li>
+        <li>Also: wizard chat, briefing regen, EN summarizer</li>
+      </ul>
+      <div class="proof">verify: any call's Agent Reasoning Trail</div>
+    </article>
+
+    <article class="card card--partner partner--speechmatics">
+      <div class="partner-head"><span class="dot dot--amber"></span>Speechmatics</div>
+      <ul>
+        <li>Batch STT · diarization on · language=auto</li>
+        <li>Speaker-aware transcript tools (S1/S2 search)</li>
+        <li>TTS Preview: 6 bundled MP3s + 2 per wizard template</li>
+        <li>Bonuses: multilingual ✓ · creative diarization ✓</li>
+      </ul>
+      <div class="proof">verify: any call detail — transcript shows S1: / S2:</div>
+    </article>
+  </div>
+</section>
+
+<!-- ─── Slide 7 — Business value ─────────────────────────────────── -->
+<section class="slide">
+  <header class="slide__head">
+    <div class="eyebrow">06 · business value</div>
+    <h1>Worldwide problem. Italy is where we measured first.</h1>
+  </header>
+
+  <div class="grid grid--2 grow">
+    <article class="card card--metric">
+      <div class="baseline-head">
+        <span class="baseline-tag">Italian baseline · floor, not ceiling</span>
+      </div>
+      <div class="metric-row">
+        <div class="metric"><div class="metric__num">478k</div><div class="metric__lbl">booking-led IT businesses</div></div>
+        <div class="metric"><div class="metric__num">185k</div><div class="metric__lbl">phone-led subset (SAM)</div></div>
+        <div class="metric"><div class="metric__num">€110M</div><div class="metric__lbl">initial IT SAM / year (€50 / seat)</div></div>
+      </div>
+      <p class="metric-note">Sized sector by sector from first-party Italian
+        sources (FIPE, ISTAT, FNOMCeO, Key-Stone, Confartigianato, AGCOM, UPB).
+        Same product, same wizard, expansion next: <b>France · Germany · UK ·
+        Spain · US service economy</b>.</p>
+      <p class="metric-note metric-note--small">Beachhead verticals: hair
+        salons · dog groomers · auto repair · beauty · dentistry.</p>
+    </article>
+
+    <article class="card card--usp">
+      <h3>USP vs CallRail · Aircall · Dialpad AI</h3>
+      <table class="usp">
+        <tr><th></th><th>Them</th><th>Afterglow</th></tr>
+        <tr><td>Where the AI lives</td><td>On the call</td><td><b>After the call</b></td></tr>
+        <tr><td>Who picks up</td><td>AI voice agent</td><td><b>The human</b></td></tr>
+        <tr><td>Memory across calls</td><td>Transcript log</td><td><b>Briefing + RAG</b></td></tr>
+        <tr><td>Auditable agent reasoning</td><td>—</td><td><b>First-class UI</b></td></tr>
+        <tr><td>Vertical adaptation</td><td>Reseller config</td><td><b>2-min wizard</b></td></tr>
+        <tr><td>Geo model</td><td>Country-specific</td><td><b>Single-tenant per customer · worldwide</b></td></tr>
+      </table>
+    </article>
+  </div>
+</section>
+
+<!-- ─── Slide 8 — Real-vs-mocked ─────────────────────────────────── -->
+<section class="slide">
+  <header class="slide__head">
+    <div class="eyebrow">07 · the honest table</div>
+    <h1>Real where it matters. Mocked where a multi-judge demo can't safely write.</h1>
+  </header>
+
+  <div class="grid grid--2 grow">
+    <article class="card card--real">
+      <h3><span class="dot dot--green"></span>REAL · billed, not stubbed</h3>
+      <ul>
+        <li>Speechmatics Batch STT on every call</li>
+        <li>Gemini 3.1 Flash Lite + ADK loop on every analyzed call</li>
+        <li>Vultr Serverless Inference RAG (non-zero <code>input_tokens</code>)</li>
+        <li>Vultr Vector Store preseeded at boot</li>
+        <li>Vultr Managed Postgres — system of record</li>
+        <li><code>customer.update_profile</code> mutates the row (undoable)</li>
+        <li>Speechmatics TTS Preview generates every demo MP3</li>
+      </ul>
+    </article>
+
+    <article class="card card--mock">
+      <h3><span class="dot dot--amber"></span>MOCKED · honest demo concession</h3>
+      <ul>
+        <li><code>booking.create</code> — no Resy/TheFork account for N judges</li>
+        <li><code>whatsapp.*</code> — per-message billing on a public demo</li>
+        <li><code>email.*</code>, <code>sms.*</code> — verified-domain required</li>
+        <li><code>calendar.*</code> — per-tenant OAuth</li>
+        <li><code>payment.*</code> — never test against a live processor</li>
+        <li><code>crm.*</code>, <code>review.*</code> — customer-specific choice</li>
+        <li>Vector Store <b>write-back</b> in demo (would pollute shared coll.)</li>
+      </ul>
+      <div class="proof">Swap a mock for real = one file in <code>action_catalog.py</code> + env var. Not an architecture migration.</div>
+    </article>
+  </div>
+</section>
+
+<!-- ─── Slide 9 — Try it ─────────────────────────────────────────── -->
+<section class="slide">
+  <header class="slide__head">
+    <div class="eyebrow">08 · try it now</div>
+    <h1>Three live URLs. Two-minute click-path to the agent loop.</h1>
+  </header>
+
+  <div class="grid grid--2 grow">
+    <article class="card card--demo">
+      <h3>Live URLs</h3>
+      <div class="url-row">
+        <span class="url-label">Demo (iframe)</span>
+        <a class="url" href="https://demo.95-179-245-107.sslip.io">demo.95-179-245-107.sslip.io</a>
+      </div>
+      <div class="url-row">
+        <span class="url-label">Operator app</span>
+        <a class="url" href="https://app.95-179-245-107.sslip.io">app.95-179-245-107.sslip.io</a>
+      </div>
+      <div class="url-row">
+        <span class="url-label">API</span>
+        <a class="url" href="https://api.95-179-245-107.sslip.io">api.95-179-245-107.sslip.io</a>
+      </div>
+      <div class="url-row">
+        <span class="url-label">Repo (MIT)</span>
+        <a class="url" href="https://github.com/sepa85/hackaton-lablab">github.com/sepa85/hackaton-lablab</a>
+      </div>
+    </article>
+
+    <article class="card card--path">
+      <h3>Click-path · ~2 minutes</h3>
+      <ol class="steps">
+        <li>Open the demo URL. Iframe shows the operator app in a phone frame.</li>
+        <li><b>Drawer → Test simulator → Call from existing customer.</b> Audio plays. Hang up.</li>
+        <li>Watch the call: <span class="tag tag--prog">transcribing</span> → <span class="tag tag--prog">analyzing</span> → <span class="tag tag--ok">completed</span>.</li>
+        <li>Tap the call. Expand the <b>Agent Reasoning Trail</b> on the right.</li>
+        <li>Tap the customer name. Read the AI-written <b>briefing</b> at the top of the card.</li>
+        <li><b>Drawer → Templates → Wizard.</b> Build a dog groomer template in 2 messages.</li>
+      </ol>
+      <div class="proof">multi-visitor sandboxed · per-tab <code>X-Demo-Session</code> isolates judges</div>
+    </article>
+  </div>
+</section>
+
+<!-- ─── Slide 10 — Close ─────────────────────────────────────────── -->
+<section class="slide close">
+  <div class="close__wordmark">afterglow</div>
+
+  <div class="close__claim">
+    <div class="claim-line">Stay in the moment.</div>
+    <div class="claim-line claim-line--accent">We handle the after.</div>
+  </div>
+
+  <div class="close__urls">
+    <div class="close-url">demo.95-179-245-107.sslip.io</div>
+    <div class="close-url close-url--muted">github.com/sepa85/hackaton-lablab · MIT</div>
+  </div>
+
+  <div class="close__partners">
+    <span class="partner-pill"><span class="dot dot--blue"></span>Vultr</span>
+    <span class="partner-pill"><span class="dot dot--green"></span>Google · Gemini · ADK</span>
+    <span class="partner-pill"><span class="dot dot--amber"></span>Speechmatics</span>
+  </div>
+</section>
+
+</body>
+</html>

@@ -47,3 +47,6 @@ audio_uploads/
 coverage/
 .coverage
 htmlcov/
+
+# Submission deck — keep source + final PDF/PNG, drop per-slide previews.
+submission/slides/_preview/

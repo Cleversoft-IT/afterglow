@@ -42,8 +42,9 @@ wins** and this document must be updated in the same commit
 | Field | Value |
 |---|---|
 | **Project name** | Afterglow |
-| **Tagline (≤8 words)** | The dialer that takes notes for you |
-| **One-liner (≤25 words)** | A phone app for small businesses where humans take calls and AI extracts data, executes follow-ups, and writes the next-call briefing. |
+| **Claim (hero copy, 9 words)** | **Stay in the moment. We handle the after.** |
+| **Tagline (≤8 words, lablab fallback)** | We handle the after |
+| **One-liner (≤25 words)** | A phone app for small businesses. The human stays on the call. An agentic AI loop runs after — extract, execute, remember. |
 | **Repo** | `https://github.com/sepa85/hackaton-lablab` (public, MIT) |
 | **Backend** | `https://api.95-179-245-107.sslip.io` |
 | **Operator app (Expo web)** | `https://app.95-179-245-107.sslip.io` |
@@ -62,25 +63,52 @@ environment.
 
 ## 2. The pitch narrative
 
-### The problem (60 seconds)
+### The claim
 
-Small booking-driven businesses — restaurants, dental clinics, body
-shops — run their day on phone calls. A booking, an allergy, a callback
-request, a complaint: the operational reality of the business is spoken
-into a phone for 60 seconds and then has to be remembered, typed into
-a CRM, and turned into a follow-up. Post-its and short-term memory
-don't scale; the staff is in the room, talking to a customer in
-front of them, and the next call is already ringing.
+> **Stay in the moment. We handle the after.**
+
+This is the line on the title card, the close, every t-shirt, every
+README hero. The whole product is in service of that sentence.
+
+### The problem (the after)
+
+The call itself is fine. Thirty seconds, two humans, a small order
+of business. What breaks small businesses is everything that has to
+happen *after* the call ends:
+
+* a booking that has to be entered,
+* a WhatsApp or email confirmation that has to be sent,
+* an allergy, a license plate, a breed, a diagnosis that has to be
+  remembered,
+* a next-call briefing that should already exist before the phone
+  rings again.
+
+Today that *after* is post-its, short-term memory, and a second tab
+open *"just in case"*. Multiply by every restaurant, dental clinic,
+body shop, dog groomer, hair salon, garage and tutoring studio on
+earth and you have the universal small-business call problem.
 
 The "AI receptionist" wave answers this by replacing the human with a
-voice agent. That solves the wrong problem. The reason customers call
-a small business instead of clicking a form is **the human**. Replace
-the human with a bot and you kill the only moat the small business has.
+voice agent. That solves the wrong problem. The reason a customer
+dials a small business instead of clicking a form is **the human**.
+Replace the human with a bot and you kill the only moat the small
+business has.
+
+### The bet
+
+> **We don't replace the call. We replace the after.**
+
+The call is not the problem. The after is — the booking that has to
+be entered, the WhatsApp confirmation that has to be sent, the
+allergy that has to be remembered, the next-call briefing that has
+to exist before the phone rings again. Today the after is post-its
+and short-term memory. Tomorrow it is an agentic loop that runs in
+the background while the human stays with the dog.
 
 ### The solution
 
-Afterglow keeps the human on the phone and puts the AI **after** the
-call. The operator picks up, talks, hangs up. Behind the scenes:
+Afterglow is a drop-in phone app. The operator picks up live. Behind
+the scenes, the moment they hang up:
 
 1. The audio is transcribed and diarized by **Speechmatics** (real
    batch STT, diarization on, language auto-detect).
@@ -113,10 +141,13 @@ call. The operator picks up, talks, hangs up. Behind the scenes:
    it down.
 
 The result is an AI that disappears into the workflow instead of
-fighting it. The operator's UX is identical to the Pixel Phone app —
-because we built it that way on purpose. The AI work is auditable
-turn-by-turn in a side panel for anyone curious enough to look, and
-invisible for anyone who isn't.
+fighting it. The operator never opened an app. Never typed a thing.
+The UX is identical to the Pixel Phone app — because we built it
+that way on purpose. The AI work is auditable turn-by-turn in a side
+panel for anyone curious enough to look, and invisible for anyone
+who isn't.
+
+**Stay in the moment. We handle the after.**
 
 ### Why this is "agentic" and not "an LLM call"
 
@@ -142,8 +173,10 @@ LLM analysis:
 
 ### The persona for the demo
 
-The judge's persona is **the operator of a small Italian restaurant**
-running the default "Restaurant — Standard booking" template.
+The live product demo runs the default "Restaurant — Standard
+booking" template (seeded preset, fastest to click through). The
+persona is the operator of a small restaurant — but the same loop
+runs identically for dentists, body shops, dog groomers, salons.
 
 * Existing-customer scenario: **Mark Ross** calls (he's in the seed,
   gluten-free, repeat customer). The transcript references a previous
@@ -158,6 +191,10 @@ Both scenarios run end-to-end on the live demo URL in under 60 seconds
 each. The MP3s are real audio generated with Speechmatics TTS Preview,
 not synthetic transcripts.
 
+In the live demo we can build a fresh vertical on the spot through
+the wizard (e.g. a dog groomer template) to show domain adaptability
+— but the pitch does not depend on any single character.
+
 ---
 
 ## 3. lablab.ai form — pre-filled fields
@@ -168,63 +205,88 @@ not synthetic transcripts.
 ### Project title (max 50 characters)
 
 ```
-Afterglow — the dialer that takes notes for you
+Afterglow — we handle the after
 ```
 
-(47 chars, within the 50-char limit.)
+(31 chars, within the 50-char limit.)
 
 ### Short description (max 255 characters)
 
 ```
-A drop-in phone for small businesses. The human handles every call live; an agentic AI loop runs after the call to extract fields, execute follow-ups (booking, WhatsApp, CRM), and write a next-call briefing so nothing said on the phone is ever lost.
+A drop-in phone for small businesses. The human stays on the call — the moat. After they hang up, an agentic AI loop extracts the booking, runs the follow-ups (WhatsApp, CRM), writes the next-call briefing. Stay in the moment. We handle the after.
 ```
 
-(249 chars.)
+(247 chars.)
 
 ### Long description (min 100 words)
 
 ```
-Afterglow is a drop-in replacement for the system Phone app, designed for small booking-driven businesses (restaurants, dental clinics, body shops). The operator picks up every call live — humans are the moat for small businesses, and we deliberately do not replace them with a voice agent.
+A call ends. Something else begins. A booking to enter, a confirmation to send, an allergy to remember, a briefing for the next call. Today, every small business handles that after with post-its, short-term memory, and a second tab "just in case". The current AI answer is to replace the human with a voice agent. That solves the wrong problem. The reason a customer dials a small business instead of clicking a form is the human. Replace the human, kill the moat.
 
-The intelligence runs AFTER the call. A Gemini 3.1 Flash Lite agent, hosted in Google ADK, runs a multi-turn loop (up to 12 turns) over the diarized Speechmatics transcript. It decides which tools to call: re-read transcript segments, query the customer's prior-call memory through Vultr's Vector Store and Serverless Inference RAG, execute one of the template's action tools (booking, WhatsApp, calendar, payment, CRM, review), flag for human review, or finalize. Each action runs inline with typed Pydantic payloads built dynamically from the template's JSON Schema; the result feeds back into the next turn so the model can self-correct, capped at two attempts per action.
+Afterglow takes the opposite bet. The human stays on the call. We replace the after.
 
-The output is a structured extraction (fields, intent, sentiment, urgency, language) plus a one-sentence next-call briefing written to the Customer record. The next time the same phone number calls, the operator's screen already knows the context — gluten-free, anniversary, license plate, previous diagnosis — without the operator having to type anything.
+Afterglow is a drop-in phone app for small booking-driven businesses — restaurants, dental clinics, body shops, hair salons, dog groomers, garages, tutoring studios. The operator picks up live. The moment they hang up, an agentic loop runs in the background: Speechmatics transcribes the call with diarization on; a Gemini 3.1 Flash Lite agent — hosted in Google ADK — runs up to 12 turns over the transcript, deciding which tools to call. Re-read a segment, query the customer's prior-call memory through Vultr's Vector Store and Serverless Inference RAG, execute one of the template's action tools (booking, WhatsApp, calendar, payment, CRM, review), flag for human review, or finalize. Each action runs inline with typed Pydantic payloads built dynamically from the template's JSON Schema; the result feeds back into the next turn so the model can self-correct, capped at two attempts.
 
-Single-tenant by design. Deployed on Vultr (Cloud Compute + Managed Postgres + Vector Store + Serverless Inference) through Coolify with auto-deploy on push to main. The full agent reasoning trail is exposed as a first-class UI element on every call detail, so the AI work is auditable turn by turn.
+The output is a structured extraction (fields, intent, sentiment, urgency, language) plus a one-sentence next-call briefing written to the Customer record. The next time the same number calls, the operator's screen already knows the context — gluten-free, anniversary, Bichon Frisé, previous diagnosis — without anyone typing.
 
-Market focus: Italy first. Our reference sizing covers ~478k booking-led businesses across restaurants, hair salons, beauty centers, auto repair, dental practices and hotels. The more realistic phone-led subset is ~185k businesses that plausibly still manage bookings through the owner or staff's phone/WhatsApp, led by hair salons (~62k), restaurants (~58.6k), auto repair (~30.7k), beauty centers (~21.8k) and dental practices (~10.8k). At ~€50/month per seat, that is an initial Italian SAM of roughly €110M/year before expansion into other EU markets. USP vs incumbents (CallRail, Aircall, Dialpad AI): we don't try to replace the human, we augment them with persistent memory and audited automation. Roadmap (post-hackathon): SIP trunk integration, on-call WhatsApp suggestions, multi-language quality bar, real CRM connectors swapping the mock registry.
+Single-tenant by design. Deployed on Vultr (Cloud Compute + Managed Postgres + Vector Store + Serverless Inference) through Coolify with auto-deploy on push to main. The full agent reasoning trail is a first-class UI surface, audited turn by turn.
+
+Market: worldwide. The after-the-call gap is the same in Milan, Berlin, Brooklyn, São Paulo and Sydney — phone-led small businesses everywhere. We treat Italy as our rigorously-measured baseline (~478k booking-led businesses, ~185k phone-led subset, ~€50/seat/month, ~€110M/year initial Italian SAM) and expand from there: France, Germany, UK, Spain, the US service economy next. USP vs CallRail / Aircall / Dialpad AI: we don't replace the human. We replace the after.
+
+Stay in the moment. We handle the after.
 ```
 
-(370 words.)
+(442 words.)
 
 ### Market sizing notes for judges
 
 Use this if the lablab form has an "Additional Information" field or if a
 judge asks where the TAM/SAM numbers come from.
 
-The market sizing above is derived from the internal deep-research report
-`tmp/deep-research-report (2).md`. It uses Italian source categories such
-as FIPE/InfoCamere, ISTAT, Federalberghi, Cosmetica Italia, FNOMCeO,
+**The product is worldwide by design.** The after-the-call gap exists
+in every phone-led small business on earth. Hair salons in Milan,
+dog groomers in Brooklyn, body shops in São Paulo, dental clinics in
+Berlin, tutoring studios in Sydney — same operator workflow, same
+gap, same fix. The deck and the long description deliberately list
+verticals across categories, not a single country's market.
+
+**Italy is our rigorously-measured baseline**, not our limit. We
+picked Italy because we had access to first-party sources and could
+build a sector-by-sector number we'd be willing to defend in front of
+a judge, rather than gesture at a global TAM with no methodology.
+
+The Italian baseline is derived from the internal deep-research report
+`tmp/deep-research-report (2).md`. It uses sources such as
+FIPE/InfoCamere, ISTAT, Federalberghi, Cosmetica Italia, FNOMCeO,
 Key-Stone, Confartigianato/CNA, AGCOM and UPB.
 
-Key point: we do **not** count every SMB as equally reachable. The hard
-activity base is ~478k Italian booking-led businesses across restaurants
-(195,471), hair salons (~100k), auto repair (73k), dental practices
-(~38.5k, inferred from market value / average practice revenue), beauty
-centers (~38.3k), and hotels (32,943). The more relevant serviceable
-market is the **phone-led subset**: businesses likely still coordinating
-appointments through personal phones, WhatsApp, or lightweight manual
-processes. Using sector-specific midpoint estimates, that subset is
-~185k businesses: hair salons ~62k, restaurants ~58.6k, auto repair
-~30.7k, beauty centers ~21.8k, dental practices ~10.8k, hotels ~1.6k.
+Key methodological point: we do **not** count every SMB as equally
+reachable. The hard activity base is ~478k Italian booking-led
+businesses across restaurants (195,471), hair salons (~100k), auto
+repair (73k), dental practices (~38.5k, inferred from market value /
+average practice revenue), beauty centers (~38.3k), and hotels
+(32,943). The more relevant serviceable market is the **phone-led
+subset**: businesses still coordinating appointments through personal
+phones, WhatsApp, or lightweight manual processes. Using
+sector-specific midpoint estimates, that subset is ~185k businesses:
+hair salons ~62k, restaurants ~58.6k, auto repair ~30.7k, beauty
+centers ~21.8k, dental practices ~10.8k, hotels ~1.6k. At
+~€50/seat/month that is an initial Italian SAM of roughly
+€110M/year — the **floor**, not the ceiling.
 
-Commercial ranking from the research: hair salons first, then auto
-repair, beauty centers, dentistry, restaurants, hotels. Restaurants are
-the largest raw cluster, but the report treats them as a mixed-fit volume
-market because walk-ins, fixed lines and booking platforms are common.
-Hair and beauty are cleaner "personal phone + recurring appointment"
-targets; dentistry has fewer logos but higher likely ARPU; auto repair
-has strong phone friction around slots, emergencies and rescheduling.
+**Expansion order** (sized as we land partners, not modelled top-down):
+France, Germany, UK, Spain, the US service economy. Same product,
+same single-tenant deployment model per customer, same wizard for
+local verticals. The Italian playbook is the template, not the cap.
+
+Commercial ranking from the Italian research: hair salons first,
+then auto repair, beauty centers, dentistry, restaurants, hotels.
+Restaurants are the largest raw cluster, but the report treats them
+as a mixed-fit volume market because walk-ins, fixed lines and
+booking platforms are common. Hair and beauty are cleaner "personal
+phone + recurring appointment" targets; dentistry has fewer logos
+but higher likely ARPU; auto repair has strong phone friction around
+slots, emergencies and rescheduling.
 
 ### Technology tags (must tag every partner you want to be judged by)
 
@@ -270,84 +332,158 @@ Tag at minimum: **Intelligent Reasoning**, **Agentic Workflows**,
 * MP4, ≤5 min, ≤300 MB. Upload **direct** on lablab (no YouTube, no
   Drive). Problem→solution must land in the first 60 seconds.
 
-> The script below uses verbatim narration in English. Adjust mouth-feel
-> in delivery but keep claim-by-claim the same beats — the timing budget
-> assumes ~140 words per spoken minute.
+**Two-act structure** (deliberate, see "Positioning" note below):
 
-### Scene 1 — 0:00–0:15 · Hook
+* **Act I — 0:00–0:30 · Typographic cold open.** No actors. No live
+  footage. Black screen + sound design + type that lands one beat at
+  a time. We're not going to out-shoot the studio that has six weeks
+  and a real dog. So we play to our strengths: tight type, a single
+  phone ring, silence, the claim.
+* **Act II — 0:30–4:30 · Live product demo + proof + market.** The
+  Pixel-style phone app, the agent loop, RAG, self-correction, memory
+  across calls, the wizard, the honest real-vs-mocked table, the
+  market sizing & USP.
+* **Coda — 4:30–5:00 · Partners, stack, claim.** Vultr · Gemini ·
+  Speechmatics. Close on the claim.
 
-**Visual:** the Afterglow Home screen on the Expo web app, scrolling
-the Recents list. A booking call comes in: the Pixel-style full-screen
-incoming-call UI takes over.
+> **Pace** — narration runs at ~150 wpm (~2.5 words / second) with
+> half-second beats at scene cuts. Each scene's narration block below
+> is sized to fit its slot; don't pad in delivery.
+
+> **Positioning** — the video is an *experience plus proof*, not a
+> product walkthrough. Make the judges feel the moment of the dog
+> moving. *Then* show the audit log.
+
+### Tone & visual reference
+
+* **Type-driven minimalism, not live-action drama.** Reference: Apple
+  product page launch teasers (the static-image+type ones, not the
+  hero films), Linear's "We build" page, the opening seconds of an
+  A24 trailer where the title card is the entire screen.
+* Mood arc still **Calm → Disruption → Calm**, but it's all carried by
+  type weight, beat timing, and one phone ring.
+* No actors, no animals, no live footage in Act I. Act II is screen
+  capture of the real product.
+* Type: tight grotesque sans (same family as the deck). Maximum
+  contrast: deep black background, near-white type, one beat of
+  Afterglow blue on the claim.
+
+### Act I — Typographic spot · 0:00–0:30
+
+Black background throughout. Centred type unless noted. Each beat
+fades in and out; no cuts inside a beat.
+
+**0:00–0:04 · Held black**
+
+* Silent for two seconds. Then a single landline phone ring — one
+  ring, low volume, distant.
+
+**0:04–0:10 · Beat 1**
+
+* Fade in, white type, weight 700:
+
+  ```
+  A call ends.
+  ```
+
+* Hold three seconds. Fade out.
+
+**0:10–0:16 · Beat 2**
+
+* Fade in, white type:
+
+  ```
+  Something else
+  begins.
+  ```
+
+* Hold three seconds. Fade out.
+
+**0:16–0:22 · Beat 3 — the proof points**
+
+* Four short lines stack in, one every ~250 ms, in soft grey
+  (`#94A3B8`):
+
+  ```
+  Booking to enter.
+  Confirmation to send.
+  Allergy to remember.
+  Briefing to write.
+  ```
+
+* Hold one second. All four fade together.
+
+**0:22–0:27 · The claim**
+
+* Fade in, full bleed:
+
+  ```
+                  afterglow
+
+  Stay in the moment.
+  We handle the after.
+  ```
+
+* The second line is Afterglow blue (`#7DA9FF`). Hold.
+
+**0:27–0:30 · Hand-off**
+
+* Cross-fade to Act II's first frame (the operator app on the demo
+  URL). No transition graphic.
+
+**Audio for Act I.** One distant phone ring at 0:02. Silence under
+beats 1 and 2. A subtle low-frequency pad fades in under beat 3 and
+crests on the claim. No voice-over in Act I — the type is the
+narration.
+
+**Why no live shoot.** Production-budget honesty. A live action
+opener that looks worse than what every judge has seen the day
+before would actively hurt us. A type-led opener at this length is
+the right risk-to-reward for what we can ship.
+
+### Act II — Live product demo · 0:30–4:30
+
+The whole act is screen capture of the real operator app at
+`https://app.95-179-245-107.sslip.io`. Voice-over starts here.
+
+#### Scene II.A — 0:30–0:55 · The product, in one sentence
+
+**Visual:** open the demo URL. Iframe shows the operator app in a
+phone frame. Pan to the Home screen.
 
 **Narration (verbatim):**
 
-> "This is the phone app on every restaurant counter in Italy. A call
-> comes in. Someone books a table. Sixty seconds later, the call is
-> over — and the only record of what was said is in the operator's
-> head. Until the next post-it goes missing."
+> "Afterglow is a phone app. The operator picks up — like always. The
+> moment they hang up, the *after* begins. Transcript. Booking.
+> Follow-ups. The briefing for the next call. The operator never
+> opened the app. Never typed a thing. Stay in the moment. We handle
+> the after."
 
-### Scene 2 — 0:15–0:45 · The problem
+#### Scene II.B — 0:55–1:55 · End-to-end run
 
-**Visual:** split screen. Left: a chaotic restaurant counter (stock
-clip or live capture). Right: a competitor "AI receptionist" homepage,
-hero "Replace your front desk with AI" — dim it.
-
-**Narration:**
-
-> "The current AI answer to this is to replace the human with a voice
-> agent. That solves the wrong problem. The reason customers call a
-> small business instead of clicking a form is the human. Replace the
-> human with a bot, and you kill the only moat the business has.
->
-> Afterglow takes the opposite bet. Keep the human on the phone. Put
-> the AI after the call."
-
-### Scene 3 — 0:45–1:30 · The product, in one sentence
-
-**Visual:** zoom into the demo URL `demo.95-179-245-107.sslip.io`.
-Scroll past the hero to the live iframe demo. Then click into the app.
+**Visual:** **Drawer → Test simulator → Call from existing customer.**
+The Pixel-style incoming-call screen takes over. Audio plays (the
+real Speechmatics-generated MP3). Hang up. The Home now shows the
+call with a progress chip moving `transcribing → analyzing →
+completed`. Tap the call. The **Agent Reasoning Trail** is open on
+the right.
 
 **Narration:**
 
-> "Afterglow is a drop-in phone app for small booking-driven businesses.
-> The operator picks up every call live. The moment they hang up, an
-> agentic AI loop runs in the background: it transcribes the call with
-> Speechmatics, reads the diarized transcript turn by turn through
-> Google ADK and Gemini, queries the customer's prior-call memory from
-> Vultr's Vector Store, executes the follow-up actions — booking,
-> WhatsApp, calendar, payment, CRM, review — and writes a one-sentence
-> next-call briefing onto the customer's record."
-
-### Scene 4 — 1:30–2:30 · Live end-to-end run (existing customer)
-
-**Visual:** click **Drawer → Test simulator → Call from existing
-customer**. The incoming-call screen takes over, audio plays (the
-real Speechmatics-generated MP3). Hang up. The Home screen now shows
-the new call with a progress chip. Watch it move through `transcribing
-→ analyzing → completed`. Tap the call. The right-hand **Agent Reasoning
-Trail** is open.
-
-**Narration:**
-
-> "Watch this. Mark Ross — a returning customer — is calling. The audio
-> here is real, generated by Speechmatics TTS, so when it lands in the
-> backend it gets transcribed by the real Speechmatics batch API, with
+> "Mark Ross calls. He's a regular. The audio is real — generated by
+> Speechmatics TTS, transcribed by the Speechmatics batch API, with
 > diarization on.
 >
-> Now look at the trail on the right. Turn one: the agent reads the
-> transcript header. Turn two: it queries the Vultr Vector Store —
-> notice it asks a specific question, 'does Mark Ross have allergies
-> on file?', not a generic catch-all. The RAG answer comes back: 'yes,
-> gluten-free'. Turn three: the agent calls `booking.create` with a
-> typed payload that's validated against the template's JSON Schema.
-> Turn four: it calls `whatsapp.send_confirmation`. Turn five: it
-> finalizes — emits the extracted fields, intent, sentiment, language,
-> urgency, and the next-call briefing.
+> Trail on the right. Turn one, read the transcript. Turn two, Vultr's
+> Vector Store — and notice the question is *specific*. *Allergies on
+> file?* Not a catch-all. Comes back gluten-free. Turn three,
+> `booking.create`, payload typed against the template's JSON schema.
+> Turn four, WhatsApp confirmation. Turn five, finalize: fields,
+> intent, sentiment, urgency, next-call briefing.
 >
-> Total: five turns, two thousand tokens, six seconds end-to-end."
+> Five turns. Two thousand tokens. Six seconds end to end."
 
-### Scene 5 — 2:30–3:15 · Self-correction (the agentic claim)
+#### Scene II.C — 1:55–2:25 · The agentic claim — self-correction
 
 **Visual:** open a different completed call where the trail shows an
 action `validation_failed` followed by a re-emit. Hover the failed
@@ -355,156 +491,243 @@ attempt; the result panel expands.
 
 **Narration:**
 
-> "This is what makes it agentic instead of a single LLM call. Here
-> the model tried to create a booking with party size zero, the
-> deterministic validator rejected it — `validation_failed:
-> party_size required`. The very next turn, the agent re-reads the
-> transcript at the relevant span, finds 'four people', and re-emits
-> the action with the corrected payload. We cap retries at two attempts
-> per action, so the loop can never thrash. Mutating actions that
-> already executed cannot be replayed."
+> "Here it's a loop, not a script. The agent submits
+> `party_size = 0`. The validator says no — `validation_failed`. Next
+> turn: re-read the transcript, find *four people*, resubmit,
+> executed. Two attempts per action, hard cap. A mutation that
+> already succeeded cannot be replayed."
 
-### Scene 6 — 3:15–4:00 · Memory and the next call
+#### Scene II.D — 2:25–2:55 · Memory across calls
 
 **Visual:** open Mark Ross's customer card. Point at the **briefing**
-at the top. Then trigger a second simulated call from the same number
-and show how the briefing surfaces on the operator's screen during
-the call.
+at the top. Trigger a second simulated call from the same number;
+the briefing surfaces on the operator's screen during the incoming
+call.
 
 **Narration:**
 
-> "Here's the briefing the agent wrote at the end of the last call.
-> When the same number calls again, the operator sees it on the screen
-> before picking up. The next call already has context — no typing,
-> no second tab, no waiting on a CRM lookup. That's what 'after the
-> call' was for: building memory that persists across calls."
-
-### Scene 7 — 4:00–4:30 · Templates and adaptability
-
-**Visual:** switch the active template via **Drawer → Templates →
-pick Dentist**. Open the wizard and show that any small-business
-operator can describe their domain in natural language and the wizard
-produces a new template with action types, JSON Schema, and even two
-fresh demo MP3s (existing + new caller) generated by Speechmatics TTS.
-
-**Narration:**
-
-> "Three preset templates ship with the demo: restaurant, dentist,
-> body shop. Each defines its own field schema and action set, and
-> Gemini reshapes the agent's tool surface accordingly. For any other
-> small business, the wizard — itself an agent — interviews the user
-> in two to five questions and produces a working template, plus two
-> fresh demo audio scripts rendered through Speechmatics TTS Preview.
-> Adapting the product to a new vertical is a thirty-second
-> conversation, not a release."
-
-### Scene 8 — 4:30–5:00 · Stack, deployment, close
-
-**Visual:** open the README. Pan across the partner pills on the demo
-landing. Close on the team photo.
-
-**Narration:**
-
-> "Built on Vultr — Cloud Compute, Managed Postgres, Vector Store,
-> Serverless Inference RAG, all in the same audit trail — Google ADK
-> with Gemini 3.1 Flash Lite, and Speechmatics for batch transcription
-> and TTS. MIT-licensed, deployed in Coolify on a single Vultr VM with
-> auto-deploy on push. Live demo at demo dot 95-179-245-107 dot sslip
-> dot io. The repo is on GitHub.
+> "The briefing the agent wrote at the end of the last call. Same
+> number rings again — the operator sees it before picking up.
+> Gluten-free. Last booking. Anniversary. No typing. No second tab.
+> No CRM lookup.
 >
-> Afterglow. The dialer that takes notes for you."
+> The *after* of one call is the *before* of the next."
 
-**End screen** (still, 2 seconds): wordmark + demo URL + GitHub link.
+#### Scene II.E — 2:55–3:30 · Templates · the wizard · any vertical, live
+
+**Visual:** **Drawer → Templates → Wizard.** Type in 2–3 messages:
+e.g. *"I run a small dog grooming studio. Two seats. Same-day
+bookings, lots of repeat customers, allergies and breed-specific notes
+matter."* (Or pick any other vertical on the day — bike repair, music
+school, photography studio. The point is "anything you describe.")
+The wizard produces a working template, action types, JSON Schema,
+and two fresh demo MP3s generated by Speechmatics TTS. Switch the
+active template to the new one. Trigger a fresh simulated call —
+the briefing reflects the new domain.
+
+**Narration:**
+
+> "Three presets ship: restaurant, dentist, body shop. For everything
+> else, a wizard. Two to five questions, out the other end a working
+> template — JSON schema, action tools, two fresh demo MP3s rendered
+> through Speechmatics TTS. Pick a vertical, any vertical. Same loop.
+> Same audit trail. New domain in thirty seconds."
+
+#### Scene II.F — 3:30–4:00 · Real where it matters
+
+**Visual:** cut to a clean two-column on-screen card — REAL on the
+left (green dot), MOCKED on the right (amber dot). As each line is
+read, briefly cut to a verification proof: the `rag-probe` JSON
+response in a terminal (non-zero `input_tokens`), the audit-log page
+with a Speechmatics + Gemini + Vultr row stack, the Customer card
+mutating after a `customer.update_profile`. End on the
+`integrations/action_catalog.py` file open at the registry entries.
+
+**Narration:**
+
+> "What's real, what's a mock. Real, and billed: Speechmatics on
+> every call. The Gemini ADK loop. Vultr RAG and Vector Store —
+> audit the input tokens. Postgres. The profile mutation. The demo
+> MP3s.
+>
+> Mocked, by design: the outbound integrations no public demo should
+> fire. Booking. WhatsApp. Calendar. Payment. CRM.
+>
+> Replacing one is a line in the action catalog and an env var. Not
+> a migration."
+
+#### Scene II.G — 4:00–4:30 · Market & USP
+
+**Visual:** an on-screen card (same Material aesthetic as the deck's
+slide 7). Header: *"Worldwide. Italy is where we measured first."*
+Below: the three metric chips for the Italian baseline — **478k**
+booking-led / **185k** phone-led SAM / **€50** target ARPU per seat
+per month, with the small label *"Italian baseline · floor, not
+ceiling."* Then the USP table vs CallRail · Aircall · Dialpad AI,
+single column of difference: *"After the call, not on it."*
+
+**Narration:**
+
+> "The after-the-call gap exists in every small business on earth.
+> Italy is where we sized it first, sector by sector — four hundred
+> seventy-eight thousand booking-led businesses, a phone-led subset of
+> one hundred eighty-five thousand, fifty euro a seat a month, a
+> hundred and ten million initial SAM. The floor, not the ceiling.
+> France, Germany, the UK, the US service economy come next.
+>
+> Against CallRail, Aircall, Dialpad AI, one word of difference.
+> *After*. They're on the call. We are everything that happens
+> next."
+
+### Coda — 4:30–5:00 · Partners, stack, close
+
+**Visual:** brief pan across the README architecture diagram and the
+partner pills on the demo landing. End on a clean type card.
+
+**Narration:**
+
+> "Vultr — Cloud Compute, Managed Postgres, Vector Store, Serverless
+> Inference. One audit trail. Google ADK with Gemini 3.1 Flash Lite.
+> Speechmatics for STT and TTS. MIT. One VM. Coolify, auto-deploy on
+> push.
+>
+> Afterglow.
+>
+> Stay in the moment. We handle the after."
+
+**End screen** (still, 2 seconds): wordmark + claim + demo URL +
+GitHub link. Same composition as the title card in Act I.
 
 ### Recording tips
 
-* Record at 1080×1920 portrait if you want the phone-frame iframe to
-  fill the screen; or 1920×1080 landscape if you want browser chrome
-  + dev panels in the shot. **Pick one and stay there.**
-* Use the existing `afterglow/scripts/record-demo.cjs` (Playwright)
-  for the scripted scenes; voiceover dubbed in post.
+* **Act I is a typographic edit, not a shoot.** Compose in After
+  Effects / Premiere / DaVinci with the same type family as the deck.
+  Black background, full-bleed type, opacity transitions only — no
+  motion graphics flourishes. A single phone-ring sample (royalty-free
+  or library) + a low pad. Total render: a few minutes once the
+  beats are timed.
+* **Act II is screen capture** of the real product on the demo URL.
+  Use `afterglow/scripts/record-demo.cjs` (Playwright) as the base
+  for scripted scenes; voice-over dubbed in post.
 * Pre-warm the backend right before recording: hit
-  `/api/v1/admin/rag-stats` to confirm preseed chunks count, then
-  load Home so the cold start doesn't show.
-* Resolution priority: **legibility of the Agent Reasoning Trail**
-  text matters more than 4K. Bump font scale in Chrome if needed
-  before recording.
+  `/api/v1/admin/rag-stats` to confirm preseed chunks, then load Home
+  so the cold start doesn't show.
+* Resolution priority for Act II: **legibility of the Agent Reasoning
+  Trail** text matters more than 4K. Bump font scale in Chrome if
+  needed before recording.
+* Audio: the silence around the Act I beats is doing the work.
+  Don't underscore them. The pad only comes in on the proof points
+  and crests on the claim.
 
 ---
 
 ## 5. Slide deck outline
 
-**Constraint:** PDF, one-pager allowed, 2–3 sentences per slide max
-(`hackathon-docs/06-what-to-submit.md`). 8 slides is the right size.
+**Constraint:** PDF, 16:9, 2–3 sentences per slide max
+(`hackathon-docs/06-what-to-submit.md`). 10 slides — the deck mirrors
+the video's two-act shape: hook → antithesis → product → proof → close.
 
-### Slide 1 — Title
+> The **claim** "Stay in the moment. We handle the after." is the spine
+> of the deck. It shows up on slide 1 (hero), slide 3 (antithesis
+> reveal), and slide 10 (close). Don't put it everywhere — let it land.
 
-* "**afterglow** — the dialer that takes notes for you."
-* Subtitle: "AI Agent Olympics · Milan AI Week 2026 · MIT".
-* Team logo strip (Vultr · Google ADK · Speechmatics).
+### Slide 1 — Title · the claim
 
-### Slide 2 — The problem
+* Wordmark **afterglow** small (top).
+* Hero, display weight, two lines: **"Stay in the moment. // We handle
+  the after."**
+* Bottom: partner pill row (Vultr · Google ADK · Speechmatics) · the
+  three live URLs · "AI Agent Olympics · Milan AI Week 2026 · MIT".
 
-* "Small businesses run on phone calls. The data spoken on those calls
-  evaporates."
-* "AI receptionists kill the only moat small businesses have: the
-  human."
+### Slide 2 — The after
 
-### Slide 3 — The product
+* Two short text blocks, no icons. Display hero:
+  *"A call ends. Something else begins."*
+* Left ("THE CALL"): thirty seconds, two humans, works just fine.
+* Right ("THE AFTER"): booking to enter, confirmation to send,
+  allergy to remember, briefing for next time.
+* Kicker: *"Every restaurant, dentist, body shop, dog groomer,
+  garage on earth has this gap. Today it's post-its, short-term
+  memory, a second tab open just in case."*
 
-* "Afterglow is a drop-in phone app. The human takes every call live.
-  An agentic AI loop runs **after** the call."
-* Three icons: extract · execute · remember.
+### Slide 3 — The bet · antithesis
 
-### Slide 4 — How it works (architecture diagram)
+* Two-line display:
+  *"We don't replace the call.*
+  *We replace **the after**."*
+* Sub-line in muted ink: *"AI receptionists kill the moat. The reason
+  a customer dials a small business is the human on the other end."*
 
-* The ASCII diagram from §7 below, redrawn as a clean architecture
-  diagram. Speechmatics → Postgres + Gemini/ADK loop → Vultr RAG &
-  Vector Store → Customer briefing.
+### Slide 4 — The after, mechanically
+
+* Section title: *"After they hang up."*
+* The architecture diagram from §7 (audio → STT → Briefing on top;
+  Gemini/ADK loop with tool chips + Vultr RAG underneath).
+* Footer chips: `finalize → completed` · `max_turns → needs_review` ·
+  `error → failed`.
 
 ### Slide 5 — Why it's agentic
 
-* "Multi-turn loop, typed tool surface, self-correction on tool errors,
-  RAG-on-demand."
-* Screenshot of an Agent Reasoning Trail with a `validation_failed`
-  → re-emit → `executed` sequence.
+* Four cards: self-correction · RAG-on-demand · explicit loop exit ·
+  auditable turn-by-turn.
+* Concrete proof snippet on card 1: `validation_failed → re-read →
+  re-emit → executed`.
 
 ### Slide 6 — Partner integration depth
 
-* Vultr: Postgres + Vector Store + Serverless Inference RAG + Cloud
-  Compute (4 surfaces, one audit log).
-* Google: Gemini 3.1 Flash Lite via ADK 1.18 + structured output +
-  dynamic typed tool surface.
-* Speechmatics: batch STT with diarization on + TTS Preview for demo
-  audio (real generated voices, not stock).
+* Vultr (4 surfaces): Cloud Compute + Coolify · Managed Postgres ·
+  Vector Store · Serverless Inference RAG.
+* Google: Gemini 3.1 Flash Lite via ADK 1.18, typed tool surface,
+  structured output from per-template JSON Schema.
+* Speechmatics: batch STT (diarization on, language=auto) + TTS
+  Preview powering every demo MP3.
+* Each card carries one verifiable proof (e.g. `/admin/rag-probe`
+  returns non-zero `input_tokens`).
 
 ### Slide 7 — Business value
 
-* Italy-first TAM/SAM: ~478k booking-led businesses across restaurants,
-  hair, beauty, auto repair, dental and hotels; ~185k estimated
-  phone-led subset; ~€110M/year initial SAM at €50/month.
-* Beachhead ranking from research: hair salons → auto repair → beauty
-  centers → dentistry → restaurants. Restaurants remain the volume
-  wedge already shown in the demo.
-* USP table vs CallRail / Aircall / Dialpad AI: "we augment the human,
-  we don't replace them."
-* Pricing: ~€50/seat/month target; higher-ARPU packaging for dentistry
-  and multi-location service businesses.
+* Header: *"Worldwide problem. Italy is where we measured first."*
+* Italian-baseline card (tagged "floor, not ceiling") with three
+  metric chips: **478k** booking-led / **185k** phone-led SAM /
+  **€110M** initial Italian SAM/year. Note: sized sector by sector
+  from first-party sources (FIPE · ISTAT · FNOMCeO · Key-Stone ·
+  Confartigianato · AGCOM · UPB). Expansion order: France · Germany
+  · UK · Spain · US service economy.
+* Beachhead verticals line: hair salons · dog groomers · auto repair
+  · beauty · dentistry.
+* USP table vs CallRail / Aircall / Dialpad AI — the headline
+  difference is *"After the call, not on it"*, with an explicit
+  geo-model row (*"single-tenant per customer · worldwide"*).
 
-### Slide 8 — Live demo + repo
+### Slide 8 — Real where it matters
 
-* QR code to `https://demo.95-179-245-107.sslip.io`.
-* QR code to GitHub repo.
-* Big call-out: "Try it now — Drawer → Test simulator → Call from
-  existing customer."
+* Two columns: REAL (Speechmatics STT, Gemini ADK loop, Vultr RAG +
+  Vector Store + Postgres, `customer.update_profile` mutates, TTS
+  Preview generates every MP3).
+* MOCKED (booking, WhatsApp, SMS, email, calendar, payment, CRM,
+  review — and write-back to the shared demo collection).
+* Footer kicker: *"Swap a mock for real = one file in
+  `action_catalog.py` + an env var. Not an architecture migration."*
 
-### Slide 9 (optional, one-pager OK) — Future work
+### Slide 9 — Try it
 
-* Real CRM connectors (swap mock registry).
-* SIP trunk for full real-phone handling.
-* Voice-aware operator suggestions during the call (read-only AI on
-  the operator's screen, not on the line).
-* Multi-language quality bar.
+* Two cards: live URLs (demo / app / api / repo) + the 6-step
+  click-path (Drawer → Test simulator → existing customer → call →
+  trail → briefing → wizard).
+* Proof line: *"multi-visitor sandboxed · per-tab `X-Demo-Session`
+  isolates judges."*
+
+### Slide 10 — Close
+
+* Wordmark **afterglow** (display).
+* The claim: *"Stay in the moment. We handle the after."*
+* `demo.95-179-245-107.sslip.io` · `github.com/sepa85/hackaton-lablab` · MIT.
+* Partner pills row (final time).
+
+> **Why we dropped QR codes from the original outline:** the slide PDF
+> is a digital artifact — judges click links, they don't scan paper.
+> Big legible URLs beat tiny QR squares every time. (If we ever print
+> the deck, we add QRs back.)
 
 ---
 
@@ -867,32 +1090,36 @@ video timestamp where it lands.
 
 | Evidence | Where in code | Where in video |
 |---|---|---|
-| Multi-turn agent loop with typed tool surface | `agents/call_agent.py` · `agents/tools/*.py` | Scene 4 (1:30–2:30) |
-| Self-correction on tool errors | `agents/tools/action_tool.py:117-164` | Scene 5 (2:30–3:15) |
-| RAG-on-demand as a tool decision | `agents/tools/memory_tool.py` | Scene 4 (RAG turn) |
-| Vultr 4-surface integration (Compute · Postgres · Vector · Inference) | §8 above | Scene 8 (closing partner pills) + cheat-sheet `rag-probe` |
-| Gemini structured output via ADK function calling | `integrations/gemini_adk.py` · `agents/tools/action_tool.py:107-115` | Scene 4 + Scene 5 |
-| Speechmatics diarization fed into transcript tools | `integrations/speechmatics.py` · `agents/tools/transcript_tool.py` | Scene 4 |
+| Multi-turn agent loop with typed tool surface | `agents/call_agent.py` · `agents/tools/*.py` | Act II.B (0:55–1:55) |
+| Self-correction on tool errors | `agents/tools/action_tool.py:117-164` | Act II.C (1:55–2:25) |
+| RAG-on-demand as a tool decision | `agents/tools/memory_tool.py` | Act II.B (RAG turn) |
+| Vultr 4-surface integration (Compute · Postgres · Vector · Inference) | §8 above | Act II.F (3:30–4:00) + Coda (4:30–5:00) |
+| Gemini structured output via ADK function calling | `integrations/gemini_adk.py` · `agents/tools/action_tool.py:107-115` | Act II.B + Act II.C |
+| Speechmatics diarization fed into transcript tools | `integrations/speechmatics.py` · `agents/tools/transcript_tool.py` | Act II.B |
+| Real-vs-mocked transparency (action_catalog as integration boundary) | `integrations/action_catalog.py` + §11 | Act II.F (3:30–4:00) |
 
 ### Originality (25%)
 
 | Evidence | Where in code | Where in video |
 |---|---|---|
-| Counter-bet thesis: keep the human, run AI after the call | product design | Scene 2 (0:15–0:45) |
-| Drop-in Pixel-style phone app aesthetic for an AI product | `afterglow/app/` Expo build | Scenes 4 + 6 |
-| Agent reasoning trail as a first-class UI surface, not a buried log | `afterglow/app/components/AgentReasoningTrail.tsx` | Scene 4 |
+| Counter-bet thesis: keep the human, replace the after | product design | Act I (0:00–0:30) + Act II.A (0:30–0:55) |
+| Typographic cold open — type, silence, one ring, the claim | video script §4 | Act I (0:00–0:30) |
+| Drop-in Pixel-style phone app aesthetic for an AI product | `afterglow/app/` Expo build | Act II.B + II.D |
+| Agent reasoning trail as a first-class UI surface, not a buried log | `afterglow/app/components/AgentReasoningTrail.tsx` | Act II.B |
 | `needs_review` as terminal status, not silent fallback | `agents/orchestrator.py:397-411` | Cheat-sheet demonstration |
-| Template wizard as a Gemini-driven 2-to-5-question interview | `agents/wizard_chat.py` | Scene 7 |
-| Per-template Speechmatics TTS dual-scenario MP3 generation | `integrations/speechmatics_tts.py` | Scene 7 |
+| Template wizard as a Gemini-driven 2-to-5-question interview | `agents/wizard_chat.py` | Act II.E (2:55–3:30) |
+| Per-template Speechmatics TTS dual-scenario MP3 generation | `integrations/speechmatics_tts.py` | Act II.E |
+| Live wizard build of an arbitrary vertical, end-to-end | `agents/wizard_chat.py` · `integrations/speechmatics_tts.py` | Act II.E |
 
 ### Business Value (25%)
 
 | Evidence | Where |
 |---|---|
-| Concrete persona (small-restaurant operator) with daily friction described in operator-language, not LLM-speak | §2 + Scene 2 |
-| TAM/SAM with named markets, source methodology and pricing band | §3 Long Description + Market sizing notes + Slide 7 |
-| USP table vs CallRail / Aircall / Dialpad AI ("we don't replace the human") | Slide 7 + Scene 2 |
-| Concrete templates for three real verticals out of the box (restaurant · dentist · bodyshop) plus wizard-generated for any other | §8 + Scene 7 |
+| Concrete persona (small-business operator) described in operator-language, not LLM-speak; same loop runs across restaurants, dentists, body shops, dog groomers, salons | §2 + Act II.A + Slide 2 |
+| TAM/SAM with named markets, source methodology and pricing band | §3 Long Description + Market sizing notes + Slide 7 + Act II.G (4:00–4:30) |
+| USP table vs CallRail / Aircall / Dialpad AI ("we replace the after, not the call") | Slide 7 + Act II.G |
+| Honest real-vs-mocked surface — trust-by-transparency, not by hiding | §11 + Slide 8 + Act II.F (3:30–4:00) |
+| Concrete templates for three real verticals out of the box (restaurant · dentist · bodyshop) plus wizard-generated for any other (built live in the demo) | §8 + Act II.E |
 | Auditable AI work (every action undoable where the catalog allows) — addresses the small-business operator's #1 AI concern (control) | UI: call detail Undo button · `INTERNAL_REVERTERS` |
 | Single-tenant model = clear sales motion, no multi-tenant complexity | architecture decision in `CLAUDE.md` constraint #1 |
 
