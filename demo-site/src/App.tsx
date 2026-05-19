@@ -141,7 +141,7 @@ function ThemeToggle() {
 /* ─── Navbar ────────────────────────────────────────────── */
 function Navbar() {
   return (
-    <nav className="border-b border-border/50 bg-background/80 backdrop-blur-md">
+    <nav className="app-shell__nav border-b border-border/50 bg-background/80 backdrop-blur-md">
       <div className="mx-auto max-w-5xl px-6 h-14 flex items-center justify-between gap-3">
         <span className="font-extrabold text-base tracking-tight text-foreground">
           after<span className="text-primary">glow</span>
@@ -190,12 +190,23 @@ const PHONE_H = 845;
 const PHONE_FLOOR = 0.45;
 const DEMO_CHROME = 48;
 
+const PHONE_W = 410;
+const NAVBAR_H = 56;
+
 function usePhoneScale(): number {
   const [scale, setScale] = useState(1);
   useEffect(() => {
     const compute = () => {
       const vh = window.innerHeight;
-      const raw = (vh - DEMO_CHROME) / PHONE_H;
+      const vw = window.innerWidth;
+      // Mirror the CSS scale formula in `.phone-stage`: fit within
+      // BOTH the rail's logical width (min(50vw, 540px) - 32 horizontal
+      // padding) AND the viewport height below the sticky navbar minus
+      // the breathing chrome.
+      const rawH = (vh - NAVBAR_H - DEMO_CHROME) / PHONE_H;
+      const railW = Math.min(vw * 0.5, 540);
+      const rawW = (railW - 32) / PHONE_W;
+      const raw = Math.min(rawH, rawW);
       setScale(Math.min(1, Math.max(PHONE_FLOOR, raw)));
     };
     compute();
@@ -221,21 +232,6 @@ function DemoSection() {
     >
       <div className="w-full">
         <div className="flex flex-col gap-6 w-full">
-          {/* Mobile-first: surface the "Open the live app" CTA at the
-              top of the section, since the right-rail iframe is hidden
-              under 1024 px and the visitor would otherwise have to scroll
-              past all the copy to find out where the demo is. */}
-          <div className="lg:hidden flex flex-col items-center gap-4 rounded-2xl border border-border/60 bg-card/60 p-8">
-            <p className="text-sm text-muted-foreground text-center leading-relaxed max-w-xs">
-              The embedded preview is hidden on smaller screens — open the real app full-screen.
-            </p>
-            <Button asChild size="lg" className="rounded-full gap-2 w-full sm:w-auto">
-              <a href={APP_URL} target="_blank" rel="noopener noreferrer">
-                Open the live app
-                <ExternalLink className="w-4 h-4" />
-              </a>
-            </Button>
-          </div>
           <div>
             <SectionLabel>02 — Try it now</SectionLabel>
             <h2 className="text-3xl md:text-4xl font-extrabold tracking-tight mb-3">
@@ -263,6 +259,23 @@ function DemoSection() {
                 actions in the call detail.
               </p>
             </div>
+          </div>
+
+          {/* Mobile CTA — under 1024 px the right-rail phone is hidden,
+              so the visitor needs a way to actually open the app. Lives
+              inside the Live demo section flow (right after the copy)
+              so it reads as "the way to try it" instead of an alert. */}
+          <div className="lg:hidden flex flex-col items-start gap-3 rounded-2xl border border-border/60 bg-card/60 p-5">
+            <p className="text-sm text-muted-foreground leading-relaxed">
+              The embedded preview is hidden on smaller screens — open the real
+              app full-screen instead.
+            </p>
+            <Button asChild size="lg" className="rounded-full gap-2 w-full sm:w-auto">
+              <a href={APP_URL} target="_blank" rel="noopener noreferrer">
+                Open the live app
+                <ExternalLink className="w-4 h-4" />
+              </a>
+            </Button>
           </div>
 
           <Button
@@ -407,13 +420,21 @@ export default function App() {
       <Navbar />
 
       <main className="app-shell__content">
-      {/* ── Hero — full-viewport width so bg bleeds edge-to-edge */}
-      <section className="relative overflow-hidden">
+      {/* ── Hero — full-viewport width so bg bleeds edge-to-edge.
+            On desktop the content column has `padding-right: rail` to
+            reserve room for the fixed phone; the hero section breaks
+            out of that padding via `.app-shell__hero` (negative right
+            margin) so the dot-grid + glow can extend across the full
+            viewport. The inner `.app-shell__hero-pane` then restores
+            the visible content area (`100% - rail`) so the copy
+            re-centers in the same left column as the rest of the page. */}
+      <section className="app-shell__hero relative overflow-hidden">
         <div className="hero-glow" aria-hidden="true" />
         <div className="dot-grid" aria-hidden="true" />
         <div className="hero-bottom-fade" aria-hidden="true" />
 
-        <div className="relative mx-auto max-w-2xl px-6 pt-12 md:pt-20 pb-20 md:pb-24">
+        <div className="app-shell__hero-pane relative">
+          <div className="mx-auto max-w-2xl px-6 pt-12 md:pt-20 pb-20 md:pb-24">
           <div className="flex flex-col items-start gap-7">
             <h1 className="text-5xl md:text-[62px] font-extrabold leading-[1.05] tracking-tight">
               Stay in the moment.
@@ -434,8 +455,8 @@ export default function App() {
 
             <div className="flex flex-wrap gap-3">
               <Button asChild size="lg" className="rounded-full gap-2">
-                <a href="#demo">
-                  How to drive it <ArrowRight className="w-4 h-4" />
+                <a href={APP_URL} target="_blank" rel="noopener noreferrer">
+                  Open the live app <ExternalLink className="w-4 h-4" />
                 </a>
               </Button>
               <Button asChild variant="outline" size="lg" className="rounded-full">
@@ -450,6 +471,7 @@ export default function App() {
               <span className="inline-block w-1.5 h-1.5 rounded-full bg-primary flex-shrink-0" />
               For service businesses where every call is a booking
             </p>
+          </div>
           </div>
         </div>
       </section>

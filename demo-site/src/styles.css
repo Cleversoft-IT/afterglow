@@ -89,6 +89,22 @@ html, body, #root {
    demo section takes over. */
 .app-shell {
   position: relative;
+  /* Clip any rightward bleed (hero overlays extend behind the phone
+     rail) so it never produces a horizontal scrollbar. `clip` is
+     preferable to `hidden` here because it does NOT create a new
+     scroll container — `position: fixed` children (the phone rail)
+     keep working. */
+  overflow-x: clip;
+}
+
+/* Navbar is sticky so the phone can sit beneath it without ever
+   overlapping it visually — the moment the user scrolls 1 px the
+   navbar is already pinned to the top, and the rail's `top: 56px`
+   keeps the phone planted under it. */
+.app-shell__nav {
+  position: sticky;
+  top: 0;
+  z-index: 20;
 }
 
 .app-shell__hint {
@@ -96,17 +112,20 @@ html, body, #root {
 }
 
 @media (min-width: 1024px) {
-  :root { --app-shell-rail: min(50vw, 540px); }
+  :root {
+    --app-shell-rail: min(50vw, 540px);
+    --app-shell-nav-h: 56px; /* must match Tailwind `h-14` in Navbar */
+  }
   .app-shell__content {
     padding-right: var(--app-shell-rail);
   }
   .app-shell__phone {
     position: fixed;
-    /* Phone is centred vertically against the full viewport, not the
-       area-below-the-navbar. The navbar uses backdrop-blur and sits
-       above the phone visually; that's fine — the brand is more
-       legible than a thin slice of phone at the top would be. */
-    top: 0;
+    /* Phone is centred vertically *inside* the area below the sticky
+       navbar. Since the navbar stays pinned at top: 0 on every scroll
+       position, this offset is stable and the phone never overlaps
+       the brand. */
+    top: var(--app-shell-nav-h);
     right: 0;
     bottom: 0;
     width: var(--app-shell-rail);
@@ -119,24 +138,29 @@ html, body, #root {
   .app-shell__hint {
     display: inline-flex;
   }
-  /* Hero overlays (`hero-glow`, `dot-grid`, `hero-bottom-fade`) live
-     inside `.app-shell__content`, which has a wide `padding-right`
-     reserved for the fixed phone rail. By default `inset:0` would
-     clip the pattern to that narrower content box, drawing a hard
-     vertical seam at the rail edge — the "texture ends abruptly /
-     looks like it's repeating" effect. Extend each layer rightward
-     by the rail width so the dot pattern bleeds the full viewport
-     before the phone column overlays the right portion. */
-  .app-shell__content .hero-glow,
-  .app-shell__content .dot-grid,
-  .app-shell__content .hero-bottom-fade {
-    right: calc(0px - var(--app-shell-rail));
-  }
 }
 
 /* Below the breakpoint we never render the rail. */
 @media (max-width: 1023.98px) {
   .app-shell__phone { display: none; }
+}
+
+/* Hero section needs to break out of the content column's
+   `padding-right: rail`, otherwise the hero background overlays
+   (`hero-glow`, `dot-grid`, `hero-bottom-fade`) clip at the rail's
+   left edge and produce the visible "texture cut" the user reported.
+   The section's negative right margin stretches it to full viewport
+   width so the absolutely-positioned overlays (`inset: 0`) extend
+   behind the phone rail. An inner `.app-shell__hero-pane` then
+   restores the visible content area (`100% - rail`) so the copy
+   centers inside the same column the rest of the page lives in. */
+@media (min-width: 1024px) {
+  .app-shell__hero {
+    margin-right: calc(0px - var(--app-shell-rail));
+  }
+  .app-shell__hero-pane {
+    width: calc(100% - var(--app-shell-rail));
+  }
 }
 
 /* ── Gradient text (hero "after") ─────────────────────── */
@@ -348,15 +372,16 @@ html, body, #root {
      logical viewport the operator app renders against. */
   --phone-h: 835px;
   --phone-w: 410px;
-  /* The phone now lives in the fixed right rail. We scale it to fit
-     whichever is smaller: the rail's logical column (~min(50vw, 540px))
-     minus 32 px of horizontal breathing room, or the viewport height
-     minus chrome. Clamp floor 0.45 keeps it readable on extreme
-     vertical sizes. */
+  /* The phone now lives in the fixed right rail, below the sticky
+     navbar. We scale it to fit whichever is smaller: the rail's
+     logical column (~min(50vw, 540px)) minus 32 px of horizontal
+     breathing room, or the viewport height below the navbar minus
+     chrome. Clamp floor 0.45 keeps it readable on extreme vertical
+     sizes. */
   --phone-scale: clamp(
     0.45,
     min(
-      calc((100dvh - var(--demo-chrome)) / var(--phone-h)),
+      calc((100dvh - 56px - var(--demo-chrome)) / var(--phone-h)),
       calc((min(50vw, 540px) - 32px) / var(--phone-w))
     ),
     1
