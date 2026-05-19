@@ -1,7 +1,7 @@
 <h1 align="center">Afterglow</h1>
 
 <p align="center">
-  <span>The dialer that takes notes for you.</span>
+  <strong>Stay in the moment. We handle the after.</strong>
 </p>
 
 <p align="center">
@@ -21,11 +21,11 @@
   <img alt="License" src="https://img.shields.io/badge/license-MIT-111827?style=flat-square" />
 </p>
 
-Afterglow is a phone-app shaped operator assistant for booking-driven
-businesses. The human still answers the call. After the call ends, an agent
-transcribes it, extracts the important fields, decides which follow-up actions
-to run, writes a briefing for the next call, and records an audit trail of what
-happened.
+A call ends. Something else begins.
+
+Afterglow is a phone app for small businesses where the human still answers the
+call. The moment they hang up, an agentic loop handles the after: transcript,
+booking, follow-up, customer memory, and the briefing for next time.
 
 It began during the **AI Agent Olympics @ Milan AI Week 2026**, but it is not
 meant to stop at a hackathon demo. This repository is the first working slice
@@ -43,7 +43,9 @@ Built in the open over a few intense days by a small team. First commit:
 - [Why](#why)
 - [Product Principles](#product-principles)
 - [Local Development](#local-development)
+- [Demo Scenarios](#demo-scenarios)
 - [Agent Pipeline](#agent-pipeline)
+- [Business Value](#business-value)
 - [Production Deployment](#production-deployment)
 - [Hackathon Context](#hackathon-context)
 
@@ -78,22 +80,35 @@ and reset your own sandbox session without affecting other visitors.
 
 ## Why
 
-Small booking-driven businesses still handle important work over the phone:
-restaurants, dental clinics, body shops, salons, hotels, clinics, gyms, events,
-and local service companies. Each call contains details that are easy to lose:
-a name, date, allergy, quote, vehicle plate, callback, preference, complaint,
-or promised follow-up.
+The call itself is usually fine. Thirty seconds, two humans, a small piece of
+business.
+
+What breaks is the after:
+
+- a booking to enter,
+- a confirmation to send,
+- an allergy, vehicle plate, breed, diagnosis, or preference to remember,
+- a next-call briefing that should already exist before the phone rings again.
+
+Today that after is post-its, short-term memory, WhatsApp search, and a second
+tab open just in case. This pattern shows up in restaurants, dental clinics,
+body shops, hair salons, dog groomers, garages, tutoring studios, and many
+other phone-led small businesses.
 
 Most receptionist automation tries to replace the human. Afterglow keeps the
 human in the relationship and automates the work around the call: the notes,
 the follow-ups, the audit trail, and the memory.
+
+The bet is simple:
+
+> **We do not replace the call. We replace the after.**
 
 ## Product Principles
 
 - **Human first.** The operator owns the relationship; software handles the
   repetitive after-call work.
 - **Fast when it matters.** Nothing model-driven blocks the live conversation.
-- **Visible by default.** Extracted fields, actions, confidence, retries, and
+- **Visible by default.** Extracted fields, actions, retries, tool results, and
   failures are inspectable.
 - **Undo where possible.** Actions are reversible only when the integration
   contract makes that honest.
@@ -252,51 +267,85 @@ submission/    Slides and public submission assets
 | Storage | Vultr Managed Postgres |
 | Deploy | Vultr Cloud Compute, Coolify, Traefik, Let's Encrypt |
 
-## Typical Demo Flow
+## Demo Scenarios
 
-1. Open <http://localhost:5173>.
+The fastest path through the product is the restaurant preset.
+
+1. Open the public demo or local demo site.
 2. Open the drawer and go to **Templates**.
-3. Pick a seeded preset: restaurant, dentist, or body shop.
+3. Pick **Restaurant - Standard booking**.
 4. Open **Test simulator**.
-5. Start a call from an existing or new customer.
+5. Start a call from an existing customer.
 6. Accept the call with the **AI** button.
 7. Hang up and open the call detail.
 8. Review extracted fields, executed actions, next-call briefing, and the
    agent reasoning trail.
 9. Open **Audit log** to inspect the pipeline step by step.
 
+The seeded existing-customer scenario is **Mark Ross**, a repeat restaurant
+customer with a gluten-free preference. His simulated call exercises the core
+loop: retrieve memory, create a booking, send confirmation, write the next-call
+briefing.
+
+The seeded new-customer scenario starts from an unknown phone number. The agent
+creates the customer record, extracts the booking, and writes the first
+briefing without prior memory.
+
+The same structure also ships with dentist and body-shop presets. The wizard
+can draft new verticals, for example a dog grooming studio with repeat
+customers, breed-specific notes, allergies, deposits, and same-day slots.
+
 ## Agent Pipeline
 
 ```text
-Expo app / simulator
-        │
-        │ POST /api/v1/calls
-        ▼
-FastAPI background task
-        │
-        ├─ Speechmatics batch transcription
-        │  diarization + language auto-detect
-        │
-        ├─ Structured customer facts from Postgres
-        │
-        ├─ Gemini/ADK call agent
-        │     tools:
-        │       lookup_customer_memory(query)
-        │       search_transcript(keyword)
-        │       read_transcript_segment(start, end)
-        │       template action tools
-        │       flag_for_review(reason, severity)
-        │       finalize_call(payload)
-        │
-        ├─ Persist extracted fields, actions, status, audit rows
-        │
-        └─ Write next-call briefing to Postgres
-           and, outside demo sandbox mode, Vultr Vector Store
+Audio MP3
+operator hangs up
+        |
+        v
+Speechmatics
+batch STT, diarization, language=auto
+        |
+        v
+Gemini 3.1 Flash-Lite + Google ADK
+multi-turn loop, up to 12 turns
+        |
+        +-- lookup_customer_memory(query)
+        |      Vultr RAG over the preseeded collection
+        |
+        +-- search_transcript(keyword)
+        +-- read_transcript_segment(start, end)
+        +-- N domain action tools
+        +-- flag_for_review(reason, severity)
+        +-- finalize_call(payload)
+        |
+        v
+Status mapping
+finalize  -> completed
+max_turns -> needs_review
+error     -> failed
+        |
+        v
+Briefing + extracted fields + actions + audit rows
+Postgres, plus Vultr Vector Store write-back outside demo sandbox mode
 ```
 
 The agent observes action results and can retry corrected payloads on
 validation failures. Mutating actions are guarded against duplicate execution.
 Every turn is recorded in the audit log and linked back to visible UI state.
+
+Why this is more than a single LLM call:
+
+- **Self-correction on tool errors.** If `booking.create` returns
+  `validation_failed` because a required payload field is missing, the agent
+  can re-read the transcript and re-emit the corrected action. Attempts are
+  capped.
+- **RAG on demand.** Returning customer? Ask Vultr Vector Store a specific
+  question such as "allergies on file?". First-time caller? Skip the token
+  spend entirely.
+- **Explicit exits.** The loop finalizes, hits the turn budget and marks the
+  call `needs_review`, or fails loudly. Executed actions survive loop errors.
+- **First-class audit trail.** One Gemini turn becomes one audit row. Action
+  results are joined by `payload.agent_turn`, not timestamp guessing.
 
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full design.
 
@@ -309,8 +358,8 @@ are scoped to that session.
 
 To avoid polluting shared semantic memory, demo sessions do not write new
 chunks into the Vultr Vector Store. The read path still works for seeded
-customers through a pre-seeded collection, so judges can see real RAG retrieval
-in the audit log.
+customers through a pre-seeded collection, so visitors can see real RAG
+retrieval in the audit log.
 
 ## Template Wizard
 
@@ -331,6 +380,11 @@ seeded presets.
 
 ## Useful API Checks
 
+These are useful when you want to verify the live integration instead of just
+looking at screenshots. The RAG probe returns real token usage from Vultr
+Serverless Inference; the dry-run endpoint creates a real call record and runs
+the same post-call pipeline used by uploaded audio.
+
 ```bash
 # Backend health
 curl -s https://api.afterglow.cleversoft.it/health
@@ -346,6 +400,33 @@ curl -s -X POST https://api.afterglow.cleversoft.it/api/v1/admin/dry-run-pipelin
   -H 'Content-Type: application/json' \
   -d '{"transcript":"Operator: Hi.\nCaller: Hi, this is Mark. Friday eight thirty, party of four please.","phone_e164":"+15551112233"}'
 ```
+
+## Business Value
+
+The workflow is deliberately vertical-agnostic: same phone surface, same
+template model, same after-call loop.
+
+| Compared with | Their default | Afterglow |
+|---|---|---|
+| AI receptionists | AI voice agent answers the call | Human answers the call |
+| Call analytics | Transcript or summary after the fact | Briefing, actions, and memory for the next call |
+| CRM-heavy tools | Operator has to open another system | Phone app is the workflow surface |
+| Generic automations | Hard-coded scripts | Template-specific tools and schemas |
+| Black-box AI | Opaque output | Turn-by-turn reasoning trail |
+
+The first measured market was Italy: restaurants, salons, auto repair, beauty,
+dentistry, hotels, and other booking-led local businesses. The larger product
+shape is worldwide. The after-call gap is the same in Milan, Berlin, Brooklyn,
+Sao Paulo, and Sydney.
+
+The Italian baseline from the submission research is deliberately conservative:
+about **478k** booking-led businesses, about **185k** phone-led businesses in
+the serviceable subset, and roughly **EUR 110M/year** initial SAM at
+EUR 50/seat/month. That is a floor, not the ceiling.
+
+Commercially, this points toward a SaaS-per-seat product for SMB
+owner/operators, with expansion by vertical templates and reseller
+configuration.
 
 ## Production Deployment
 
@@ -385,10 +466,14 @@ update the affected Coolify watch paths or the deploy will not trigger.
 
 Afterglow was built for the AI Agent Olympics hackathon and targets:
 
-- Agentic workflows: one multi-turn agent, tool use, retries, auditability.
-- Vultr: Cloud Compute, Managed Postgres, Vector Store, Serverless Inference.
-- Gemini: Gemini/ADK agent and template wizard.
-- Speechmatics: live STT and generated demo-call audio.
+- **Agentic workflows:** one multi-turn agent, tool use, retries, explicit
+  exits, and auditability.
+- **Vultr:** Cloud Compute + Coolify, Managed Postgres, Vector Store, and
+  Serverless Inference RAG with verifiable token usage.
+- **Gemini:** Gemini 3.1 Flash-Lite through Google ADK, typed tools, structured
+  output, and the template wizard.
+- **Speechmatics:** live batch STT with diarization and language auto-detect,
+  plus TTS Preview for the bundled demo MP3s.
 
 The hackathon constraint shaped the current product boundary: a public,
 credible, end-to-end demo first; deeper production concerns such as persistent
